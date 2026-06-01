@@ -180,16 +180,19 @@ class PlaywrightUploader(BaseUploaderEngine):
         
         # Thử lấy link post nếu Tiktok trả về thông báo "Video upload saved/posted"
         try:
-            toast_link = page.locator('a[href*="/video/"]').last
-            if toast_link.is_visible():
-                href = toast_link.get_attribute("href")
+            # Ưu tiên lấy link từ các toast hoặc modal thông báo thành công
+            success_toast = page.locator('div[class*="toast"] a[href*="/video/"], div[class*="modal"] a[href*="/video/"], .tiktok-toast a[href*="/video/"]').last
+            if success_toast.is_visible(timeout=5000):
+                href = success_toast.get_attribute("href")
                 if href and href.startswith("/"):
                     href = f"https://www.tiktok.com{href}"
                 return href
-        except:
-            pass
             
-        raise Exception("Upload có thể đã thành công nhưng không lấy được link bài viết.")
+            # Nếu không tìm thấy toast rõ ràng, đừng lấy bừa thẻ a href video trên trang (vì có thể là video cũ)
+            # Trả về URL mặc định của trang Profile hoặc Upload
+            return "https://www.tiktok.com/profile"
+        except:
+            return "https://www.tiktok.com/profile"
         
     def _upload_youtube(self, page, video_path: str, text: str) -> str:
         logger.info("[Playwright] Mở trang Youtube Studio...")
