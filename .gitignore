@@ -1,0 +1,35 @@
+# Environments
+.env
+.env.local
+.env.development
+.env.production
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+
+# Data & Media (Không push video và database lên GitHub)
+data/
+*.sqlite
+*.db
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log

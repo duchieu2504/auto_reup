@@ -1,0 +1,106 @@
+from app.core.celery_app import celery_app
+from celery.utils.log import get_task_logger
+from app.db.session import SessionLocal
+from app.models.upload_schedule import UploadSchedule
+from datetime import datetime
+import pytz
+import os
+
+logger = get_task_logger(__name__)
+
+@celery_app.task(name="check_scheduled_uploads")
+def check_scheduled_uploads():
+    """
+    Task định kỳ quét DB để tìm các video đã đến giờ đăng
+    """
+    logger.info("Đang kiểm tra các lịch đăng bài...")
+    db = SessionLocal()
+    try:
+        now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
+        
+        # Lấy các lịch đăng pending có thời gian <= hiện tại, hoặc không hẹn giờ (null)
+        pending_schedules = db.query(UploadSchedule).filter(
+            UploadSchedule.status == "pending"
+        ).all()
+        
+        for schedule in pending_schedules:
+            # Kiểm tra thời gian
+            if schedule.scheduled_time and schedule.scheduled_time > now:
+                continue # Chưa đến giờ
+                
+            # Đánh dấu đang xử lý
+            schedule.status = "uploading"
+            db.commit()
+            
+            # Gửi vào queue uploader_worker
+            execute_upload.delay(schedule.id)
+            
+    except Exception as e:
+        logger.error(f"Lỗi khi check lịch đăng: {e}")
+    finally:
+        db.close()
+
+@celery_app.task(name="execute_upload")
+def execute_upload(schedule_id: int):
+    """
+    Thực thi upload dựa vào engine_type
+    """
+    logger.info(f"Bắt đầu upload cho schedule_id={schedule_id}")
+    db = SessionLocal()
+    try:
+        schedule = db.query(UploadSchedule).filter(UploadSchedule.id == schedule_id).first()
+        if not schedule:
+            return
+            
+        video_history = schedule.history
+        account = schedule.account
+        
+        if not video_history or not account:
+            raise Exception("Video hoặc tài khoản không tồn tại.")
+            
+        # Lấy file path từ history
+        video_path = video_history.final_video_path
+        if not video_path or not os.path.exists(video_path):
+             video_path = video_history.raw_video_path
+             
+        if not video_path or not os.path.exists(video_path):
+             raise Exception(f"Không tìm thấy file video trên hệ thống: {video_path}")
+
+        # Chuẩn bị account data
+        import json
+        from app.core.security import decrypt_data
+        
+        account_data = {
+            "platform": account.platform,
+            "auth_data": decrypt_data(account.auth_data),
+            "proxy_host": account.proxy_host,
+            "proxy_port": account.proxy_port,
+            "proxy_username": account.proxy_username,
+            "proxy_password": account.proxy_password,
+        }
+        
+        if schedule.engine_type == "playwright":
+            from app.services.uploader.playwright_engine import PlaywrightUploader
+            uploader = PlaywrightUploader(account_data)
+        elif schedule.engine_type == "adb":
+            from app.services.uploader.adb_engine import ADBUploader
+            uploader = ADBUploader(account_data)
+        else:
+            raise Exception(f"Engine type {schedule.engine_type} không được hỗ trợ.")
+            
+        # Thực thi upload
+        post_url = uploader.upload(video_path, schedule.caption or "", schedule.hashtags or "")
+        
+        logger.info(f"Upload thành công schedule_id={schedule_id}")
+        schedule.status = "success"
+        schedule.post_url = post_url
+        db.commit()
+        
+    except Exception as e:
+        logger.error(f"Upload thất bại schedule_id={schedule_id}: {e}")
+        schedule.status = "failed"
+        schedule.error_message = str(e)
+        schedule.retry_count += 1
+        db.commit()
+    finally:
+        db.close()
