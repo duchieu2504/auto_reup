@@ -1,75 +1,76 @@
-# Hướng Dẫn Bàn Giao & Cài Đặt Dự Án Auto Reup TikTok
+# Hướng Dẫn Cài Đặt & Sử Dụng Dự Án Auto Reup TikTok (Bản Nâng Cấp)
 
-Tài liệu này hướng dẫn cách bàn giao dự án qua GitHub và các bước chi tiết để người nhận (đối tác, người kiểm thử) có thể tự cài đặt và chạy hệ thống trên máy của họ.
-
----
-
-## Phần 1: Dành cho người gửi (Bạn) - Cách bàn giao dự án
-
-Vì dự án đã được tích hợp `.gitignore`, bạn không cần phải nén file thủ công nữa. Hệ thống Git sẽ tự động loại bỏ các file nhạy cảm (như `.env`, thư mục `data/`, `node_modules/`).
-
-Cách bàn giao chuyên nghiệp nhất:
-1. Đẩy toàn bộ mã nguồn lên một Repository (kho lưu trữ) trên GitHub (nên để chế độ Private).
-2. Thêm người nhận vào danh sách **Collaborators** trong phần Settings của Repository để cấp quyền truy cập cho họ.
-3. Gửi cho họ đường link của Repository cùng với hướng dẫn ở Phần 2.
+Tài liệu này hướng dẫn chi tiết cách cài đặt và sử dụng hệ thống Tự động hóa TikTok, bao gồm các tính năng mới nhất như Trình duyệt ẩn danh (GPM), Nuôi tài khoản giả lập (ADB) và Tăng tốc phần cứng (GPU).
 
 ---
 
-## Phần 2: Dành cho người nhận - Hướng dẫn cài đặt và sử dụng
+## 📌 Phần 1: Yêu cầu hệ thống (System Requirements)
 
-### 📌 Yêu cầu hệ thống (System Requirements)
-Máy tính của người kiểm thử cần phải cài đặt sẵn các phần mềm sau:
-1. **[Git](https://git-scm.com/)**: Để tải mã nguồn từ GitHub về máy.
-2. **[Docker Desktop](https://www.docker.com/products/docker-desktop/)**: Để chạy máy chủ Backend, Frontend và Database.
-3. **[Node.js (Bản LTS)](https://nodejs.org/)**: Để chạy hệ thống nhận diện tài khoản TikTok (Local Agent).
-4. **Trình duyệt Google Chrome**: Hệ thống bắt buộc dùng Chrome để trích xuất Cookie tài khoản TikTok.
+Để hệ thống hoạt động đầy đủ chức năng, máy tính của người dùng cần được cài đặt:
 
-### ⚙️ Các bước cài đặt chi tiết
+1. **[Git](https://git-scm.com/)**: Tải mã nguồn.
+2. **[Docker Desktop](https://www.docker.com/products/docker-desktop/)**: Để chạy máy chủ (Backend/Frontend/Database) và Redis.
+3. **[GPM Login](https://gpmlogin.com/)** *(Tùy chọn nhưng khuyến nghị)*: Phần mềm quản lý trình duyệt ẩn danh (Anti-detect browser) dùng để đăng nhập và tải video lách luật. Cần bật API trong phần cài đặt của GPM.
+4. **Giả lập Android (LDPlayer / MEmu / Nox)** *(Tùy chọn nhưng khuyến nghị)*: Dùng cho tính năng "Nuôi Tài Khoản" (Warmup). Cần bật tính năng **ADB Debugging** (Gỡ lỗi USB) trong cài đặt của giả lập.
+5. **VGA/GPU (Intel/Nvidia)** *(Tùy chọn)*: Hỗ trợ tăng tốc độ render video (FFMPEG Hardware Acceleration).
 
-**Bước 1: Tải mã nguồn (Clone) và Cấu hình Môi trường**
+---
+
+## ⚙️ Phần 2: Cài đặt và Khởi chạy
+
+### Bước 1: Tải mã nguồn và Khởi động Hệ thống
 1. Mở Terminal (Command Prompt hoặc PowerShell) tại nơi bạn muốn lưu dự án.
-2. Chạy lệnh clone để tải code về:
+2. Tải code về:
    ```bash
    git clone <đường_link_repository_github>
    cd auto_reup_tiktok
    ```
-3. Tạo file `.env` từ file mẫu:
-   - Copy file `.env.example` và đổi tên bản sao thành `.env`.
-4. Mở file `.env` bằng Notepad và đảm bảo điền key API của Gemini:
-   ```env
-   GEMINI_API_KEY=điền_key_gemini_của_bạn_vào_đây
-   ```
-
-**Bước 2: Khởi động hệ thống Docker (Backend + Frontend + DB)**
-1. Mở phần mềm **Docker Desktop** (để nó chạy ngầm).
-2. Tại Terminal đang ở thư mục `auto_reup_tiktok`, chạy lệnh sau để tự động tải và cài đặt mọi thứ:
+3. Khởi động Docker Desktop (để phần mềm chạy ngầm).
+4. *(Dành riêng cho máy có GPU hỗ trợ FFMPEG)*: Mở file `docker-compose.yml`, kiểm tra và thêm cấu hình GPU (ví dụ mapping `/dev/dri:/dev/dri` đối với chip Intel, hoặc cài Nvidia Container Toolkit đối với card Nvidia) nếu muốn dùng tăng tốc phần cứng. 
+5. Chạy lệnh sau để tự động tải thư viện và chạy hệ thống:
    ```bash
    docker-compose up -d --build
    ```
    *(Quá trình này có thể mất 5-10 phút trong lần chạy đầu tiên).*
 
-**Bước 3: Khởi động Hệ thống Liên kết TikTok (Local Agent)**
-1. Mở thư mục `local_agent`.
-2. Lần đầu tiên chạy, click đúp chuột vào file:
-   👉 **`install_agent.bat`** (File này sẽ cài đặt thư viện tự động, chỉ cần chạy 1 lần).
-3. Đợi cài xong, click đúp chuột vào file:
-   👉 **`DangNhapTiktok.bat`**.
-4. Một cửa sổ Chrome đen mờ sẽ hiện lên (hoặc mở ẩn). Lúc này **KHÔNG ĐƯỢC TẮT** cửa sổ terminal màu đen của Local Agent. Hãy cứ để nó chạy ngầm.
+### Bước 2: Truy cập Web và Cấu hình Ban đầu
+1. Mở trình duyệt web của bạn và truy cập: 👉 **http://localhost:5173**
+2. Chuyển sang Tab **⚙️ Cài đặt (Settings)** trên giao diện web.
+3. Điền các thông số bắt buộc:
+   - **Gemini API Key:** (Bắt buộc) Dùng để dịch thuật và phân tích vai Nam/Nữ.
+   - **Groq API Key:** (Tùy chọn) Dùng cho Whisper siêu tốc (Nhận diện giọng nói). Bật công tắc Groq nếu muốn dùng.
+   - **GPM API URL:** Nếu bạn dùng GPM Login, điền đường dẫn API (Thường là `http://127.0.0.1:19995`).
+   - **Tăng tốc phần cứng (GPU):** Bật công tắc này nếu máy bạn hỗ trợ Intel QSV hoặc Nvidia NVENC.
+4. Nhấn **Lưu cấu hình**. (Hệ thống sẽ tự động lưu các thông số này vào file `.env` ở Backend).
 
-### 🚀 Cách sử dụng hệ thống
-
-1. **Truy cập Giao Diện Web**: Mở trình duyệt web của bạn và truy cập:
-   👉 **http://localhost:5173**
-2. **Liên kết tài khoản TikTok**: 
-   - Trên web, vào mục "Tài khoản TikTok" -> Bấm "Thêm tài khoản".
-   - Trình duyệt Chrome sẽ tự nhảy ra trang đăng nhập TikTok. Bạn hãy quét mã QR hoặc đăng nhập tay.
-   - Khi đăng nhập thành công, tắt trình duyệt đó đi, dữ liệu Avatar và Tên sẽ được đồng bộ.
-3. **Thêm Video**: 
-   - Đưa các video gốc cần xử lý vào thư mục `data/raw_videos/`.
-   *(Lưu ý: Do Git đã chặn thư mục `data`, nếu hệ thống chưa tự tạo thư mục này, bạn hãy tạo thủ công thư mục `data/raw_videos/` ở thư mục gốc dự án).*
-4. **Xử lý Video**: 
-   - Trên web, vào tính năng "Xử lý hàng loạt", chọn thư mục và tùy chỉnh giọng nói AI / âm lượng.
-   - Nhấn "Bắt đầu xử lý" để máy tự động Dịch thuật, Lồng tiếng AI và Xóa phụ đề gốc.
-   
 ---
-*Hệ thống được phát triển chuyên biệt cho môi trường Windows kết hợp kiến trúc Microservices (Docker + Local Puppeteer).*
+
+## 🚀 Phần 3: Hướng dẫn sử dụng các chức năng chính
+
+### 1. Nuôi Tài Khoản (Warmup Engine)
+*Đây là chức năng tự động lướt TikTok trên Giả Lập Android để tăng độ Trust cho tài khoản.*
+1. Mở Giả lập Android (VD: LDPlayer) và mở ứng dụng TikTok (đã đăng nhập sẵn tài khoản cần nuôi).
+2. Đảm bảo ADB trong Giả lập đã được bật (Cổng mặc định thường là `emulator-5554` hoặc `127.0.0.1:5555`).
+3. Trên Web, vào Tab **📱 Nuôi Tài Khoản**. Nhấn "Quét thiết bị giả lập".
+4. Thiết lập thời gian (VD: Lướt 3-5 video, random xem bao nhiêu giây). Hệ thống sẽ sử dụng AI để tự động tìm icon 🤍 (Tym) và tương tác một cách cực kỳ tự nhiên.
+
+### 2. Cào Video (Scraping)
+1. Chuyển sang Tab **🕷️ Cào Video**.
+2. Nhập Link một Video TikTok (hoặc Profile) bạn muốn cào.
+3. Video sẽ được tải xuống hoàn toàn tự động, loại bỏ watermark (logo TikTok).
+
+### 3. Xử lý & Edit Video (Video Editor)
+1. Chuyển sang Tab **🎬 Lịch Sử** (nơi chứa các video vừa cào về).
+2. Các video mới tải sẽ có trạng thái "Chờ xử lý" (Dấu tích xanh ở cột Tải về).
+3. Nhấn vào nút **Play (Cấu hình & Xử lý)** trên video (hoặc tích chọn nhiều video và nhấn nút "Xử lý N mục" ở góc phải).
+4. Chọn **Giọng đọc AI (TTS)**, Style Phụ Đề, và các tùy chọn lách bản quyền (Lật gương, Zoom, Chỉnh màu, Đổi tần số âm).
+5. Nhấn **Xác nhận & Xử lý**. Hệ thống sẽ tự động tách lời, dịch thuật AI và render ra file thành phẩm. 
+
+### 4. Upload tự động (GPM Anti-Detect)
+1. Sau khi xử lý xong, vào Tab **🚀 Tự Động Đăng**.
+2. Chọn Profile GPM chứa kênh TikTok của bạn.
+3. Chọn Video thành phẩm, thiết lập Giờ đăng (Lên lịch) và Caption.
+4. Hệ thống sẽ kết nối với GPM Login, tự mở profile ẩn danh tương ứng và đăng video hoàn toàn giống thao tác người thật, qua mặt hệ thống kiểm duyệt bot của TikTok.
+
+---
+*Hệ thống được phát triển chuyên biệt cho môi trường Windows kết hợp kiến trúc Microservices (Docker + Celery) và tự động hóa giả lập đa thiết bị.*
