@@ -1,6 +1,6 @@
 import os
 import asyncio
-from .transcriber import Transcriber
+from .transcriber import Transcriber, GroqQuotaExceeded
 from .translator import Translator
 from .video_editor import VideoEditor
 from .tts_generator import TTSGenerator
@@ -20,7 +20,7 @@ class ProcessorPipeline:
         self.editor = VideoEditor()
         self.tts = TTSGenerator()
 
-    def process_video(self, video_path: str, log_callback, voice_mode: str = "edge_auto", bg_volume: int = 10, flip_video: bool = False, force_render: bool = False):
+    def process_video(self, video_path: str, log_callback, voice_mode: str = "edge_auto", bg_volume: int = 10, flip_video: bool = False, force_render: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False):
         if not os.path.exists(video_path):
             log_callback(f"[!] Lỗi: Không tìm thấy file {video_path}\n")
             return
@@ -86,9 +86,16 @@ class ProcessorPipeline:
                     record.srt_origin_path = orig_srt
                     db.commit()
                     log_callback(f"[*] Đã tạo phụ đề gốc thành công.\n")
+                except GroqQuotaExceeded:
+                    log_callback(f"[!] Groq API đã hết hạn miễn phí. Tạm dừng tiến trình.\n")
+                    record.status = ProcessStatus.PAUSED
+                    record.error_message = "GROQ_LIMIT_EXCEEDED"
+                    db.commit()
+                    return
                 except Exception as e:
                     log_callback(f"[!] Lỗi Whisper: {e}\n")
-                    return
+                    # Fallback default error processing for other errors (in main except)
+                    raise e
 
             if sync_redis.get(f"pause_video_{base_name}") == "1":
                 log_callback(f"[*] Tiến trình đã được tạm dừng bởi người dùng.\n")
@@ -168,7 +175,7 @@ class ProcessorPipeline:
                 try:
                     record.status = ProcessStatus.RENDERING
                     db.commit()
-                    self.editor.burn_subtitles(video_path, vi_srt, output_video, tts_audio, bg_volume, flip_video)
+                    self.editor.burn_subtitles(video_path, vi_srt, output_video, tts_audio, bg_volume, flip_video, subtitle_style, opt_zoom, opt_color, opt_noise, opt_pitch)
                     record.final_video_path = output_video
                     record.status = ProcessStatus.COMPLETED
                     db.commit()

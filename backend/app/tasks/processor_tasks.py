@@ -13,7 +13,7 @@ redis_client = redis.Redis.from_url(REDIS_URL)
 pipeline_instance = None
 
 @celery_app.task(bind=True, name="processor_tasks.process_video")
-def process_video_task(self, video_paths: list, voice_mode: str, bg_volume: int, flip_video: bool = False, force_render: bool = False):
+def process_video_task(self, video_paths: list, voice_mode: str, bg_volume: int, flip_video: bool = False, force_render: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False):
     global pipeline_instance
     task_id = self.request.id
     channel = f"task_log_{task_id}"
@@ -40,7 +40,7 @@ def process_video_task(self, video_paths: list, voice_mode: str, bg_volume: int,
         
         def process_single(vp):
             try:
-                pipeline_instance.process_video(vp, log_callback, voice_mode, bg_volume, flip_video, force_render)
+                pipeline_instance.process_video(vp, log_callback, voice_mode, bg_volume, flip_video, force_render, subtitle_style, opt_zoom, opt_color, opt_noise, opt_pitch)
             except Exception as e:
                 logger.error(f"Lỗi khi xử lý {vp}: {e}")
                 log_callback(f"[!] Lỗi khi xử lý {vp}: {e}\n")

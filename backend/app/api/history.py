@@ -38,6 +38,7 @@ class VideoHistoryResponse(BaseModel):
     status: str
     upload_status: str
     uploaded_platforms: Optional[str]
+    upload_history: Optional[str] = "[]"
     uploaded_at: Optional[datetime]
     created_at: datetime
     raw_video_path: Optional[str]
@@ -45,6 +46,7 @@ class VideoHistoryResponse(BaseModel):
     srt_translated_path: Optional[str]
     audio_tts_path: Optional[str]
     final_video_path: Optional[str]
+    process_config: Optional[str] = "{}"
     error_message: Optional[str] = None
     schedules: List[ScheduleSimple] = []
 
@@ -212,10 +214,16 @@ def sync_data(db: Session = Depends(get_db)):
 
         if exists:
             # Update
+            import json
             exists.source = data.get("source", exists.source)
             exists.status = data.get("status", exists.status)
             exists.upload_status = data.get("upload_status", exists.upload_status)
             exists.uploaded_platforms = data.get("uploaded_platforms", exists.uploaded_platforms)
+            
+            uh = data.get("upload_history")
+            if uh is not None:
+                exists.upload_history = uh if isinstance(uh, str) else json.dumps(uh)
+                
             exists.error_message = data.get("error_message", exists.error_message)
             exists.raw_video_path = data.get("raw_video_path", exists.raw_video_path)
             exists.final_video_path = data.get("final_video_path", exists.final_video_path)
@@ -233,6 +241,7 @@ def sync_data(db: Session = Depends(get_db)):
                 status=data.get("status", ProcessStatus.PENDING),
                 upload_status=data.get("upload_status", UploadStatus.NOT_UPLOADED),
                 uploaded_platforms=data.get("uploaded_platforms"),
+                upload_history=data.get("upload_history", "[]") if isinstance(data.get("upload_history", "[]"), str) else json.dumps(data.get("upload_history", "[]")),
                 error_message=data.get("error_message"),
                 raw_video_path=data.get("raw_video_path"),
                 final_video_path=data.get("final_video_path"),

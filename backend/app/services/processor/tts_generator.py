@@ -13,7 +13,7 @@ import imageio_ffmpeg
 # Chỉ định đường dẫn FFmpeg cho pydub để tránh lỗi WinError 2
 AudioSegment.converter = imageio_ffmpeg.get_ffmpeg_exe()
 
-ENV_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.env"))
+ENV_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/.env"))
 
 class TTSGenerator:
     def __init__(self):
@@ -66,6 +66,62 @@ class TTSGenerator:
                     continue
                 raise e
 
+    def _generate_openai_audio(self, text: str, voice: str, output_path: str):
+        load_dotenv(ENV_PATH, override=True)
+        api_key = decrypt_data(os.getenv("OPENAI_API_KEY", ""))
+        if not api_key:
+            raise Exception("Lỗi: OPENAI_API_KEY chưa được cấu hình!")
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+        
+        # Strip provider prefix if present (e.g., openai_alloy -> alloy)
+        if voice.startswith("openai_"):
+            voice = voice.replace("openai_", "")
+            
+        response = client.audio.speech.create(
+            model="tts-1",
+            voice=voice,
+            input=text
+        )
+        response.stream_to_file(output_path)
+
+    def _generate_elevenlabs_audio(self, text: str, voice: str, output_path: str):
+        load_dotenv(ENV_PATH, override=True)
+        api_key = decrypt_data(os.getenv("ELEVENLABS_API_KEY", ""))
+        if not api_key:
+            raise Exception("Lỗi: ELEVENLABS_API_KEY chưa được cấu hình!")
+            
+        # Map our local ids to ElevenLabs voice IDs
+        voice_map = {
+            "elevenlabs_rachel": "21m00Tcm4TlvDq8ikWAM",
+            "elevenlabs_drew": "29vD33N1CtxCmqQRPOHJ",
+            "elevenlabs_clyde": "2EiwWnXFnvU5JabPnv8n",
+            "elevenlabs_mimi": "zrHiDhphv9ZnVb4IGGlb"
+        }
+        
+        voice_id = voice_map.get(voice, "21m00Tcm4TlvDq8ikWAM")
+        
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+        headers = {
+            "Accept": "audio/mpeg",
+            "Content-Type": "application/json",
+            "xi-api-key": api_key
+        }
+        data = {
+            "text": text,
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.75
+            }
+        }
+        response = requests.post(url, json=data, headers=headers)
+        if response.status_code == 200:
+            with open(output_path, "wb") as f:
+                f.write(response.content)
+        else:
+            raise Exception(f"Lỗi ElevenLabs API: {response.text}")
+
     def generate_tts_track(self, srt_path: str, output_audio_path: str, voice_mode: str, video_path: str, log_callback):
         subs = pysrt.open(srt_path, encoding='utf-8')
         
@@ -115,24 +171,37 @@ class TTSGenerator:
             # Xác định giọng đọc dựa trên voice_mode
             voice_to_use = None
             is_fpt = False
+            is_openai = False
+            is_elevenlabs = False
             
-            if voice_mode == "edge_auto":
-                voice_to_use = "vi-VN-NamMinhNeural" if tag == "M" else "vi-VN-HoaiMyNeural"
-            elif voice_mode == "edge_hoaimy":
-                voice_to_use = "vi-VN-HoaiMyNeural"
-            elif voice_mode == "edge_namminh":
-                voice_to_use = "vi-VN-NamMinhNeural"
-            elif voice_mode == "fpt_banmai":
-                voice_to_use = "banmai"
+            # Handle Auto mode
+            if voice_mode in ["auto", "edge_auto"]:
+                load_dotenv(ENV_PATH, override=True)
+                active_tts = os.getenv("ACTIVE_TTS_PROVIDER", "edge")
+                
+                if active_tts == "fpt":
+                    voice_mode = "fpt_minhquang" if tag == "M" else "fpt_banmai"
+                elif active_tts == "openai":
+                    voice_mode = "openai_onyx" if tag == "M" else "openai_nova"
+                elif active_tts == "elevenlabs":
+                    voice_mode = "elevenlabs_drew" if tag == "M" else "elevenlabs_rachel"
+                else:
+                    voice_mode = "edge_namminh" if tag == "M" else "edge_hoaimy"
+            
+            # Resolve actual voice
+            if voice_mode.startswith("edge_"):
+                voice_to_use = "vi-VN-NamMinhNeural" if "namminh" in voice_mode else "vi-VN-HoaiMyNeural"
+            elif voice_mode.startswith("fpt_"):
+                voice_to_use = voice_mode.replace("fpt_", "")
                 is_fpt = True
-            elif voice_mode == "fpt_minhquang":
-                voice_to_use = "minhquang"
-                is_fpt = True
-            elif voice_mode == "fpt_thuminh":
-                voice_to_use = "thuminh"
-                is_fpt = True
+            elif voice_mode.startswith("openai_"):
+                voice_to_use = voice_mode
+                is_openai = True
+            elif voice_mode.startswith("elevenlabs_"):
+                voice_to_use = voice_mode
+                is_elevenlabs = True
             else:
-                voice_to_use = "vi-VN-HoaiMyNeural" # default
+                voice_to_use = "vi-VN-HoaiMyNeural" # default Edge
                 
             start_ms = (sub.start.hours * 3600 + sub.start.minutes * 60 + sub.start.seconds) * 1000 + sub.start.milliseconds
             end_ms = (sub.end.hours * 3600 + sub.end.minutes * 60 + sub.end.seconds) * 1000 + sub.end.milliseconds
@@ -157,6 +226,10 @@ class TTSGenerator:
             try:
                 if is_fpt:
                     clip_path = self._get_fpt_audio(tts_text, voice_to_use)
+                elif is_openai:
+                    self._generate_openai_audio(tts_text, voice_to_use, clip_path)
+                elif is_elevenlabs:
+                    self._generate_elevenlabs_audio(tts_text, voice_to_use, clip_path)
                 else:
                     asyncio.run(self._generate_edge_audio(tts_text, voice_to_use, clip_path, rate=rate))
                     

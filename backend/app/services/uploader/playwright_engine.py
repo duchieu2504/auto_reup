@@ -56,28 +56,51 @@ class PlaywrightUploader(BaseUploaderEngine):
         full_caption = f"{caption}\n\n{hashtags}"
 
         with sync_playwright() as p:
-            # Cấu hình Proxy nếu có
-            launch_args = {
-                "headless": True,
-                "args": ["--disable-blink-features=AutomationControlled"]
-            }
-            if self.proxy_server:
-                launch_args["proxy"] = {"server": self.proxy_server}
-                if self.proxy_auth:
-                    launch_args["proxy"]["username"] = self.proxy_auth["username"]
-                    launch_args["proxy"]["password"] = self.proxy_auth["password"]
-
-            browser = p.chromium.launch(**launch_args)
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-            )
+            is_gpm = self.account_data.get("connection_type") == "gpm_login"
+            gpm_api_url = os.getenv("GPM_API_URL", "").rstrip('/')
+            gpm_profile_id = self.account_data.get("device_id")
             
-            # Add cookies
-            if self.cookies and isinstance(self.cookies, list):
-                context.add_cookies(self.cookies)
+            if is_gpm:
+                if not gpm_api_url or not gpm_profile_id:
+                    raise Exception("Thiếu GPM API URL hoặc Profile ID để khởi chạy GPM Login.")
+                import requests
+                logger.info(f"[Playwright] Khởi động GPM Profile {gpm_profile_id}")
+                start_res = requests.get(f"{gpm_api_url}/api/v2/profile/start?profileId={gpm_profile_id}")
+                start_data = start_res.json()
+                if not start_data.get("success"):
+                    raise Exception(f"Không thể mở GPM Profile: {start_data}")
                 
-            page = context.new_page()
-            self._apply_stealth(page)
+                ws_endpoint = start_data.get("data", {}).get("ws_endpoint")
+                browser = p.chromium.connect_over_cdp(ws_endpoint)
+                if browser.contexts and browser.contexts[0].pages:
+                    page = browser.contexts[0].pages[0]
+                else:
+                    context = browser.contexts[0] if browser.contexts else browser.new_context()
+                    page = context.new_page()
+            else:
+                # Cấu hình Proxy nếu có cho Chromium thường
+                launch_args = {
+                    "headless": True,
+                    "args": ["--disable-blink-features=AutomationControlled"]
+                }
+                if self.proxy_server:
+                    launch_args["proxy"] = {"server": self.proxy_server}
+                    if self.proxy_auth:
+                        launch_args["proxy"]["username"] = self.proxy_auth["username"]
+                        launch_args["proxy"]["password"] = self.proxy_auth["password"]
+
+                browser = p.chromium.launch(**launch_args)
+                context = browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                )
+                
+                # Add cookies
+                if self.cookies and isinstance(self.cookies, list):
+                    context.add_cookies(self.cookies)
+                    
+                page = context.new_page()
+                self._apply_stealth(page)
+            
             
             try:
                 # Phân loại nền tảng dựa trên tên tài khoản hoặc biến platform
@@ -95,7 +118,13 @@ class PlaywrightUploader(BaseUploaderEngine):
                 page.screenshot(path=f"/data/error_{int(time.time())}.png")
                 raise e
             finally:
-                browser.close()
+                if is_gpm:
+                    browser.disconnect()
+                    import requests
+                    logger.info(f"[Playwright] Đóng GPM Profile {gpm_profile_id}")
+                    requests.get(f"{gpm_api_url}/api/v2/profile/stop?profileId={gpm_profile_id}")
+                else:
+                    browser.close()
                 
         return post_url
 

@@ -24,7 +24,11 @@ export const ProcessorProvider = ({ children }) => {
           video_paths: pathsArray,
           voice_mode: options.voiceMode || 'edge_auto',
           bg_volume: options.bgVolume !== undefined ? options.bgVolume : 10,
-          flip_video: options.flipVideo || false
+          flip_video: options.flipVideo || false,
+          opt_zoom: options.optZoom || false,
+          opt_color: options.optColor || false,
+          opt_noise: options.optNoise || false,
+          opt_pitch: options.optPitch || false
         })
       });
       

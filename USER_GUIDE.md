@@ -72,7 +72,9 @@ Bạn có thể tắt trình duyệt và đi cafe. Hệ thống **Celery Beat** 
 
 ## ⚠️ CÁC TRƯỜNG HỢP XỬ LÝ SỰ CỐ THƯỜNG GẶP
 - **Hệ thống mất dữ liệu lịch sử:** Nếu có yêu cầu "Purge Data" (Dọn dẹp bộ nhớ Docker) do tràn ổ C, dữ liệu thống kê sẽ mất. Hãy vào Cài đặt điền lại API là được. Video gốc vẫn an toàn.
-- **Bot ADB không điều khiển được điện thoại:** Hãy chắc chắn Emulator (Máy ảo) đang bật trước khi đến giờ Hẹn đăng bài, và cổng Port (`5555`) phải chính xác.
+- **Bot ADB không điều khiển được điện thoại / Lỗi adb command not found:** 
+  - **Trên Windows**: Mặc định Windows không có sẵn lệnh `adb`. Nếu bạn dùng Emulator (LDPlayer/Nox), hãy vào thư mục cài đặt của phần mềm đó, tìm file `adb.exe` và thêm thư mục đó vào System Environment Variables (PATH).
+  - **Kết nối Docker - Windows**: Vì hệ thống chạy trong Docker, Docker sẽ không tự thấy được điện thoại cắm vào máy tính. Trong ô nhập Device ID trên web, thay vì nhập `emulator-5554`, bạn HÃY NHẬP IP Host của máy ảo: `host.docker.internal:5555` (hoặc cổng mà Emulator của bạn đang mở). Hệ thống sẽ tự động `adb connect` qua mạng nội bộ để bắt tín hiệu.
 - **Lỗi dịch Subtitles (Phụ đề):** Đảm bảo API Key của Gemini không bị giới hạn quota, và video gốc phải có tiếng nói rõ ràng để AI Whisper có thể nhận diện âm thanh.
 
 *Chúc bạn xây dựng được một Đế chế Truyền thông Tự động thành công!* 🚀🦊

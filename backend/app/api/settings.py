@@ -20,6 +20,10 @@ class KeysUpdate(BaseModel):
     active_tts_provider: str = "edge"
     ai_concurrency_limit: int = 1
     douyin_cookie: str = ""
+    anti_detect_provider: str = "none"
+    gpm_api_url: str = ""
+    groq_api_key: str = ""
+    use_groq: bool = False
 
 @router.get("/voices")
 async def get_available_voices():
@@ -77,7 +81,11 @@ async def get_keys():
         "active_ai_provider": os.getenv("ACTIVE_AI_PROVIDER", "gemini"),
         "active_tts_provider": os.getenv("ACTIVE_TTS_PROVIDER", "edge"),
         "ai_concurrency_limit": int(os.getenv("AI_CONCURRENCY_LIMIT", 1)),
-        "douyin_cookie": decrypt_data(os.getenv("DOUYIN_COOKIE", ""))
+        "douyin_cookie": decrypt_data(os.getenv("DOUYIN_COOKIE", "")),
+        "anti_detect_provider": os.getenv("ANTI_DETECT_PROVIDER", "none"),
+        "gpm_api_url": os.getenv("GPM_API_URL", ""),
+        "groq_api_key": decrypt_data(os.getenv("GROQ_API_KEY", "")),
+        "use_groq": os.getenv("USE_GROQ", "False").lower() == "true"
     }
 
 @router.post("/keys")
@@ -97,6 +105,10 @@ async def update_keys(data: KeysUpdate):
     set_key(ENV_PATH, "ACTIVE_TTS_PROVIDER", data.active_tts_provider)
     set_key(ENV_PATH, "AI_CONCURRENCY_LIMIT", str(data.ai_concurrency_limit))
     set_key(ENV_PATH, "DOUYIN_COOKIE", encrypt_data(data.douyin_cookie))
+    set_key(ENV_PATH, "ANTI_DETECT_PROVIDER", data.anti_detect_provider)
+    set_key(ENV_PATH, "GPM_API_URL", data.gpm_api_url)
+    set_key(ENV_PATH, "GROQ_API_KEY", encrypt_data(data.groq_api_key))
+    set_key(ENV_PATH, "USE_GROQ", str(data.use_groq))
     
     # Save cookie to file in Netscape format for yt-dlp (Lưu ý: yt-dlp cần file raw text)
     cookie_path = os.path.join(os.path.dirname(ENV_PATH), "douyin_cookie.txt")
@@ -123,7 +135,9 @@ async def validate_keys(data: KeysUpdate):
         "openai_api_key": "unknown",
         "anthropic_api_key": "unknown",
         "xai_api_key": "unknown",
-        "douyin_cookie": "unknown"
+        "groq_api_key": "unknown",
+        "douyin_cookie": "unknown",
+        "gpm_api_url": "unknown"
     }
     
     # 1. Test FPT API Key
@@ -197,6 +211,17 @@ async def validate_keys(data: KeysUpdate):
         except Exception as e:
             print("xAI Test Error:", e)
             results["xai_api_key"] = "invalid"
+
+    # Test Groq API Key
+    if data.groq_api_key and data.groq_api_key.strip():
+        try:
+            from groq import Groq
+            client = Groq(api_key=data.groq_api_key)
+            client.models.list()
+            results["groq_api_key"] = "valid"
+        except Exception as e:
+            print("Groq Test Error:", e)
+            results["groq_api_key"] = "invalid"
             
     # 6. Test Douyin Cookie
     if data.douyin_cookie and data.douyin_cookie.strip():
@@ -271,4 +296,13 @@ async def validate_keys(data: KeysUpdate):
     else:
         results["douyin_cookie"] = "missing"
         
+    # Test GPM API URL
+    if data.anti_detect_provider == "gpm" and data.gpm_api_url and data.gpm_api_url.strip():
+        try:
+            resp = requests.get(data.gpm_api_url.strip().rstrip('/'), timeout=3)
+            # As long as it responds, consider it valid
+            results["gpm_api_url"] = "valid"
+        except requests.exceptions.RequestException:
+            results["gpm_api_url"] = "invalid"
+            
     return results

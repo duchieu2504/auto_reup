@@ -21,7 +21,12 @@ class ProcessRequest(BaseModel):
     voice_mode: str = "edge_auto"
     bg_volume: int = 10
     flip_video: bool = False
+    opt_zoom: bool = False
+    opt_color: bool = False
+    opt_noise: bool = False
+    opt_pitch: bool = False
     force_render: bool = False
+    subtitle_style: str = "black_white"
 
 @router.post("/start")
 async def start_processor(request: ProcessRequest):
@@ -43,16 +48,28 @@ async def start_processor(request: ProcessRequest):
             base_name = os.path.basename(vp_clean).split('.')[0]
             await redis_client.delete(f"pause_video_{base_name}")
             
-            # Cập nhật DB sang PENDING
+            # Cập nhật DB sang PENDING và lưu cấu hình
             record = db.query(VideoHistory).filter(VideoHistory.raw_video_path.like(f"%{base_name}%")).first()
             if record:
                 record.status = ProcessStatus.PENDING
+                import json
+                config_data = {
+                    "voice_mode": request.voice_mode,
+                    "bg_volume": request.bg_volume,
+                    "flip_video": request.flip_video,
+                    "subtitle_style": request.subtitle_style,
+                    "opt_zoom": request.opt_zoom,
+                    "opt_color": request.opt_color,
+                    "opt_noise": request.opt_noise,
+                    "opt_pitch": request.opt_pitch
+                }
+                record.process_config = json.dumps(config_data)
         db.commit()
         db.close()
     except Exception as e:
         logger.error(f"Lỗi update DB khi start: {e}")
         
-    task = process_video_task.delay(cleaned_paths, request.voice_mode, request.bg_volume, request.flip_video, request.force_render)
+    task = process_video_task.delay(cleaned_paths, request.voice_mode, request.bg_volume, request.flip_video, request.force_render, request.subtitle_style, request.opt_zoom, request.opt_color, request.opt_noise, request.opt_pitch)
     return {"status": "started", "task_id": task.id, "video_count": len(cleaned_paths)}
 
 @router.get("/scan-folder")

@@ -104,3 +104,35 @@ def execute_upload(schedule_id: int):
         db.commit()
     finally:
         db.close()
+
+@celery_app.task(name="tasks.warmup_account")
+def warmup_account_task(account_data: dict):
+    from app.services.uploader.warmup_engine import WarmupEngineFactory
+    from app.db.session import SessionLocal
+    from app.models.social_account import SocialAccount
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    account_id = account_data.get('id')
+    db = SessionLocal()
+    
+    if account_id:
+        acc = db.query(SocialAccount).filter_by(id=account_id).first()
+        if acc:
+            acc.status = "warming_up"
+            db.commit()
+
+    logger.info(f"Bắt đầu nuôi tài khoản: {account_data.get('username')}")
+    try:
+        engine = WarmupEngineFactory.get_engine(account_data)
+        engine.warmup()
+        logger.info(f"Hoàn tất nuôi tài khoản: {account_data.get('username')}")
+    except Exception as e:
+        logger.error(f"Lỗi khi nuôi tài khoản {account_data.get('username')}: {e}")
+    finally:
+        if account_id:
+            acc = db.query(SocialAccount).filter_by(id=account_id).first()
+            if acc:
+                acc.status = "active"
+                db.commit()
+        db.close()

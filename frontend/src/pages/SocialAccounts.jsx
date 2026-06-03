@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Activity, Globe, Shield, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Edit2, Activity, Globe, Shield, RefreshCw, Smartphone } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const API_BASE = 'http://localhost:8000/api';
@@ -9,6 +9,7 @@ const SocialAccounts = () => {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [warmingUpIds, setWarmingUpIds] = useState([]);
 
   const [formData, setFormData] = useState({
     platform: 'tiktok',
@@ -19,7 +20,9 @@ const SocialAccounts = () => {
     proxy_host: '',
     proxy_port: '',
     proxy_username: '',
-    proxy_password: ''
+    proxy_password: '',
+    connection_type: 'web_playwright',
+    device_id: ''
   });
 
   const fetchAccounts = async () => {
@@ -161,11 +164,13 @@ const SocialAccounts = () => {
       username: account.username,
       account_id: account.account_id || '',
       avatar_url: account.avatar_url || '',
-      auth_data: account.auth_data,
+      auth_data: account.auth_data || '',
       proxy_host: account.proxy_host || '',
       proxy_port: account.proxy_port || '',
       proxy_username: account.proxy_username || '',
-      proxy_password: account.proxy_password || ''
+      proxy_password: account.proxy_password || '',
+      connection_type: account.connection_type || 'web_playwright',
+      device_id: account.device_id || ''
     });
     setEditingId(account.id);
     setIsModalOpen(true);
@@ -181,9 +186,24 @@ const SocialAccounts = () => {
       proxy_host: '',
       proxy_port: '',
       proxy_username: '',
-      proxy_password: ''
+      proxy_password: '',
+      connection_type: 'web_playwright',
+      device_id: ''
     });
     setEditingId(null);
+  };
+
+  const handleSync = async () => {
+    const loadingToast = toast.loading('Đang quét thư mục data/accounts để đồng bộ...');
+    try {
+      const res = await fetch(`${API_BASE}/social-accounts/sync`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Đồng bộ thất bại');
+      toast.success(`Đồng bộ hoàn tất! (Thêm mới: ${data.added_count}, Cập nhật: ${data.updated_count})`, { id: loadingToast });
+      fetchAccounts();
+    } catch (err) {
+      toast.error(err.message, { id: loadingToast });
+    }
   };
 
   return (
@@ -193,13 +213,23 @@ const SocialAccounts = () => {
           <h1 className="text-2xl font-bold text-text-primary">Quản lý Tài Khoản MXH</h1>
           <p className="text-text-secondary mt-1 text-sm">Thêm và cấu hình các tài khoản mạng xã hội để auto upload</p>
         </div>
-        <button
-          onClick={() => { resetForm(); setIsModalOpen(true); }}
-          className="flex items-center gap-2 px-4 py-2 bg-brand-primary text-white font-medium rounded-xl hover:opacity-90 transition-all shadow-[0_0_20px_rgba(var(--color-brand-primary),0.3)]"
-        >
-          <Plus size={18} />
-          Thêm Tài Khoản
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handleSync}
+            className="flex items-center gap-2 px-4 py-2 bg-bg-secondary text-text-primary font-medium rounded-xl hover:bg-white/5 transition-colors border border-border-subtle"
+            title="Đồng bộ tài khoản từ ổ cứng vào Database"
+          >
+            <RefreshCw size={18} />
+            Đồng bộ từ Data
+          </button>
+          <button
+            onClick={() => { resetForm(); setIsModalOpen(true); }}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-primary text-white font-medium rounded-xl hover:opacity-90 transition-all shadow-[0_0_20px_rgba(var(--color-brand-primary),0.3)]"
+          >
+            <Plus size={18} />
+            Thêm Tài Khoản
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -224,7 +254,16 @@ const SocialAccounts = () => {
                     </div>
                   )}
                   <div>
-                    <h3 className="font-bold text-text-primary text-lg">{acc.username}</h3>
+                    <h3 className="font-bold text-text-primary text-lg flex items-center gap-2">
+                      {acc.username}
+                      {acc.connection_type === 'adb_device' ? (
+                        <span title="Mobile App (ADB)" className="bg-purple-500/20 text-purple-400 p-1 rounded"><Smartphone size={14}/></span>
+                      ) : acc.connection_type === 'gpm_login' ? (
+                        <span title="GPM Login" className="bg-green-500/20 text-green-400 p-1 rounded"><Shield size={14}/></span>
+                      ) : (
+                        <span title="Web Browser" className="bg-blue-500/20 text-blue-400 p-1 rounded"><Globe size={14}/></span>
+                      )}
+                    </h3>
                     <p className="text-xs text-text-secondary uppercase tracking-wider">{acc.platform}</p>
                   </div>
                 </div>
@@ -242,7 +281,7 @@ const SocialAccounts = () => {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-text-secondary flex items-center gap-1.5"><Activity size={14}/> Trạng thái</span>
                   <span className={`px-2 py-0.5 rounded text-xs font-bold ${acc.status === 'active' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-                    {acc.status === 'active' ? 'ĐANG SỐNG' : 'LỖI COOKIE'}
+                    {acc.status === 'active' ? 'Hoạt động' : acc.status === 'warming_up' ? 'Đang nuôi' : 'Đứt kết nối'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
@@ -253,12 +292,40 @@ const SocialAccounts = () => {
                 </div>
               </div>
               
-              <button 
-                onClick={() => checkStatus(acc.id)}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-black/20 hover:bg-black/40 text-text-primary rounded-xl text-sm font-medium transition-colors border border-white/5"
-              >
-                <RefreshCw size={16} /> Kiểm tra Live/Die
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => checkStatus(acc.id)}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-black/20 hover:bg-black/40 text-text-primary rounded-xl text-sm font-medium transition-colors border border-white/5"
+                >
+                  <RefreshCw size={16} /> Check Live
+                </button>
+                
+                {(acc.connection_type === 'gpm_login' || acc.connection_type === 'adb_device') && (
+                  <button 
+                    onClick={async () => {
+                      if (warmingUpIds.includes(acc.id) || acc.status === 'warming_up') return;
+                      const loadingToast = toast.loading('Đang kích hoạt tiến trình Nuôi tài khoản...');
+                      try {
+                        const res = await fetch(`${API_BASE}/social-accounts/${acc.id}/warmup`, { method: 'POST' });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.detail || 'Lỗi khi gọi API');
+                        toast.success(data.message || 'Đã đưa vào hàng đợi chạy ngầm!', { id: loadingToast });
+                        setWarmingUpIds(prev => [...prev, acc.id]);
+                      } catch (err) {
+                        toast.error(err.message, { id: loadingToast });
+                      }
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors border ${
+                      warmingUpIds.includes(acc.id) || acc.status === 'warming_up'
+                        ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                        : 'bg-brand-primary/20 hover:bg-brand-primary/40 text-brand-primary border-brand-primary/30'
+                    }`}
+                  >
+                    <Activity size={16} className={warmingUpIds.includes(acc.id) || acc.status === 'warming_up' ? 'animate-pulse' : ''} /> 
+                    {warmingUpIds.includes(acc.id) || acc.status === 'warming_up' ? 'Đang nuôi...' : 'Nuôi (Warm-up)'}
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -290,40 +357,75 @@ const SocialAccounts = () => {
               </div>
 
               <div className="mb-6">
-                <div className="flex justify-between items-end mb-2">
-                  <label className="block text-sm font-medium text-text-secondary">Auth Data (Cookie / Access Token)</label>
-                  <button 
-                    type="button" 
-                    onClick={handleAutoLogin}
-                    className="flex items-center gap-1.5 text-xs font-bold bg-brand-primary/20 text-brand-primary px-3 py-1.5 rounded-lg hover:bg-brand-primary/30 transition-colors"
-                  >
-                    <Globe size={14} /> Lấy Cookie Tự Động (Auto)
-                  </button>
+                <label className="block text-sm font-medium text-text-secondary mb-2">Phương thức hoạt động</label>
+                <div className="flex gap-4">
+                  <label className={`flex-1 flex items-center justify-center gap-2 py-3 border rounded-xl cursor-pointer transition-colors ${formData.connection_type === 'web_playwright' ? 'border-brand-primary bg-brand-primary/10 text-brand-primary font-bold' : 'border-border-subtle hover:bg-glass-hover text-text-secondary font-medium'}`}>
+                    <input type="radio" name="connection_type" value="web_playwright" className="hidden" checked={formData.connection_type === 'web_playwright'} onChange={handleInputChange} />
+                    <Globe size={18} /> Web Browser
+                  </label>
+                  <label className={`flex-1 flex items-center justify-center gap-2 py-3 border rounded-xl cursor-pointer transition-colors ${formData.connection_type === 'gpm_login' ? 'border-green-500 bg-green-500/10 text-green-400 font-bold' : 'border-border-subtle hover:bg-glass-hover text-text-secondary font-medium'}`}>
+                    <input type="radio" name="connection_type" value="gpm_login" className="hidden" checked={formData.connection_type === 'gpm_login'} onChange={handleInputChange} />
+                    <Shield size={18} /> GPM Login
+                  </label>
+                  <label className={`flex-1 flex items-center justify-center gap-2 py-3 border rounded-xl cursor-pointer transition-colors ${formData.connection_type === 'adb_device' ? 'border-purple-500 bg-purple-500/10 text-purple-400 font-bold' : 'border-border-subtle hover:bg-glass-hover text-text-secondary font-medium'}`}>
+                    <input type="radio" name="connection_type" value="adb_device" className="hidden" checked={formData.connection_type === 'adb_device'} onChange={handleInputChange} />
+                    <Smartphone size={18} /> App (ADB)
+                  </label>
                 </div>
-                <textarea required name="auth_data" value={formData.auth_data} onChange={handleInputChange} rows={4} placeholder="Dán toàn bộ đoạn Cookie hoặc Token ở đây..." className="w-full bg-bg-primary border border-border-subtle rounded-xl px-4 py-3 text-text-primary font-mono text-sm focus:border-brand-primary outline-none resize-none" />
-                <p className="text-xs text-brand-primary mt-1">Sử dụng nút "Lấy Cookie Tự Động" hoặc copy thủ công đoạn JSON cookie vào đây.</p>
               </div>
 
-              <h3 className="font-bold text-text-primary mb-4 flex items-center gap-2"><Shield size={18} className="text-text-secondary"/> Cấu hình Proxy (Tùy chọn)</h3>
-              <p className="text-xs text-text-secondary mb-3">Nếu điền Proxy dưới đây, hãy điền TRƯỚC KHI bấm Lấy Cookie Tự Động để hệ thống bọc IP luôn.</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-text-secondary mb-1">IP Host</label>
-                  <input name="proxy_host" value={formData.proxy_host} onChange={handleInputChange} placeholder="VD: 192.168.1.1" className="w-full bg-bg-primary border border-border-subtle rounded-xl px-3 py-2 text-text-primary text-sm focus:border-brand-primary outline-none" />
+              {formData.connection_type === 'web_playwright' ? (
+                <>
+                  <div className="mb-6">
+                    <div className="flex justify-between items-end mb-2">
+                      <label className="block text-sm font-medium text-text-secondary">Auth Data (Cookie / Access Token)</label>
+                      <button 
+                        type="button" 
+                        onClick={handleAutoLogin}
+                        className="flex items-center gap-1.5 text-xs font-bold bg-brand-primary/20 text-brand-primary px-3 py-1.5 rounded-lg hover:bg-brand-primary/30 transition-colors"
+                      >
+                        <Globe size={14} /> Lấy Cookie Tự Động (Auto)
+                      </button>
+                    </div>
+                    <textarea required name="auth_data" value={formData.auth_data} onChange={handleInputChange} rows={4} placeholder="Dán toàn bộ đoạn Cookie hoặc Token ở đây..." className="w-full bg-bg-primary border border-border-subtle rounded-xl px-4 py-3 text-text-primary font-mono text-sm focus:border-brand-primary outline-none resize-none" />
+                    <p className="text-xs text-brand-primary mt-1">Sử dụng nút "Lấy Cookie Tự Động" hoặc copy thủ công đoạn JSON cookie vào đây.</p>
+                  </div>
+
+                  <h3 className="font-bold text-text-primary mb-4 flex items-center gap-2"><Shield size={18} className="text-text-secondary"/> Cấu hình Proxy (Tùy chọn)</h3>
+                  <p className="text-xs text-text-secondary mb-3">Nếu điền Proxy dưới đây, hãy điền TRƯỚC KHI bấm Lấy Cookie Tự Động để hệ thống bọc IP luôn.</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-text-secondary mb-1">IP Host</label>
+                      <input name="proxy_host" value={formData.proxy_host} onChange={handleInputChange} placeholder="VD: 192.168.1.1" className="w-full bg-bg-primary border border-border-subtle rounded-xl px-3 py-2 text-text-primary text-sm focus:border-brand-primary outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-text-secondary mb-1">Port</label>
+                      <input name="proxy_port" value={formData.proxy_port} onChange={handleInputChange} placeholder="VD: 8080" className="w-full bg-bg-primary border border-border-subtle rounded-xl px-3 py-2 text-text-primary text-sm focus:border-brand-primary outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-text-secondary mb-1">Proxy Username</label>
+                      <input name="proxy_username" value={formData.proxy_username} onChange={handleInputChange} placeholder="Tùy chọn" className="w-full bg-bg-primary border border-border-subtle rounded-xl px-3 py-2 text-text-primary text-sm focus:border-brand-primary outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-text-secondary mb-1">Proxy Password</label>
+                      <input type="password" name="proxy_password" value={formData.proxy_password} onChange={handleInputChange} placeholder="Tùy chọn" className="w-full bg-bg-primary border border-border-subtle rounded-xl px-3 py-2 text-text-primary text-sm focus:border-brand-primary outline-none" />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
+                    {formData.connection_type === 'gpm_login' ? 'GPM Profile ID' : 'Device ID (Serial của Điện thoại / Máy ảo)'}
+                  </label>
+                  <input name="device_id" value={formData.device_id} onChange={handleInputChange} placeholder={formData.connection_type === 'gpm_login' ? "VD: ef7db922-4217-4927-a006-2c5e533b37ea" : "VD: emulator-5554"} className="w-full bg-bg-primary border border-border-subtle rounded-xl px-4 py-3 text-text-primary focus:border-brand-primary outline-none" />
+                  <p className="text-xs text-text-secondary mt-2 flex items-start gap-1">
+                    <Shield size={14} className="mt-0.5 text-brand-primary shrink-0" />
+                    {formData.connection_type === 'gpm_login' 
+                      ? "Hệ thống sẽ lấy Profile ID này để mở tự động cấu hình GPM đã gắn sẵn cho tài khoản này." 
+                      : "Hệ thống sẽ dùng ID này để chạy lệnh ADB tương tác với điện thoại Android."}
+                  </p>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-text-secondary mb-1">Port</label>
-                  <input name="proxy_port" value={formData.proxy_port} onChange={handleInputChange} placeholder="VD: 8080" className="w-full bg-bg-primary border border-border-subtle rounded-xl px-3 py-2 text-text-primary text-sm focus:border-brand-primary outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-text-secondary mb-1">Proxy Username</label>
-                  <input name="proxy_username" value={formData.proxy_username} onChange={handleInputChange} placeholder="Tùy chọn" className="w-full bg-bg-primary border border-border-subtle rounded-xl px-3 py-2 text-text-primary text-sm focus:border-brand-primary outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-text-secondary mb-1">Proxy Password</label>
-                  <input type="password" name="proxy_password" value={formData.proxy_password} onChange={handleInputChange} placeholder="Tùy chọn" className="w-full bg-bg-primary border border-border-subtle rounded-xl px-3 py-2 text-text-primary text-sm focus:border-brand-primary outline-none" />
-                </div>
-              </div>
+              )}
             </form>
             
             <div className="px-6 py-4 border-t border-border-subtle flex justify-end gap-3 bg-black/20">

@@ -5,7 +5,7 @@ import imageio_ffmpeg
 ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
 
 class VideoEditor:
-    def burn_subtitles(self, input_video: str, srt_file: str, output_video: str, tts_audio: str = None, bg_volume: int = 10, flip_video: bool = False):
+    def burn_subtitles(self, input_video: str, srt_file: str, output_video: str, tts_audio: str = None, bg_volume: int = 10, flip_video: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False):
         # Escape path for FFmpeg subtitles filter on Windows
         srt_escaped = srt_file.replace('\\', '/').replace(':', '\\:')
         
@@ -16,16 +16,33 @@ class VideoEditor:
         if flip_video:
             vf_filters.append("hflip")
             
-        # Opaque box style (BorderStyle=3) with 100% opaque black background (&H00000000)
-        # Outline=12 creates a larger padding box to completely hide original subtitles
-        style = "BorderStyle=3,BackColour=&H00000000,Outline=12,Shadow=0,MarginV=40,FontName=Arial,FontSize=20"
+        if opt_zoom:
+            vf_filters.append("crop=iw/1.02:ih/1.02,scale=iw:ih")
+        if opt_color:
+            vf_filters.append("eq=brightness=0.02:contrast=1.05")
+        if opt_noise:
+            vf_filters.append("noise=alls=1:allf=t+u")
+            
+        # Define subtitle style based on user choice
+        # Use BorderStyle=1 (Outline) with a very thick Outline (e.g. 15) to simulate a rounded background box!
+        if subtitle_style == "white_black":
+            # Nền trắng bo góc (Outline=15), chữ đen. Opacity 75% (Alpha=40)
+            style = "BorderStyle=1,Outline=15,Shadow=0,MarginV=40,FontName=Arial,FontSize=20,PrimaryColour=&H00000000,OutlineColour=&H40FFFFFF"
+        else:
+            # Nền đen bo góc (Outline=15), chữ trắng. Opacity 75% (Alpha=40)
+            style = "BorderStyle=1,Outline=15,Shadow=0,MarginV=40,FontName=Arial,FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H40000000"
+            
         vf_filters.append(f"subtitles='{srt_escaped}':force_style='{style}'")
         vf_str = ",".join(vf_filters)
         
         if tts_audio and os.path.exists(tts_audio):
             cmd.extend(["-i", tts_audio])
             bg_vol_float = bg_volume / 100.0
-            filter_complex = f"[0:a]volume={bg_vol_float}[bg];[1:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            if opt_pitch:
+                filter_complex = f"[0:a]volume={bg_vol_float},asetrate=44100*1.02,atempo=1/1.02[bg];[1:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            else:
+                filter_complex = f"[0:a]volume={bg_vol_float}[bg];[1:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            
             cmd.extend([
                 "-vf", vf_str,
                 "-filter_complex", filter_complex,
@@ -40,15 +57,28 @@ class VideoEditor:
                 output_video
             ])
         else:
-            cmd.extend([
-                "-vf", vf_str,
-                "-c:v", "libx264",
-                "-crf", "28",
-                "-preset", "faster",
-                "-pix_fmt", "yuv420p",
-                "-c:a", "copy",
-                output_video
-            ])
+            if opt_pitch:
+                cmd.extend([
+                    "-vf", vf_str,
+                    "-af", "asetrate=44100*1.02,atempo=1/1.02",
+                    "-c:v", "libx264",
+                    "-crf", "28",
+                    "-preset", "faster",
+                    "-pix_fmt", "yuv420p",
+                    "-c:a", "aac",
+                    "-b:a", "128k",
+                    output_video
+                ])
+            else:
+                cmd.extend([
+                    "-vf", vf_str,
+                    "-c:v", "libx264",
+                    "-crf", "28",
+                    "-preset", "faster",
+                    "-pix_fmt", "yuv420p",
+                    "-c:a", "copy",
+                    output_video
+                ])
         
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True)

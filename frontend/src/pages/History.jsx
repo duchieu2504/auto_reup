@@ -29,6 +29,16 @@ const getStepIndex = (status, errorMsg) => {
 };
 
 const History = () => {
+  const truncateFilename = (filename) => {
+    if (!filename) return "Unknown";
+    const name = filename.split('/').pop().split('\\').pop();
+    if (name.length <= 15) return name;
+    const ext = name.split('.').pop();
+    const base = name.substring(0, name.lastIndexOf('.'));
+    if (base.length <= 10) return name;
+    return `${base.substring(0, 2)}..${base.substring(base.length - 5)}.${ext}`;
+  };
+
   const [historyData, setHistoryData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -39,12 +49,20 @@ const History = () => {
   const [previewFile, setPreviewFile] = useState(null);
   const [previewType, setPreviewType] = useState('');
   
+  // Groq Fallback
+  const [showGroqFallbackModal, setShowGroqFallbackModal] = useState(false);
+  const [fallbackItem, setFallbackItem] = useState(null);
+  
   // Trạm chờ config state
   const [voices, setVoices] = useState([]);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [configVoice, setConfigVoice] = useState('edge_auto');
   const [configVolume, setConfigVolume] = useState(10);
   const [configFlipVideo, setConfigFlipVideo] = useState(false);
+  const [configOptZoom, setConfigOptZoom] = useState(false);
+  const [configOptColor, setConfigOptColor] = useState(false);
+  const [configOptNoise, setConfigOptNoise] = useState(false);
+  const [configOptPitch, setConfigOptPitch] = useState(false);
   const [processingItems, setProcessingItems] = useState([]);
   
   const navigate = useNavigate();
@@ -203,10 +221,85 @@ const History = () => {
     navigate(`/edit/${id}`);
   };
 
-  const handleResumeProcessing = (item) => {
+  const handleResumeProcessing = async (item) => {
     if (!item.raw_video_path) return toast.error("Không tìm thấy đường dẫn video gốc");
+    
+    if (item.error_message === "GROQ_LIMIT_EXCEEDED") {
+      setFallbackItem(item);
+      setShowGroqFallbackModal(true);
+      return;
+    }
+    
+    
+    if (item.process_config && item.process_config !== "{}" && item.process_config !== "") {
+      try {
+        const config = JSON.parse(item.process_config);
+        const payload = {
+          video_paths: [item.raw_video_path],
+          ...config
+        };
+        const res = await fetch(`${API_BASE}/processor/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.status === 'started') {
+          toast.success('Đã tiếp tục xử lý với cấu hình cũ!');
+          fetchHistory();
+          return;
+        }
+      } catch (e) {
+        console.error("Lỗi khi resume tự động:", e);
+      }
+    }
+    
     setProcessingItems([item.raw_video_path]);
     setShowConfigModal(true);
+  };
+
+  const handleGroqFallback = async () => {
+    try {
+      // Fetch current keys
+      const keysRes = await fetch('http://localhost:8000/api/settings/keys');
+      const keys = await keysRes.json();
+      
+      // Update with use_groq = false
+      await fetch('http://localhost:8000/api/settings/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fpt_ai_api_key: keys.fpt_ai_api_key || "",
+          elevenlabs_api_key: keys.elevenlabs_api_key || "",
+          gemini_api_key: keys.gemini_api_key || "",
+          openai_api_key: keys.openai_api_key || "",
+          anthropic_api_key: keys.anthropic_api_key || "",
+          xai_api_key: keys.xai_api_key || "",
+          active_ai_provider: keys.active_ai_provider || "gemini",
+          active_tts_provider: keys.active_tts_provider || "edge",
+          ai_concurrency_limit: keys.ai_concurrency_limit || 1,
+          douyin_cookie: keys.douyin_cookie || "",
+          anti_detect_provider: keys.anti_detect_provider || "none",
+          gpm_api_url: keys.gpm_api_url || "",
+          groq_api_key: keys.groq_api_key || "",
+          use_groq: false // Dòng quan trọng: Gạt công tắc OFF
+        })
+      });
+      
+      toast.success("Đã tắt Groq trong Cấu hình. Đang khởi động lại tiến trình bằng CPU...");
+      setShowGroqFallbackModal(false);
+      
+      // Start processing again
+      if (fallbackItem) {
+        // Clear the error message so it bypasses the GROQ check
+        const modifiedItem = { ...fallbackItem, error_message: "" };
+        handleResumeProcessing(modifiedItem);
+      }
+      
+    } catch (e) {
+      console.error(e);
+      toast.error("Lỗi khi chuyển đổi cấu hình");
+    }
   };
 
   const handleBulkProcess = () => {
@@ -231,7 +324,11 @@ const History = () => {
           video_paths: processingItems,
           voice_mode: configVoice,
           bg_volume: configVolume,
-          flip_video: configFlipVideo
+          flip_video: configFlipVideo,
+          opt_zoom: configOptZoom,
+          opt_color: configOptColor,
+          opt_noise: configOptNoise,
+          opt_pitch: configOptPitch
         })
       });
       const data = await res.json();
@@ -401,7 +498,7 @@ const History = () => {
                   </th>
                   <th className="p-4 border-b border-border-subtle font-medium w-12 text-center">STT</th>
                   <th className="p-4 border-b border-border-subtle font-medium">Tên Video</th>
-                  <th className="p-4 border-b border-border-subtle font-medium">Nguồn</th>
+                  <th className="p-4 border-b border-border-subtle font-medium min-w-[150px]">Nguồn</th>
                   <th className="p-4 border-b border-border-subtle font-medium min-w-[200px]">Tiến trình</th>
                   <th className="p-4 border-b border-border-subtle font-medium min-w-[150px]">Ghi chú</th>
                   <th className="p-4 border-b border-border-subtle font-medium">Trạng thái Upload</th>
@@ -425,19 +522,34 @@ const History = () => {
                     </td>
                     <td className="p-4 text-center text-text-secondary text-sm">{index + 1}</td>
                     <td className="p-4">
-                      <div className="flex flex-col gap-1 text-sm">
-                        <span className="font-medium text-text-primary truncate max-w-[200px]" title={item.original_name}>
-                          {item.original_name}
-                        </span>
-                        <div className="flex gap-2 mt-1">
-                           <button onClick={() => handlePreview(item.raw_video_path, 'video')} className="text-xs px-2 py-1 bg-brand-primary/10 text-brand-primary rounded hover:bg-brand-primary hover:text-white transition-colors">Video Gốc</button>
-                           {item.audio_tts_path && <button onClick={() => handlePreview(item.audio_tts_path, 'audio')} className="text-xs px-2 py-1 bg-purple-500/10 text-purple-500 rounded hover:bg-purple-500 hover:text-white transition-colors">Audio</button>}
-                           {item.final_video_path && <button onClick={() => handlePreview(item.final_video_path, 'video')} className="text-xs px-2 py-1 bg-green-500/10 text-green-500 rounded hover:bg-green-500 hover:text-white transition-colors">Video Cuối</button>}
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-16 shrink-0 rounded-lg overflow-hidden bg-black/50 border border-white/5 relative group/vid">
+                          <video 
+                            src={`http://localhost:8000/api/files/${(item.final_video_path || item.raw_video_path || '').replace(/^[/]?data[/]/, '')}#t=2.0`}
+                            className="w-full h-full object-cover opacity-90 group-hover/vid:opacity-100 transition-opacity"
+                            muted
+                            loop
+                            playsInline
+                            preload="metadata"
+                            onLoadedMetadata={(e) => { e.target.currentTime = 2; }}
+                            onMouseEnter={(e) => { e.target.play().catch(()=>{}); }}
+                            onMouseLeave={(e) => { e.target.pause(); e.target.currentTime = 2; }}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1 text-sm">
+                          <span className="font-medium text-text-primary truncate max-w-[200px] cursor-help font-mono bg-white/5 px-2 py-1 rounded text-xs" title={item.original_name}>
+                            {truncateFilename(item.original_name)}
+                          </span>
+                          <div className="flex gap-2 mt-1">
+                             <button onClick={() => handlePreview(item.raw_video_path, 'video')} className="text-xs px-2 py-1 bg-brand-primary/10 text-brand-primary rounded hover:bg-brand-primary hover:text-white transition-colors">Video Gốc</button>
+                             {item.audio_tts_path && <button onClick={() => handlePreview(item.audio_tts_path, 'audio')} className="text-xs px-2 py-1 bg-purple-500/10 text-purple-500 rounded hover:bg-purple-500 hover:text-white transition-colors">Audio</button>}
+                             {item.final_video_path && <button onClick={() => handlePreview(item.final_video_path, 'video')} className="text-xs px-2 py-1 bg-green-500/10 text-green-500 rounded hover:bg-green-500 hover:text-white transition-colors">Video Cuối</button>}
+                          </div>
                         </div>
                       </div>
                     </td>
                     <td className="p-4">
-                      <span className="bg-bg-secondary border border-border-subtle px-2.5 py-1 rounded-md text-xs font-medium text-text-secondary uppercase tracking-wider">
+                      <span className="bg-bg-secondary border border-border-subtle px-2 py-0.5 rounded-md text-[10px] font-medium text-text-secondary uppercase tracking-wider">
                         {item.source || 'Unknown'}
                       </span>
                     </td>
@@ -499,50 +611,86 @@ const History = () => {
                       )}
                     </td>
                     <td className="p-4 text-sm">
-                      {(!item.schedules || item.schedules.length === 0) ? (
-                        <span className="text-text-secondary italic">Chưa lên lịch</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {item.schedules.map(sch => {
-                            const borderColor = 
-                              sch.status === 'success' ? 'border-green-500' :
-                              sch.status === 'failed' ? 'border-red-500' :
-                              'border-yellow-500';
-                              
-                            return (
-                              <a 
-                                key={sch.id}
-                                href={sch.post_url || '#'}
-                                target="_blank"
-                                rel="noreferrer"
-                                title={`${sch.account?.platform}: ${sch.account?.username} - ${sch.status}`}
-                                className={`block p-0.5 rounded-full border-2 ${borderColor} transition-transform hover:scale-110 bg-bg-primary`}
-                                onClick={(e) => { if(!sch.post_url) e.preventDefault(); }}
-                              >
-                                {sch.account?.avatar_url ? (
-                                  <img 
-                                    src={sch.account.avatar_url} 
-                                    alt="avt" 
-                                    referrerPolicy="no-referrer"
-                                    className="w-6 h-6 rounded-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="w-6 h-6 rounded-full bg-brand-primary/20 flex items-center justify-center text-[10px] font-bold text-brand-primary uppercase">
-                                    {sch.account?.platform?.charAt(0) || '?'}
+                      {(() => {
+                        let historyEntries = [];
+                        try {
+                          if (item.upload_history && item.upload_history !== "[]") {
+                            historyEntries = JSON.parse(item.upload_history);
+                          }
+                        } catch(e) {}
+                        
+                        if ((!item.schedules || item.schedules.length === 0) && historyEntries.length === 0) {
+                          return <span className="text-text-secondary italic">Chưa lên lịch</span>;
+                        }
+                        
+                        return (
+                          <div className="flex flex-wrap gap-2">
+                            {/* Hiển thị schedules từ backend worker */}
+                            {item.schedules?.map(sch => {
+                              const borderColor = 
+                                sch.status === 'success' ? 'border-green-500' :
+                                sch.status === 'failed' ? 'border-red-500' :
+                                'border-yellow-500';
+                                
+                              return (
+                                <a 
+                                  key={sch.id}
+                                  href={sch.post_url || '#'}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={`${sch.account?.platform}: ${sch.account?.username} - ${sch.status}`}
+                                  className={`block p-0.5 rounded-full border-2 ${borderColor} transition-transform hover:scale-110 bg-bg-primary`}
+                                  onClick={(e) => { if(!sch.post_url) e.preventDefault(); }}
+                                >
+                                  {sch.account?.avatar_url ? (
+                                    <img 
+                                      src={sch.account.avatar_url} 
+                                      alt="avt" 
+                                      referrerPolicy="no-referrer"
+                                      className="w-6 h-6 rounded-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="w-6 h-6 rounded-full bg-brand-primary/20 flex items-center justify-center text-[10px] font-bold text-brand-primary uppercase">
+                                      {sch.account?.platform?.charAt(0) || '?'}
+                                    </div>
+                                  )}
+                                </a>
+                              );
+                            })}
+                            
+                            {/* Hiển thị từ ADB shadow metadata */}
+                            {historyEntries.map((hist, i) => {
+                              const borderColor = 
+                                hist.status === 'COMPLETED' ? 'border-green-500' :
+                                hist.status === 'FAILED' ? 'border-red-500' :
+                                'border-blue-500';
+                                
+                              return (
+                                <a 
+                                  key={`hist-${i}`}
+                                  href={hist.video_url || '#'}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={`ADB [${hist.platform}]: ${hist.account_name} - ${hist.status}`}
+                                  className={`block p-0.5 rounded-full border-2 ${borderColor} transition-transform hover:scale-110 bg-bg-primary`}
+                                  onClick={(e) => { if(!hist.video_url) e.preventDefault(); }}
+                                >
+                                  <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-[10px] font-bold text-blue-500 uppercase" title="ADB Sync">
+                                    {hist.platform?.charAt(0) || 'A'}
                                   </div>
-                                )}
-                              </a>
-                            );
-                          })}
-                        </div>
-                      )}
+                                </a>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="p-4 text-text-secondary text-sm">
                       {new Date(item.created_at).toLocaleString('vi-VN')}
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
-                        {(item.status === 'paused' || item.status === 'failed' || item.status === 'pending') && (
+                        {(item.status === 'paused' || item.status === 'failed') && (
                           <button 
                             className="p-2 rounded-lg text-text-secondary hover:text-green-500 hover:bg-green-500/10 transition-colors group relative" 
                             onClick={() => handleResumeProcessing(item)}
@@ -553,7 +701,7 @@ const History = () => {
                             </span>
                           </button>
                         )}
-                        {(item.status === 'transcribing' || item.status === 'translating' || item.status === 'generating_tts' || item.status === 'rendering') && (
+                        {(item.status === 'pending' || item.status === 'transcribing' || item.status === 'translating' || item.status === 'generating_tts' || item.status === 'rendering') && (
                           <button 
                             className="p-2 rounded-lg text-text-secondary hover:text-yellow-500 hover:bg-yellow-500/10 transition-colors group relative" 
                             onClick={() => handlePauseProcessing(item)}
@@ -564,15 +712,17 @@ const History = () => {
                             </span>
                           </button>
                         )}
-                        <button 
-                          className="p-2 rounded-lg text-text-secondary hover:text-brand-primary hover:bg-brand-primary/10 transition-colors group relative" 
-                          onClick={() => handleEdit(item.id)}
-                        >
-                          <Edit size={18} />
-                          <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-bg-secondary border border-border-subtle text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
-                            Chỉnh sửa / Edit
-                          </span>
-                        </button>
+                        {(item.status === 'completed' || item.status === 'uploaded') && (
+                          <button 
+                            className="p-2 rounded-lg text-text-secondary hover:text-brand-primary hover:bg-brand-primary/10 transition-colors group relative" 
+                            onClick={() => handleEdit(item.id)}
+                          >
+                            <Edit size={18} />
+                            <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-bg-secondary border border-border-subtle text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                              Chỉnh sửa / Edit
+                            </span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -646,17 +796,49 @@ const History = () => {
                 />
               </div>
               
-              <div className="flex items-center gap-3 mt-4 p-3 bg-bg-secondary rounded-xl border border-border-subtle">
-                <input 
-                  type="checkbox" 
-                  id="flipVideo"
-                  checked={configFlipVideo}
-                  onChange={(e) => setConfigFlipVideo(e.target.checked)}
-                  className="w-5 h-5 accent-brand-primary rounded bg-bg-primary border-border-subtle cursor-pointer"
-                />
-                <label htmlFor="flipVideo" className="text-sm font-medium text-text-primary cursor-pointer select-none">
-                  Lật ngang Video (Lách bản quyền hình ảnh)
-                </label>
+              <div className="bg-bg-secondary rounded-xl border border-border-subtle p-3 mt-4">
+                <div className="flex items-center justify-between mb-3 border-b border-border-subtle pb-2">
+                  <label className="text-sm font-semibold text-text-primary">
+                    Tính năng Siêu lách bản quyền (Micro-alterations)
+                  </label>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      const newState = !(configFlipVideo && configOptZoom && configOptColor && configOptNoise && configOptPitch);
+                      setConfigFlipVideo(newState);
+                      setConfigOptZoom(newState);
+                      setConfigOptColor(newState);
+                      setConfigOptNoise(newState);
+                      setConfigOptPitch(newState);
+                    }}
+                    className="text-xs bg-brand-primary/10 text-brand-primary px-2 py-1 rounded hover:bg-brand-primary/20"
+                  >
+                    Chọn tất cả
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="flipVideoHistory" checked={configFlipVideo} onChange={(e) => setConfigFlipVideo(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
+                    <label htmlFor="flipVideoHistory" className="text-xs text-text-secondary cursor-pointer select-none">Lật gương (Mirror)</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="optZoomHistory" checked={configOptZoom} onChange={(e) => setConfigOptZoom(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
+                    <label htmlFor="optZoomHistory" className="text-xs text-text-secondary cursor-pointer select-none">Zoom 2%</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="optColorHistory" checked={configOptColor} onChange={(e) => setConfigOptColor(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
+                    <label htmlFor="optColorHistory" className="text-xs text-text-secondary cursor-pointer select-none">Tăng màu (EQ)</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="optNoiseHistory" checked={configOptNoise} onChange={(e) => setConfigOptNoise(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
+                    <label htmlFor="optNoiseHistory" className="text-xs text-text-secondary cursor-pointer select-none">Nhiễu hạt (Noise)</label>
+                  </div>
+                  <div className="flex items-center gap-2 col-span-2">
+                    <input type="checkbox" id="optPitchHistory" checked={configOptPitch} onChange={(e) => setConfigOptPitch(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
+                    <label htmlFor="optPitchHistory" className="text-xs text-text-secondary cursor-pointer select-none">Đổi tần số âm thanh (Pitch 2%)</label>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -672,6 +854,40 @@ const History = () => {
                 onClick={submitProcessing}
               >
                 <PlayCircle size={18} /> Xác nhận & Xử lý
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* GROQ FALLBACK MODAL */}
+      {showGroqFallbackModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-bg-primary w-full max-w-md rounded-2xl border border-border-subtle p-6 animate-fade-in shadow-2xl">
+            <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+              <span className="text-red-500">⚠️</span> Groq API Hết Hạn
+            </h2>
+            <p className="text-sm text-text-secondary mb-6">
+              Tiến trình đã bị tạm dừng vì API Groq của bạn đã hết dung lượng miễn phí (Quota Exceeded) hoặc bị giới hạn tốc độ (Rate Limit). 
+              <br/><br/>
+              Bạn có muốn gạt công tắc tắt Groq đi và tiếp tục tiến trình bằng <strong>CPU máy tính</strong> (sẽ chậm hơn)?
+            </p>
+
+            <div className="flex flex-col gap-3 pt-2">
+              <button 
+                className="w-full py-3 bg-brand-primary text-white font-medium rounded-xl hover:bg-brand-primary/90 transition-colors"
+                onClick={handleGroqFallback}
+              >
+                Tiếp tục bằng CPU (Tắt Groq)
+              </button>
+              <button 
+                className="w-full py-3 bg-bg-secondary text-text-secondary hover:text-white font-medium rounded-xl transition-colors border border-border-subtle"
+                onClick={() => {
+                  setShowGroqFallbackModal(false);
+                  setFallbackItem(null);
+                }}
+              >
+                Hủy (Để chờ qua ngày mới)
               </button>
             </div>
           </div>

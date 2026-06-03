@@ -32,6 +32,7 @@ class VideoHistory(Base):
     # Nền tảng đã upload
     upload_status = Column(String, default=UploadStatus.NOT_UPLOADED)
     uploaded_platforms = Column(String, nullable=True) # Cách nhau bằng dấu phẩy
+    upload_history = Column(Text, default="[]") # Lưu JSON danh sách tài khoản đã upload (dành cho ADB)
     uploaded_at = Column(DateTime(timezone=True), nullable=True)
 
     # File Paths
@@ -40,6 +41,7 @@ class VideoHistory(Base):
     srt_translated_path = Column(String, nullable=True)
     audio_tts_path = Column(String, nullable=True)
     final_video_path = Column(String, nullable=True)
+    process_config = Column(Text, default="{}")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

@@ -16,11 +16,23 @@ const EditVideo = () => {
   const [voiceMode, setVoiceMode] = useState('edge_auto');
   const [bgVolume, setBgVolume] = useState(10);
   const [flipVideo, setFlipVideo] = useState(false);
+  const [optZoom, setOptZoom] = useState(false);
+  const [optColor, setOptColor] = useState(false);
+  const [optNoise, setOptNoise] = useState(false);
+  const [optPitch, setOptPitch] = useState(false);
+  const [subtitleStyle, setSubtitleStyle] = useState('black_white');
   const [subtitle, setSubtitle] = useState('');
   const [loadingSubtitle, setLoadingSubtitle] = useState(false);
+  const [voices, setVoices] = useState([]);
 
   useEffect(() => {
     fetchVideoData();
+    fetch('http://localhost:8000/api/settings/voices')
+      .then(res => res.json())
+      .then(data => {
+        if(data.voices) setVoices(data.voices);
+      })
+      .catch(err => console.error("Lỗi lấy danh sách giọng:", err));
   }, [id]);
 
   const fetchVideoData = async () => {
@@ -78,7 +90,12 @@ const EditVideo = () => {
           voice_mode: voiceMode,
           bg_volume: parseInt(bgVolume),
           flip_video: flipVideo,
-          force_render: true
+          opt_zoom: optZoom,
+          opt_color: optColor,
+          opt_noise: optNoise,
+          opt_pitch: optPitch,
+          force_render: true,
+          subtitle_style: subtitleStyle
         })
       });
       if (res.ok) {
@@ -127,7 +144,7 @@ const EditVideo = () => {
           <div className="w-full bg-black rounded-xl overflow-hidden aspect-video flex items-center justify-center">
             {videoData.raw_video_path ? (
               <video 
-                src={`http://localhost:8000/api/files/${videoData.raw_video_path.replace(/^[/]?data[/]/, '')}`} 
+                src={`http://localhost:8000/api/files/${videoData.raw_video_path.replace(/^[/]?data[/]/, '')}?t=${Date.now()}`} 
                 controls 
                 className="w-full h-full object-contain"
               />
@@ -148,11 +165,10 @@ const EditVideo = () => {
                 onChange={(e) => setVoiceMode(e.target.value)}
                 className="w-full bg-bg-secondary border border-border-subtle rounded-xl p-3 focus:outline-none focus:border-brand-primary transition-colors appearance-none"
               >
-                <option value="none">Giữ nguyên âm gốc (Không lồng tiếng)</option>
-                <option value="edge_auto">EdgeTTS (Auto-detect Language)</option>
-                <option value="edge_vi">EdgeTTS (Tiếng Việt mặc định)</option>
-                <option value="coqui_tts">Coqui TTS (Local - Yêu cầu GPU)</option>
-                <option value="elevenlabs">ElevenLabs (Cao cấp)</option>
+                {voices.map(v => (
+                  <option key={v.id} value={v.id}>{v.name} ({v.provider})</option>
+                ))}
+                {voices.length === 0 && <option value="edge_auto">Đang tải danh sách giọng...</option>}
               </select>
             </div>
 
@@ -169,17 +185,61 @@ const EditVideo = () => {
               />
             </div>
 
-            <div className="flex items-center gap-3 p-3 bg-bg-secondary rounded-xl border border-border-subtle w-full">
-              <input 
-                type="checkbox" 
-                id="flipVideoEdit"
-                checked={flipVideo}
-                onChange={(e) => setFlipVideo(e.target.checked)}
-                className="w-5 h-5 accent-brand-primary rounded bg-bg-primary border-border-subtle cursor-pointer"
-              />
-              <label htmlFor="flipVideoEdit" className="text-sm font-medium text-text-primary cursor-pointer select-none">
-                Lật ngang Video (Lách bản quyền hình ảnh)
-              </label>
+            <div>
+              <label className="block text-sm font-medium mb-2 text-text-secondary">Style Phụ Đề</label>
+              <select 
+                value={subtitleStyle} 
+                onChange={(e) => setSubtitleStyle(e.target.value)}
+                className="w-full bg-bg-secondary border border-border-subtle rounded-xl p-3 focus:outline-none focus:border-brand-primary transition-colors appearance-none"
+              >
+                <option value="black_white">Nền đen bo góc, Chữ trắng</option>
+                <option value="white_black">Nền trắng bo góc, Chữ đen</option>
+              </select>
+            </div>
+
+            <div className="bg-bg-secondary rounded-xl border border-border-subtle p-3 w-full">
+              <div className="flex items-center justify-between mb-3 border-b border-border-subtle pb-2">
+                <label className="text-sm font-semibold text-text-primary">
+                  Tính năng Siêu lách bản quyền (Micro-alterations)
+                </label>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    const newState = !(flipVideo && optZoom && optColor && optNoise && optPitch);
+                    setFlipVideo(newState);
+                    setOptZoom(newState);
+                    setOptColor(newState);
+                    setOptNoise(newState);
+                    setOptPitch(newState);
+                  }}
+                  className="text-xs bg-brand-primary/10 text-brand-primary px-2 py-1 rounded hover:bg-brand-primary/20"
+                >
+                  Chọn tất cả
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="flipVideoEdit" checked={flipVideo} onChange={(e) => setFlipVideo(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
+                  <label htmlFor="flipVideoEdit" className="text-xs text-text-secondary cursor-pointer select-none">Lật gương (Mirror)</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="optZoomEdit" checked={optZoom} onChange={(e) => setOptZoom(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
+                  <label htmlFor="optZoomEdit" className="text-xs text-text-secondary cursor-pointer select-none">Zoom 2%</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="optColorEdit" checked={optColor} onChange={(e) => setOptColor(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
+                  <label htmlFor="optColorEdit" className="text-xs text-text-secondary cursor-pointer select-none">Tăng màu (EQ)</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="optNoiseEdit" checked={optNoise} onChange={(e) => setOptNoise(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
+                  <label htmlFor="optNoiseEdit" className="text-xs text-text-secondary cursor-pointer select-none">Nhiễu hạt (Noise)</label>
+                </div>
+                <div className="flex items-center gap-2 col-span-2">
+                  <input type="checkbox" id="optPitchEdit" checked={optPitch} onChange={(e) => setOptPitch(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
+                  <label htmlFor="optPitchEdit" className="text-xs text-text-secondary cursor-pointer select-none">Đổi tần số âm thanh (Pitch 2%)</label>
+                </div>
+              </div>
             </div>
 
             <div>

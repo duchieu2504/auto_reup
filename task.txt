@@ -89,10 +89,17 @@ Khi kích hoạt vào lịch bài đăng hiện toast báo lỗi" Lỗi khi tả
   - [x] hiện log đã up thành công, hiện link post nhưng bấm vào link thì không thấy video đâu? (Đã thay mã Mock bằng Bot Automation thực tế Playwright)
 ## 14. Cập nhật lại dữ liệu khi đồng bộ dữ liệu
  - [ ] Tải lại toàn bộ dữ liệu lịch sử video trong phần data, hiện thị đúng theo thư mục (nguồn tải, ngày tải, đã render ...)
- - [ ] Có cách nào lưu những video đã up lên tài khoản nào không, khi máy bị reset dữ liệu hoặc đồng bộ dữ liệu giữa các máy
- - [ ] Có cách nào đồng bộ tài khoản mạng xã hội đang sử dụng không?
+ - [x] Có cách nào lưu những video đã up lên tài khoản nào không, khi máy bị reset dữ liệu hoặc đồng bộ dữ liệu giữa các máy không, đặc biệt là phương thức sử dụng ADB để kết nối
+ - [x] Có cách nào đồng bộ tài khoản mạng xã hội đang sử dụng không?
 
 ## 15. Sửa lại edit video
 - [x] Phụ đề sau khi dịch sang tiếng việt nên được căn chỉnh đè lên phụ đề gốc của video (Sử dụng kỹ thuật Bounding Box)
 - [x] Phụ đề gốc video nên được làm mờ hoặc ẩn đi (Tự động che bởi Bounding Box).
 - [x] Thêm tùy chỉnh lật video nếu muốn (Thêm Checkbox ở frontend và API hỗ trợ hflip).
+
+## 16. Lộ trình Nâng cấp Hệ thống Reup Công nghiệp (Phase 2)
+- [x] **1. Cơ chế Lách Bản Quyền Cấp Độ Cao (Unique-ification):** Tự động lật viền, Zoom (101%-105%), chỉnh Brightness/Contrast, và chèn Noise overlay (nhiễu 1%). Bóp méo cao độ (Pitch shift) của âm thanh để lách bản quyền.
+- [x] **2. Nâng cấp Trình duyệt Chống phát hiện (Anti-Detect Browser):** Tích hợp `playwright-stealth` hoặc liên kết API với AdsPower / GoLogin để xóa dấu vết Webdriver, mỗi tài khoản một Profile sạch.
+- [x] **3. Tự động "Nuôi" Tài khoản (Account Warm-up):** Kịch bản Playwright tự động lướt For You, xem video, thả tim, comment dạo như người thật trước khi up để tránh Shadowban.
+- [ ] **4. Quản lý Tài nguyên Dữ liệu (Auto Cleanup):** Celery Cronjob tự động xóa các file video/audio rác đã up quá 7 ngày, hoặc đẩy lên Cloud để dọn dẹp dung lượng Ổ cứng Server.
+- [ ] **5. Cào Dữ liệu Tương tác (Analytics Dashboard):** Celery Task tự động lấy chỉ số Lượt xem, Tim, Comment của các video đã up và đổ ra Dashboard Báo cáo hiệu suất từng tài khoản.
