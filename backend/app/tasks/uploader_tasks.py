@@ -73,6 +73,7 @@ def execute_upload(schedule_id: int):
         account_data = {
             "platform": account.platform,
             "auth_data": decrypt_data(account.auth_data),
+            "device_id": account.device_id,
             "proxy_host": account.proxy_host,
             "proxy_port": account.proxy_port,
             "proxy_username": account.proxy_username,

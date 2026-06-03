@@ -125,25 +125,51 @@ class AdbWarmupEngine(BaseWarmupEngine):
         videos_watched = 0
         likes_given = 0
         
-        # Screen dimensions (approximate for swipe)
-        # Tốt nhất là tự động lấy nhưng để an toàn cứ vuốt từ giữa màn dưới lên giữa màn trên
+        # Tính toán kích thước màn hình động để vuốt cho chuẩn xác
+        res_wm = subprocess.run(f"{adb_cmd} shell wm size", shell=True, capture_output=True, text=True)
+        width, height = 720, 1280
+        if "Physical size:" in res_wm.stdout:
+            size_str = res_wm.stdout.split("Physical size:")[1].strip()
+            try:
+                w, h = size_str.split("x")
+                width = int(w)
+                height = int(h)
+            except:
+                pass
+        
+        logger.info(f"[Warmup-ADB] Kích thước màn hình: {width}x{height}")
         
         while time.time() < end_time:
             watch_time = random.randint(10, 45)
             logger.info(f"[Warmup-ADB] Đang xem video {videos_watched + 1} trong {watch_time}s...")
             time.sleep(watch_time)
             
-            # Tỷ lệ thả tim 15% (Double tap)
+            # Tỷ lệ thả tim 15%
             if random.random() < 0.15:
-                logger.info(f"[Warmup-ADB] Thả tim video...")
-                # Double tap ở tọa độ giữa màn hình (VD: 500 1000)
-                # Trên thiết bị đa số là x=500, y=1000
-                subprocess.run(f"{adb_cmd} shell input tap 500 1000 && {adb_cmd} shell input tap 500 1000", shell=True)
-                likes_given += 1
-                time.sleep(1)
+                logger.info(f"[Warmup-ADB] Tìm và bấm thả tim video...")
+                # Tìm nút thả tim bằng chữ 'Thích' hoặc 'Like' (content-desc)
+                try:
+                    from app.services.uploader.adb_automator import ADBAutomator
+                    automator = ADBAutomator(device_id)
+                    if automator.click_element(content_descs=['Thích', 'Like']):
+                        logger.info("[Warmup-ADB] ĐÃ TÌM THẤY VÀ BẤM NÚT TIM THÀNH CÔNG!")
+                        likes_given += 1
+                        time.sleep(1)
+                    else:
+                        logger.info("[Warmup-ADB] KHÔNG TÌM THẤY NÚT TIM! (Livestream/Ad). BỎ QUA.")
+                except Exception as e:
+                    logger.error(f"[Warmup-ADB] Lỗi khi cố gắng thả tim: {e}")
                 
-            # Swipe lên video tiếp (Vuốt từ y=1500 lên y=500)
-            subprocess.run(f"{adb_cmd} shell input swipe 500 1500 500 500 300", shell=True)
+            # Lấy lại kích thước màn hình cho swipe nếu chưa lấy
+            if 'width' not in locals():
+                width, height = 720, 1280
+            
+            # Swipe lên video tiếp (Vuốt từ y=80% lên y=20%)
+            start_x = int(width * 0.5)
+            start_y = int(height * 0.8)
+            end_x = int(width * 0.5)
+            end_y = int(height * 0.2)
+            subprocess.run(f"{adb_cmd} shell input swipe {start_x} {start_y} {end_x} {end_y} 300", shell=True)
             videos_watched += 1
             
         logger.info(f"[Warmup-ADB] Hoàn tất phiên nuôi! Đã lướt {videos_watched} video, thả {likes_given} tim.")

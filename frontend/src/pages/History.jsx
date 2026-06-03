@@ -63,6 +63,7 @@ const History = () => {
   const [configOptColor, setConfigOptColor] = useState(false);
   const [configOptNoise, setConfigOptNoise] = useState(false);
   const [configOptPitch, setConfigOptPitch] = useState(false);
+  const [configSubtitleStyle, setConfigSubtitleStyle] = useState('black_white');
   const [processingItems, setProcessingItems] = useState([]);
   
   const navigate = useNavigate();
@@ -328,7 +329,8 @@ const History = () => {
           opt_zoom: configOptZoom,
           opt_color: configOptColor,
           opt_noise: configOptNoise,
-          opt_pitch: configOptPitch
+          opt_pitch: configOptPitch,
+          subtitle_style: configSubtitleStyle
         })
       });
       const data = await res.json();
@@ -562,28 +564,36 @@ const History = () => {
                       ) : (
                         <div className="flex items-center gap-1">
                           {workflowSteps.map((step, idx) => {
-                            const currentIdx = getStepIndex(item.status, item.error_message);
+                            let currentIdx = getStepIndex(item.status, item.error_message);
                             let statusColor = "text-text-secondary opacity-40";
                             let Icon = Circle;
                             
-                            // Show current and next step (if failed, show the failed step)
-                            const isVisible = item.status === 'completed' ? (idx === workflowSteps.length - 1) : (idx === currentIdx || idx === currentIdx + 1);
-                            
-                            if (!isVisible) return null;
-
-                            if (idx < currentIdx || item.status === 'completed') {
+                            // Nếu đang pending hoặc paused (tức là tải xong nhưng chưa xử lý), bước 0 (Tải về) coi như đã hoàn thành
+                            if ((item.status === 'pending' || item.status === 'paused') && idx === 0) {
+                              statusColor = "text-green-500";
+                              Icon = CheckCircle2;
+                            } else if (idx < currentIdx || item.status === 'completed') {
                               statusColor = "text-green-500";
                               Icon = CheckCircle2;
                             } else if (idx === currentIdx) {
                               if (item.status === 'failed') {
                                 statusColor = "text-red-500";
-                                Icon = Circle; // Could use an X or alert icon here, but keeping Circle filled
+                                Icon = Circle;
+                              } else if (item.status === 'pending' || item.status === 'paused') {
+                                // Bước tiếp theo đang chờ
+                                statusColor = "text-yellow-500";
+                                Icon = PauseCircle; // Use Pause icon to indicate it is paused/waiting
                               } else {
                                 statusColor = "text-brand-primary";
                                 Icon = Loader2;
                               }
                             }
                             
+                            // Show current and next step
+                            const isVisible = item.status === 'completed' ? (idx === workflowSteps.length - 1) : (idx === currentIdx || idx === currentIdx + 1);
+                            
+                            if (!isVisible) return null;
+
                             return (
                               <React.Fragment key={step.id}>
                                 <div className={`flex flex-col items-center gap-1 ${statusColor}`} title={step.label}>
@@ -591,8 +601,12 @@ const History = () => {
                                   <span className="text-[10px] whitespace-nowrap font-medium">{step.label}</span>
                                 </div>
                                 {idx === currentIdx && item.status !== 'completed' && item.status !== 'failed' && (
-                                  <div className="h-[2px] w-8 mb-4 rounded-full transition-colors bg-border-subtle overflow-hidden relative" title="Đang chuyển sang bước tiếp theo">
-                                    <div className="absolute top-0 left-0 h-full bg-brand-primary w-1/2 animate-pulse" />
+                                  <div className="h-[2px] w-8 mb-4 rounded-full transition-colors bg-border-subtle overflow-hidden relative" title="Đang chờ/xử lý">
+                                    {(item.status === 'pending' || item.status === 'paused') ? (
+                                      <div className="absolute top-0 left-0 h-full bg-yellow-500 w-1/2" />
+                                    ) : (
+                                      <div className="absolute top-0 left-0 h-full bg-brand-primary w-1/2 animate-pulse" />
+                                    )}
                                   </div>
                                 )}
                               </React.Fragment>
@@ -701,7 +715,21 @@ const History = () => {
                             </span>
                           </button>
                         )}
-                        {(item.status === 'pending' || item.status === 'transcribing' || item.status === 'translating' || item.status === 'generating_tts' || item.status === 'rendering') && (
+                        {item.status === 'pending' && (
+                          <button 
+                            className="p-2 rounded-lg text-text-secondary hover:text-brand-primary hover:bg-brand-primary/10 transition-colors group relative" 
+                            onClick={() => {
+                              setProcessingItems([item.raw_video_path]);
+                              setShowConfigModal(true);
+                            }}
+                          >
+                            <PlayCircle size={18} />
+                            <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-bg-secondary border border-border-subtle text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                              Cấu hình & Xử lý
+                            </span>
+                          </button>
+                        )}
+                        {(item.status === 'transcribing' || item.status === 'translating' || item.status === 'generating_tts' || item.status === 'rendering') && (
                           <button 
                             className="p-2 rounded-lg text-text-secondary hover:text-yellow-500 hover:bg-yellow-500/10 transition-colors group relative" 
                             onClick={() => handlePauseProcessing(item)}
@@ -794,6 +822,18 @@ const History = () => {
                   onChange={e => setConfigVolume(Number(e.target.value))} 
                   className="w-full h-2 bg-border-subtle rounded-lg appearance-none cursor-pointer accent-brand-primary mt-3" 
                 />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-2">Style Phụ Đề</label>
+                <select 
+                  className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 appearance-none" 
+                  value={configSubtitleStyle} 
+                  onChange={e => setConfigSubtitleStyle(e.target.value)}
+                >
+                  <option value="black_white">Nền đen, Chữ trắng (Mặc định)</option>
+                  <option value="white_black">Nền trắng, Chữ đen</option>
+                </select>
               </div>
               
               <div className="bg-bg-secondary rounded-xl border border-border-subtle p-3 mt-4">

@@ -24,6 +24,7 @@ class KeysUpdate(BaseModel):
     gpm_api_url: str = ""
     groq_api_key: str = ""
     use_groq: bool = False
+    use_gpu_acceleration: bool = False
 
 @router.get("/voices")
 async def get_available_voices():
@@ -85,7 +86,8 @@ async def get_keys():
         "anti_detect_provider": os.getenv("ANTI_DETECT_PROVIDER", "none"),
         "gpm_api_url": os.getenv("GPM_API_URL", ""),
         "groq_api_key": decrypt_data(os.getenv("GROQ_API_KEY", "")),
-        "use_groq": os.getenv("USE_GROQ", "False").lower() == "true"
+        "use_groq": os.getenv("USE_GROQ", "False").lower() == "true",
+        "use_gpu_acceleration": os.getenv("USE_GPU_ACCELERATION", "False").lower() == "true"
     }
 
 @router.post("/keys")
@@ -109,6 +111,7 @@ async def update_keys(data: KeysUpdate):
     set_key(ENV_PATH, "GPM_API_URL", data.gpm_api_url)
     set_key(ENV_PATH, "GROQ_API_KEY", encrypt_data(data.groq_api_key))
     set_key(ENV_PATH, "USE_GROQ", str(data.use_groq))
+    set_key(ENV_PATH, "USE_GPU_ACCELERATION", str(data.use_gpu_acceleration))
     
     # Save cookie to file in Netscape format for yt-dlp (Lưu ý: yt-dlp cần file raw text)
     cookie_path = os.path.join(os.path.dirname(ENV_PATH), "douyin_cookie.txt")

@@ -2,8 +2,10 @@ import logging
 import os
 import subprocess
 import time
+from datetime import datetime
 from typing import Dict, Any
 from .base_engine import BaseUploaderEngine
+from .adb_automator import ADBAutomator
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +18,12 @@ class ADBUploader(BaseUploaderEngine):
     
     def __init__(self, account_data: Dict[str, Any]):
         super().__init__(account_data)
-        # Auth data có thể chứa "adb_ip" thay vì cookie
-        self.adb_ip = self.account_data.get("auth_data", "127.0.0.1:5555").strip()
+        # Auth data có thể chứa "adb_ip" thay vì cookie, nhưng ưu tiên device_id nếu có
+        self.adb_ip = self.account_data.get("device_id")
+        if not self.adb_ip:
+            self.adb_ip = self.account_data.get("auth_data")
+        
+        self.adb_ip = self.adb_ip.strip() if self.adb_ip else ""
 
     def _run_adb_cmd(self, args: list, timeout: int = 60) -> str:
         """Chạy lệnh adb tới thiết bị cụ thể"""
@@ -36,6 +42,10 @@ class ADBUploader(BaseUploaderEngine):
 
     def connect(self) -> bool:
         """Kết nối tới máy ảo Android hoặc điện thoại qua mạng"""
+        if not self.adb_ip:
+            logger.error("[ADB] Lỗi: Chưa cấu hình Device ID (adb_ip) cho tài khoản này.")
+            return False
+
         # Nếu thiết bị là cổng local USB thì thường auth_data là mã thiết bị (vd: emulator-5554)
         if ":" in self.adb_ip:
             logger.info(f"[ADB] Đang connect tới {self.adb_ip}...")
@@ -43,8 +53,18 @@ class ADBUploader(BaseUploaderEngine):
             
         # Kiểm tra trạng thái
         devices = subprocess.run(["adb", "devices"], capture_output=True, text=True).stdout
-        if self.adb_ip in devices and "device" in devices.split(self.adb_ip)[1].split("\n")[0]:
-            return True
+        for line in devices.splitlines():
+            if self.adb_ip in line:
+                if "device" in line and "offline" not in line and "unauthorized" not in line:
+                    return True
+                elif "unauthorized" in line:
+                    logger.error(f"[ADB] Thiết bị {self.adb_ip} đang ở trạng thái 'unauthorized'. Vui lòng mở khóa điện thoại và chọn 'Allow USB debugging'.")
+                    return False
+                elif "offline" in line:
+                    logger.error(f"[ADB] Thiết bị {self.adb_ip} đang ở trạng thái 'offline'.")
+                    return False
+        
+        logger.error(f"[ADB] Không tìm thấy thiết bị {self.adb_ip} trong danh sách adb devices.")
         return False
 
     def upload(self, video_path: str, caption: str, hashtags: str) -> str:
@@ -56,62 +76,228 @@ class ADBUploader(BaseUploaderEngine):
         if not os.path.exists(video_path):
             raise Exception(f"File video không tồn tại: {video_path}")
 
-        # 1. Push video sang bộ nhớ điện thoại (Thư mục Download)
-        remote_path = f"/sdcard/Download/reup_{int(time.time())}.mp4"
+        # 1. Dọn dẹp các video reup cũ trên điện thoại để tránh đầy bộ nhớ và chọn nhầm
+        self._run_adb_cmd(["shell", "rm", "-f", "/sdcard/DCIM/Camera/reup_*.mp4"])
+        
+        # 1.5 Cập nhật Metadata Creation Time của Video thành hiện tại để đảm bảo Tiktok xếp nó lên đầu tiên
+        logger.info("[ADB] Cập nhật Metadata Creation Time cho video...")
+        new_video_path = video_path.replace(".mp4", f"_{int(time.time())}.mp4")
+        current_time_iso = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+        try:
+            subprocess.run([
+                "ffmpeg", "-y", "-i", video_path, 
+                "-c", "copy", 
+                "-metadata", f"creation_time={current_time_iso}", 
+                new_video_path
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            video_path = new_video_path
+        except Exception as e:
+            logger.warning(f"[ADB] Không thể cập nhật metadata bằng ffmpeg, bỏ qua: {e}")
+            
+        # 2. Push video sang bộ nhớ điện thoại (Thư mục Camera để Tiktok dễ nhận diện nhất)
+        self._run_adb_cmd(["shell", "mkdir", "-p", "/sdcard/DCIM/Camera"])
+        remote_path = f"/sdcard/DCIM/Camera/reup_{int(time.time())}.mp4"
         logger.info(f"[ADB] Pushing video to {remote_path}...")
         self._run_adb_cmd(["push", video_path, remote_path], timeout=120)
+        
+        # Cập nhật timestamp của file thành hiện tại để luôn đứng đầu thư viện
+        self._run_adb_cmd(["shell", "touch", remote_path])
         
         # 2. Bắn Broadcast để hệ điều hành quét lại thư viện media (để app thấy video)
         logger.info("[ADB] Cập nhật thư viện Media...")
         self._run_adb_cmd(["shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", f"file://{remote_path}"])
-        time.sleep(2)
+        time.sleep(5) # Đợi lâu hơn một chút để Android kịp index video mới
 
         # Phân loại nền tảng
         platform = self.account_data.get("platform", "douyin").lower()
         full_caption = f"{caption} {hashtags}"
         
-        try:
-            if platform == "douyin":
-                return self._upload_douyin(remote_path, full_caption)
-            elif platform == "tiktok":
-                return self._upload_tiktok_mobile(remote_path, full_caption)
-            else:
-                raise Exception(f"Nền tảng App {platform} chưa được hỗ trợ qua ADB.")
-        finally:
-            # Dọn dẹp video trên điện thoại cho đỡ đầy bộ nhớ
-            logger.info(f"[ADB] Xóa video tạm trên điện thoại {remote_path}")
-            self._run_adb_cmd(["shell", "rm", remote_path])
+        # Khởi tạo Automator
+        automator = ADBAutomator(self.adb_ip)
+        automator.check_adb_keyboard()
+        
+        if platform == "douyin":
+            return self._upload_douyin(remote_path, full_caption, automator)
+        elif platform == "tiktok":
+            return self._upload_tiktok_mobile(remote_path, full_caption, automator)
+        else:
+            raise Exception(f"Nền tảng App {platform} chưa được hỗ trợ qua ADB.")
 
-    def _upload_douyin(self, remote_video_path: str, text: str) -> str:
+    def _upload_douyin(self, remote_video_path: str, text: str, automator: ADBAutomator) -> str:
         logger.info("[ADB] Khởi động Douyin App...")
+        # Ép buộc đóng app cũ để xóa cache thư viện
+        self._run_adb_cmd(["shell", "am", "force-stop", "com.ss.android.ugc.aweme"])
+        time.sleep(2)
         # Lệnh mở Douyin (Package: com.ss.android.ugc.aweme)
         self._run_adb_cmd(["shell", "monkey", "-p", "com.ss.android.ugc.aweme", "-c", "android.intent.category.LAUNCHER", "1"])
-        time.sleep(8) # Chờ app mở lên
         
-        # TODO: Implement quy trình click (Tuỳ thuộc vào độ phân giải màn hình)
-        # Các bước thường làm (Cần thay tọa độ X Y theo máy thật):
-        # 1. Bấm nút dấu + (Thêm video)
-        # self._run_adb_cmd(["shell", "input", "tap", "540", "1800"])
-        # time.sleep(2)
-        # 2. Bấm nút Chọn Album
-        # 3. Chọn video đầu tiên (Chính là video vừa push vào)
-        # 4. Bấm Tiếp theo
-        # 5. Dùng ADB Keyboard (com.android.adbkeyboard) để gõ Caption Unicode
-        # self._run_adb_cmd(["shell", "am", "broadcast", "-a", "ADB_INPUT_TEXT", "--es", "msg", f"'{text}'"])
-        # 6. Bấm nút Đăng bài
+        logger.info("[ADB] Đang chờ Douyin tải trang chủ...")
+        app_opened = False
+        for i in range(6): # Chờ tối đa 30 giây (6 * 5s)
+            time.sleep(5)
+            # Kiểm tra xem trang chủ đã load chưa (có chữ Home, Tải lên, Hồ sơ...)
+            if automator.find_element(texts=["首页", "朋友", "消息", "我", "Home", "Profile"]):
+                app_opened = True
+                break
         
-        logger.info("[ADB] Mô phỏng Upload Douyin App thành công!")
-        return "https://www.douyin.com/video/giado_adb_123"
+        if not app_opened:
+            raise Exception("Lỗi: Douyin tải quá chậm hoặc bị treo, không thể vào trang chủ!")
         
-    def _upload_tiktok_mobile(self, remote_video_path: str, text: str) -> str:
+        logger.info("[ADB] Douyin đã mở thành công.")
+        
+        # 1. Bấm nút + (Tạo mới)
+        if not automator.click_element(texts=["发布", "拍摄", "相册"], wait=3):
+            automator.click_percentage(0.5, 0.92)
+            time.sleep(3)
+            
+        automator.handle_permission_popups()
+            
+        # 2. Bấm nút Tải lên (Upload)
+        logger.info("[ADB] Bấm nút Tải lên (Upload) Douyin...")
+        if not automator.click_element(texts=["相册", "上传", "上传视频"], wait=3):
+            logger.info("[ADB] Không tìm thấy nút Tải lên bằng chữ, dùng chuỗi 3 nhát bấm tọa độ...")
+            automator.click_percentage(0.8, 0.85)
+            time.sleep(2)
+            automator.click_percentage(0.85, 0.85)
+            time.sleep(2)
+            automator.click_percentage(0.8, 0.8)
+            time.sleep(3)
+            
+        automator.handle_permission_popups()
+            
+        # 3. Chuyển sang tab Video (để chắc chắn không chọn nhầm ảnh)
+        if automator.click_element(texts_contains=["Video", "Videos", "视频"], content_descs=["Video", "Videos", "视频"], wait=2):
+            logger.info("[ADB] Đã chuyển sang tab Video.")
+        else:
+            logger.info("[ADB] Không tìm thấy tab Video, tiếp tục lấy file đầu tiên...")
+            
+        # 4. Chọn video đầu tiên
+        automator.click_percentage(0.25, 0.3)
+        time.sleep(2)
+        
+        # 4. Bấm Tiếp / Next
+        automator.click_element(texts=["下一步", "完成"], wait=4)
+        
+        # 5. Bấm Tiếp / Next (Màn hình edit)
+        automator.click_element(texts=["下一步"], wait=3)
+        
+        # 7. Gõ caption
+        logger.info("[ADB] Nhập caption qua ADBKeyboard...")
+        if not automator.click_element(texts_contains=["添加描述", "分享你的"], wait=2):
+            automator.click_percentage(0.3, 0.2)
+        time.sleep(1)
+        self._run_adb_cmd(["shell", "am", "broadcast", "-a", "ADB_INPUT_TEXT", "--es", "msg", f"'{text}'"])
+        time.sleep(2)
+        
+        # Bấm một thẻ hashtag gợi ý bất kỳ (ở ngay dưới ô caption) để lấy tag xanh và tắt bảng gợi ý
+        logger.info("[ADB] Click vào hashtag gợi ý...")
+        automator.click_percentage(0.3, 0.6) # Hạ thấp tọa độ xuống để chắc chắn không bấm nhầm vào ô caption
+        time.sleep(1)
+        
+        # Bấm Nút Back (Trở về) của Android để đảm bảo mọi Popup/Bàn phím đều bị thu gọn
+        logger.info("[ADB] Gửi lệnh Back để đóng toàn bộ Popup...")
+        self._run_adb_cmd(["shell", "input", "keyevent", "4"])
+        time.sleep(2)
+        
+        # 8. Bấm Đăng / Post
+        automator.click_element(texts=["发布", "日常"], wait=5)
+        
+        # 8. Xử lý popup xác nhận nếu có
+        automator.click_element(texts=["立即发布", "确认", "发布"], retries=1, wait=3)
+        
+        logger.info("[ADB] Upload Douyin App hoàn tất!")
+        return "https://www.douyin.com/"
+        
+    def _upload_tiktok_mobile(self, remote_video_path: str, text: str, automator: ADBAutomator) -> str:
         logger.info("[ADB] Khởi động Tiktok Mobile App...")
-        # Lệnh mở Tiktok Quốc tế (Package: com.zhiliaoapp.musically)
+        # Ép buộc đóng app cũ để xóa cache thư viện
+        self._run_adb_cmd(["shell", "am", "force-stop", "com.zhiliaoapp.musically"])
+        time.sleep(2)
+        # Lệnh mở Tiktok Quốc tế (Package: com.zhiliaoapp.musically) và Tiktok Asia (com.ss.android.ugc.trill)
+        # Chạy cả 2 lệnh, máy có bản nào thì nó sẽ mở bản đó
         self._run_adb_cmd(["shell", "monkey", "-p", "com.zhiliaoapp.musically", "-c", "android.intent.category.LAUNCHER", "1"])
-        time.sleep(8)
+        self._run_adb_cmd(["shell", "monkey", "-p", "com.ss.android.ugc.trill", "-c", "android.intent.category.LAUNCHER", "1"])
         
-        # Giả lập thành công
-        logger.info("[ADB] Mô phỏng Upload Tiktok Mobile thành công!")
-        return "https://www.tiktok.com/video/giado_adb_456"
+        logger.info("[ADB] Đang chờ Tiktok tải trang chủ...")
+        app_opened = False
+        for i in range(12): # Chờ tối đa 60 giây (12 * 5s) cho các máy cực chậm
+            time.sleep(5)
+            # Kiểm tra xem trang chủ đã load chưa bằng cách tìm các chữ thường có ở thanh menu dưới cùng
+            if automator.find_element(texts=["Trang chủ", "Home", "Hồ sơ", "Profile", "Tạo", "Create", "Hộp thư", "Inbox"]):
+                app_opened = True
+                break
+        
+        if not app_opened:
+            raise Exception("Lỗi: Tiktok tải quá chậm hoặc bị treo, không thể vào trang chủ!")
+            
+        logger.info("[ADB] Tiktok đã mở thành công.")
+        
+        # 1. Bấm nút + (Tạo mới)
+        if not automator.click_element(texts=["Tạo", "Create", "Upload", "Tải lên"], wait=3):
+            automator.click_percentage(0.5, 0.92)
+            time.sleep(3)
+            
+        automator.handle_permission_popups()
+            
+        # 2. Bấm nút Tải lên (Upload)
+        logger.info("[ADB] Bấm nút Tải lên (Upload)...")
+        if not automator.click_element(texts=["Tải lên", "Upload", "Album", "Gallery"], wait=3):
+            logger.info("[ADB] Không tìm thấy nút Tải lên bằng chữ, dùng chuỗi 3 nhát bấm tọa độ...")
+            automator.click_percentage(0.8, 0.85)
+            time.sleep(2)
+            automator.click_percentage(0.85, 0.85)
+            time.sleep(2)
+            automator.click_percentage(0.8, 0.8)
+            time.sleep(3)
+            
+        automator.handle_permission_popups()
+            
+        # 3. Chuyển sang tab Video (để chắc chắn không chọn nhầm ảnh)
+        if automator.click_element(texts_contains=["Video", "Videos", "视频"], content_descs=["Video", "Videos", "视频"], wait=2):
+            logger.info("[ADB] Đã chuyển sang tab Video.")
+        else:
+            logger.info("[ADB] Không tìm thấy tab Video, tiếp tục lấy file đầu tiên...")
+            
+        # 4. Chọn video đầu tiên
+        automator.click_percentage(0.25, 0.3)
+        time.sleep(2)
+        
+        # 4. Bấm Tiếp / Next
+        automator.click_element(texts=["Tiếp", "Next", "Tiếp theo", "Continue"], wait=4)
+        
+        # 5. Bấm Tiếp / Next (Màn hình edit video)
+        automator.click_element(texts=["Tiếp", "Next", "Tiếp theo", "Continue"], wait=3)
+        
+        # 7. Gõ caption
+        logger.info("[ADB] Nhập caption qua ADBKeyboard...")
+        if not automator.click_element(texts_contains=["Mô tả", "Thêm mô tả", "Add description", "Describe your post"], wait=2):
+            automator.click_percentage(0.3, 0.2)
+        time.sleep(1)
+        self._run_adb_cmd(["shell", "am", "broadcast", "-a", "ADB_INPUT_TEXT", "--es", "msg", f"'{text}'"])
+        time.sleep(2)
+        
+        # Bấm một thẻ hashtag gợi ý bất kỳ (ở ngay dưới ô caption) để lấy tag xanh và tắt bảng gợi ý
+        logger.info("[ADB] Click vào hashtag gợi ý...")
+        automator.click_percentage(0.3, 0.6)
+        time.sleep(1)
+        
+        # Bấm Nút Back (Trở về) của Android để đảm bảo mọi Popup/Bàn phím đều bị thu gọn
+        logger.info("[ADB] Gửi lệnh Back để đóng toàn bộ Popup...")
+        self._run_adb_cmd(["shell", "input", "keyevent", "4"])
+        time.sleep(2)
+        
+        # 8. Bấm Đăng / Post
+        automator.click_element(texts=["Đăng", "Post"], wait=5)
+        
+        # 8. Xử lý bảng hỏi xác nhận "Đăng video công khai?" (Nếu có)
+        automator.click_element(texts=["Đăng ngay", "Post now", "Xác nhận", "Confirm", "OK", "Đồng ý"], retries=1, wait=3)
+        
+        # Gửi máy về màn hình chính của Android để tiến trình upload chạy ngầm
+        logger.info("[ADB] Trở về màn hình chính Android...")
+        self._run_adb_cmd(["shell", "input", "keyevent", "3"])
+        
+        logger.info("[ADB] Upload Tiktok Mobile hoàn tất!")
+        return "https://www.tiktok.com/@tiktok"
 
     def check_status(self) -> bool:
         """Kiểm tra thiết bị có online và nhận lệnh không"""

@@ -1,0 +1,157 @@
+import subprocess
+import time
+import re
+import os
+import xml.etree.ElementTree as ET
+import logging
+
+logger = logging.getLogger(__name__)
+import urllib.request
+
+class ADBAutomator:
+    def __init__(self, adb_ip: str):
+        self.adb_ip = adb_ip
+        self.local_xml_path = f"/tmp/window_dump_{self.adb_ip.replace(':', '_')}.xml"
+
+    def _run_adb(self, args: list, timeout: int = 60) -> str:
+        cmd = ["adb", "-s", self.adb_ip] + args
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            return result.stdout
+        except Exception as e:
+            logger.error(f"[ADBAutomator] Lỗi chạy lệnh {cmd}: {e}")
+            return ""
+
+    def dump_ui(self) -> ET.Element:
+        """Kéo file giao diện XML từ thiết bị về và parse."""
+        remote_xml = "/sdcard/window_dump.xml"
+        self._run_adb(["shell", "uiautomator", "dump", remote_xml])
+        self._run_adb(["pull", remote_xml, self.local_xml_path])
+        
+        if not os.path.exists(self.local_xml_path):
+            return None
+            
+        try:
+            tree = ET.parse(self.local_xml_path)
+            return tree.getroot()
+        except Exception as e:
+            logger.error(f"[ADBAutomator] Lỗi parse XML: {e}")
+            return None
+
+    def _get_center_from_bounds(self, bounds_str: str):
+        """Chuyển '[x1,y1][x2,y2]' thành tọa độ trung tâm (x, y)"""
+        match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bounds_str)
+        if match:
+            x1, y1, x2, y2 = map(int, match.groups())
+            return (x1 + x2) // 2, (y1 + y2) // 2
+        return None
+
+    def find_element(self, texts=None, texts_contains=None, content_descs=None, resource_ids=None, classes=None) -> tuple:
+        """Tìm tọa độ phần tử dựa trên các thuộc tính. Hỗ trợ đa ngôn ngữ (list)."""
+        root = self.dump_ui()
+        if root is None:
+            return None
+            
+        texts = texts or []
+        texts_contains = texts_contains or []
+        content_descs = content_descs or []
+        resource_ids = resource_ids or []
+        classes = classes or []
+        
+        for node in root.iter('node'):
+            text = node.get('text', '')
+            desc = node.get('content-desc', '')
+            res_id = node.get('resource-id', '')
+            cls = node.get('class', '')
+            bounds = node.get('bounds', '')
+            
+            if not bounds or bounds == '[0,0][0,0]':
+                continue
+                
+            match = False
+            if any(t.lower() == text.lower() for t in texts if text): # Exact match
+                match = True
+            if any(t.lower() in text.lower() for t in texts_contains if text): # Partial match
+                match = True
+            if any(d.lower() in desc.lower() for d in content_descs if desc):
+                match = True
+            if any(r.lower() == res_id.lower() for r in resource_ids if res_id):
+                match = True
+            if any(c.lower() == cls.lower() for c in classes if cls):
+                match = True
+                
+            if match:
+                return self._get_center_from_bounds(bounds)
+                
+        return None
+
+    def click_element(self, texts=None, texts_contains=None, content_descs=None, resource_ids=None, classes=None, retries=3, wait=2) -> bool:
+        """Tìm và bấm vào phần tử. Thử lại nhiều lần nếu chưa thấy giao diện cập nhật."""
+        for attempt in range(retries):
+            coords = self.find_element(texts=texts, texts_contains=texts_contains, content_descs=content_descs, resource_ids=resource_ids, classes=classes)
+            if coords:
+                x, y = coords
+                ident = texts or texts_contains or content_descs or classes
+                logger.info(f"[ADBAutomator] Tìm thấy element {ident} tại tọa độ ({x}, {y}). Đang click...")
+                self._run_adb(["shell", "input", "tap", str(x), str(y)])
+                time.sleep(wait)
+                return True
+            logger.info(f"[ADBAutomator] Đang đợi màn hình tải để tìm {texts or content_descs} (Lần {attempt+1}/{retries})")
+            time.sleep(wait)
+            
+        logger.error(f"[ADBAutomator] Không tìm thấy phần tử {texts or content_descs} sau {retries} lần thử.")
+        return False
+
+    def check_adb_keyboard(self):
+        """Kiểm tra và cài đặt ADBKeyboard nếu chưa có"""
+        packages = self._run_adb(["shell", "pm", "list", "packages", "com.android.adbkeyboard"])
+        if "com.android.adbkeyboard" not in packages:
+            logger.info("[ADBAutomator] Chưa có ADBKeyboard. Bắt đầu tự động tải và cài đặt...")
+            apk_url = "https://github.com/senzhk/ADBKeyBoard/raw/master/ADBKeyboard.apk"
+            apk_path = "/tmp/ADBKeyboard.apk"
+            if not os.path.exists(apk_path):
+                try:
+                    urllib.request.urlretrieve(apk_url, apk_path)
+                except Exception as e:
+                    logger.error(f"[ADBAutomator] Không thể tải ADBKeyboard.apk: {e}")
+                    return False
+            
+            self._run_adb(["install", "-r", apk_path])
+            logger.info("[ADBAutomator] Cài đặt ADBKeyboard thành công.")
+            time.sleep(2)
+            
+        # Kiểm tra và set làm bàn phím mặc định
+        current_ime = self._run_adb(["shell", "settings", "get", "secure", "default_input_method"])
+        if "com.android.adbkeyboard" not in current_ime:
+            logger.info("[ADBAutomator] Đang thiết lập ADBKeyboard làm bàn phím mặc định...")
+            self._run_adb(["shell", "ime", "enable", "com.android.adbkeyboard/.AdbIME"])
+            self._run_adb(["shell", "ime", "set", "com.android.adbkeyboard/.AdbIME"])
+            time.sleep(1)
+        return True
+
+    def get_screen_size(self):
+        """Lấy kích thước màn hình để bấm theo tọa độ phần trăm nếu cần"""
+        output = self._run_adb(["shell", "wm", "size"])
+        match = re.search(r'Physical size: (\d+)x(\d+)', output)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+        return 1080, 1920
+
+    def click_percentage(self, pct_x: float, pct_y: float):
+        """Bấm theo % chiều rộng và chiều cao màn hình"""
+        w, h = self.screen_size if hasattr(self, 'screen_size') else self.get_screen_size()
+        self.screen_size = (w, h)
+        x = int(w * pct_x)
+        y = int(h * pct_y)
+        logger.info(f"[ADBAutomator] Click tọa độ tương đối ({pct_x:.2f}, {pct_y:.2f}) -> ({x}, {y})")
+        self._run_adb(["shell", "input", "tap", str(x), str(y)])
+        time.sleep(1)
+
+    def handle_permission_popups(self, max_popups=3):
+        """Xử lý các popup cấp quyền (Camera, Mic, Bộ nhớ)"""
+        for _ in range(max_popups):
+            if self.click_element(texts=["Cho phép", "Allow", "Trong khi dùng ứng dụng", "While using the app", "OK", "Đồng ý"], retries=1, wait=1):
+                logger.info("[ADBAutomator] Đã đồng ý cấp quyền truy cập.")
+                time.sleep(1)
+            else:
+                break

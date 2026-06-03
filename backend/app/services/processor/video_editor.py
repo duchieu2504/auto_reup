@@ -2,10 +2,33 @@ import os
 import subprocess
 import imageio_ffmpeg
 
+from dotenv import load_dotenv
+
 ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
 
 class VideoEditor:
+    def get_optimal_video_encoder(self, use_gpu: bool = False) -> str:
+        if not use_gpu:
+            return "libx264"
+        
+        try:
+            result = subprocess.run([ffmpeg_exe, "-encoders"], capture_output=True, text=True, check=True)
+            output = result.stdout.lower()
+            if "h264_qsv" in output:
+                return "h264_qsv"
+            elif "h264_nvenc" in output:
+                return "h264_nvenc"
+        except Exception as e:
+            print(f"Lỗi khi kiểm tra encoder, tự động fallback về CPU: {e}")
+            
+        return "libx264"
+
     def burn_subtitles(self, input_video: str, srt_file: str, output_video: str, tts_audio: str = None, bg_volume: int = 10, flip_video: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False):
+        load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/.env")), override=True)
+        use_gpu = os.getenv("USE_GPU_ACCELERATION", "False").lower() == "true"
+        vcodec = self.get_optimal_video_encoder(use_gpu)
+        print(f"[*] Sử dụng Video Encoder: {vcodec} (GPU={use_gpu})")
+
         # Escape path for FFmpeg subtitles filter on Windows
         srt_escaped = srt_file.replace('\\', '/').replace(':', '\\:')
         
@@ -48,7 +71,7 @@ class VideoEditor:
                 "-filter_complex", filter_complex,
                 "-map", "0:v",
                 "-map", "[aout]",
-                "-c:v", "libx264",
+                "-c:v", vcodec,
                 "-crf", "28",
                 "-preset", "faster",
                 "-pix_fmt", "yuv420p",
@@ -61,7 +84,7 @@ class VideoEditor:
                 cmd.extend([
                     "-vf", vf_str,
                     "-af", "asetrate=44100*1.02,atempo=1/1.02",
-                    "-c:v", "libx264",
+                    "-c:v", vcodec,
                     "-crf", "28",
                     "-preset", "faster",
                     "-pix_fmt", "yuv420p",
@@ -72,7 +95,7 @@ class VideoEditor:
             else:
                 cmd.extend([
                     "-vf", vf_str,
-                    "-c:v", "libx264",
+                    "-c:v", vcodec,
                     "-crf", "28",
                     "-preset", "faster",
                     "-pix_fmt", "yuv420p",

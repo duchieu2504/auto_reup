@@ -9,6 +9,7 @@ const Settings = () => {
   const [xaiKey, setXaiKey] = useState("");
   const [groqKey, setGroqKey] = useState("");
   const [useGroq, setUseGroq] = useState(false);
+  const [useGpuAcceleration, setUseGpuAcceleration] = useState(false);
   const [activeAIProvider, setActiveAIProvider] = useState("gemini");
   const [activeTTSProvider, setActiveTTSProvider] = useState("edge");
   const [concurrency, setConcurrency] = useState(1);
@@ -30,6 +31,7 @@ const Settings = () => {
         if (data.xai_api_key) setXaiKey(data.xai_api_key);
         if (data.groq_api_key) setGroqKey(data.groq_api_key);
         if (data.use_groq !== undefined) setUseGroq(data.use_groq);
+        if (data.use_gpu_acceleration !== undefined) setUseGpuAcceleration(data.use_gpu_acceleration);
         if (data.active_ai_provider) setActiveAIProvider(data.active_ai_provider);
         if (data.active_tts_provider) setActiveTTSProvider(data.active_tts_provider);
         if (data.ai_concurrency_limit) setConcurrency(data.ai_concurrency_limit);
@@ -98,7 +100,8 @@ const Settings = () => {
           anti_detect_provider: antiDetectProvider,
           gpm_api_url: gpmApiUrl,
           groq_api_key: groqKey,
-          use_groq: useGroq
+          use_groq: useGroq,
+          use_gpu_acceleration: useGpuAcceleration
         })
       });
       if (res.ok) {
@@ -122,7 +125,8 @@ const Settings = () => {
             anti_detect_provider: antiDetectProvider,
             gpm_api_url: gpmApiUrl,
             groq_api_key: groqKey,
-            use_groq: useGroq
+            use_groq: useGroq,
+            use_gpu_acceleration: useGpuAcceleration
           })
         });
 
@@ -228,6 +232,22 @@ const Settings = () => {
                 {validateStatus.groq === "invalid" && <p className="text-sm text-red-500 mt-2 font-medium">✕ API Key không hợp lệ</p>}
               </div>
             )}
+          </div>
+
+          <div className="bg-bg-tertiary p-4 rounded-xl border border-border-subtle">
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-bold text-text-primary">🖥️ Tăng tốc phần cứng (GPU Acceleration)</label>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={useGpuAcceleration}
+                  onChange={(e) => setUseGpuAcceleration(e.target.checked)}
+                />
+                <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+              </label>
+            </div>
+            <p className="text-xs text-text-secondary">Sử dụng GPU (Intel QSV / Nvidia NVENC) để tăng tốc độ xử lý video bằng FFMPEG và giảm tải CPU. Hệ thống sẽ tự động quét và kiểm tra xem thiết bị của bạn có hỗ trợ GPU nào không.</p>
           </div>
 
           <div className="bg-bg-tertiary p-4 rounded-xl border border-border-subtle">
