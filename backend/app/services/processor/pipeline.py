@@ -20,7 +20,7 @@ class ProcessorPipeline:
         self.editor = VideoEditor()
         self.tts = TTSGenerator()
 
-    def process_video(self, video_path: str, log_callback, voice_mode: str = "edge_auto", bg_volume: int = 10, flip_video: bool = False, force_render: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False):
+    def process_video(self, video_path: str, log_callback, voice_mode: str = "edge_auto", bg_volume: int = 10, flip_video: bool = False, force_render: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False, subtitle_text_color: str = "#000000", subtitle_bg_color: str = "#FFFFFF", subtitle_font_size: int = 20, subtitle_margin_v: int = 40, subtitle_bg_padding: int = 2, subtitle_bg_opacity: int = 100, watermark_type: str = "none", watermark_text: str = None, watermark_image_path: str = None, watermark_x: float = 50.0, watermark_y: float = 50.0, watermark_size: float = 20.0, watermark_color: str = "#FFFFFF", watermark_opacity: float = 50.0, subtitle_font_family: str = "Liberation Sans"):
         if not os.path.exists(video_path):
             log_callback(f"[!] Lỗi: Không tìm thấy file {video_path}\n")
             return
@@ -28,7 +28,7 @@ class ProcessorPipeline:
         base_dir = os.path.dirname(video_path)
         base_name = os.path.basename(video_path).split('.')[0]
         
-        project_root = os.path.abspath(os.path.join(base_dir, "../../"))
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../"))
         data_dir = os.path.join(project_root, "data")
         subtitles_dir = os.path.join(data_dir, "subtitles")
         audio_dir = os.path.join(data_dir, "audio")
@@ -175,7 +175,25 @@ class ProcessorPipeline:
                 try:
                     record.status = ProcessStatus.RENDERING
                     db.commit()
-                    self.editor.burn_subtitles(video_path, vi_srt, output_video, tts_audio, bg_volume, flip_video, subtitle_style, opt_zoom, opt_color, opt_noise, opt_pitch)
+                    self.editor.burn_subtitles(
+                        video_path, vi_srt, output_video, tts_audio, bg_volume, flip_video, subtitle_style, 
+                        opt_zoom, opt_color, opt_noise, opt_pitch, 
+                        subtitle_text_color=subtitle_text_color,
+                        subtitle_bg_color=subtitle_bg_color,
+                        subtitle_font_size=subtitle_font_size,
+                        subtitle_margin_v=subtitle_margin_v,
+                        subtitle_bg_padding=subtitle_bg_padding,
+                        subtitle_bg_opacity=subtitle_bg_opacity,
+                        watermark_type=watermark_type,
+                        watermark_text=watermark_text,
+                        watermark_image_path=watermark_image_path,
+                        watermark_x=watermark_x,
+                        watermark_y=watermark_y,
+                        watermark_size=watermark_size,
+                        watermark_color=watermark_color,
+                        watermark_opacity=watermark_opacity,
+                        subtitle_font_family=subtitle_font_family
+                    )
                     record.final_video_path = output_video
                     record.status = ProcessStatus.COMPLETED
                     db.commit()

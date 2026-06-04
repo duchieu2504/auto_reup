@@ -1,19 +1,21 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
-import Dashboard from './pages/Dashboard';
-import Phase1Crawler from './pages/Phase1Crawler';
-import Phase2Processor from './pages/Phase2Processor';
-import History from './pages/History';
-import Settings from './pages/Settings';
-import EditVideo from './pages/EditVideo';
-import Discovery from './pages/Discovery';
-import SocialAccounts from './pages/SocialAccounts';
-import UploadSchedule from './pages/UploadSchedule';
 import { CrawlerProvider } from './context/CrawlerContext';
 import { ProcessorProvider } from './context/ProcessorContext';
+
+// Dynamic imports with React.lazy
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Phase1Crawler = lazy(() => import('./pages/Phase1Crawler'));
+const Phase2Processor = lazy(() => import('./pages/Phase2Processor'));
+const History = lazy(() => import('./pages/History'));
+const Settings = lazy(() => import('./pages/Settings'));
+const EditVideo = lazy(() => import('./pages/EditVideo'));
+const Discovery = lazy(() => import('./pages/Discovery'));
+const SocialAccounts = lazy(() => import('./pages/SocialAccounts'));
+const UploadSchedule = lazy(() => import('./pages/UploadSchedule'));
 
 const MainLayout = () => {
   const location = useLocation();
@@ -33,17 +35,26 @@ const MainLayout = () => {
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header title={title} />
         <main className="flex-1 overflow-y-auto p-8">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/crawler" element={<Phase1Crawler />} />
-            <Route path="/discovery" element={<Discovery />} />
-            <Route path="/processor" element={<Phase2Processor />} />
-            <Route path="/history" element={<History />} />
-            <Route path="/edit/:id" element={<EditVideo />} />
-            <Route path="/social-accounts" element={<SocialAccounts />} />
-            <Route path="/upload-schedule" element={<UploadSchedule />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
+          <Suspense fallback={
+            <div className="flex items-center justify-center h-full">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-10 h-10 border-4 border-brand-primary border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-sm text-text-secondary font-medium animate-pulse">Đang tải module...</span>
+              </div>
+            </div>
+          }>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/crawler" element={<Phase1Crawler />} />
+              <Route path="/discovery" element={<Discovery />} />
+              <Route path="/processor" element={<Phase2Processor />} />
+              <Route path="/history" element={<History />} />
+              <Route path="/edit/:id" element={<EditVideo />} />
+              <Route path="/social-accounts" element={<SocialAccounts />} />
+              <Route path="/upload-schedule" element={<UploadSchedule />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </Suspense>
         </main>
 
       </div>

@@ -1,9 +1,12 @@
 import asyncio
 import os
 import sys
-from fastapi import APIRouter, Request
+import uuid
+import shutil
+from fastapi import APIRouter, Request, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from typing import Optional
 import redis.asyncio as redis
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -27,6 +30,43 @@ class ProcessRequest(BaseModel):
     opt_pitch: bool = False
     force_render: bool = False
     subtitle_style: str = "black_white"
+    subtitle_font_family: str = "Liberation Sans"
+    subtitle_text_color: str = "#000000"
+    subtitle_bg_color: Optional[str] = "#FFFFFF"
+    subtitle_font_size: Optional[int] = 20
+    subtitle_margin_v: Optional[int] = 40
+    subtitle_bg_padding: Optional[int] = 2
+    subtitle_bg_opacity: Optional[int] = 100
+    watermark_type: str = "none"
+    watermark_text: Optional[str] = None
+    watermark_image_path: Optional[str] = None
+    watermark_x: float = 50.0
+    watermark_y: float = 50.0
+    watermark_size: float = 20.0
+    watermark_color: str = "#FFFFFF"
+    watermark_opacity: float = 50.0
+
+@router.post("/upload-logo")
+async def upload_logo(file: UploadFile = File(...)):
+    # Validate extension
+    ext = file.filename.split(".")[-1].lower()
+    if ext not in ["png", "jpg", "jpeg"]:
+        raise HTTPException(status_code=400, detail="Chỉ hỗ trợ file PNG và JPG.")
+    
+    # 5MB limit check could be implemented via read() length, but simplified here
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Kích thước file không được vượt quá 5MB.")
+    
+    # Save file
+    os.makedirs("/data/watermarks", exist_ok=True)
+    filename = f"logo_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = os.path.join("/data/watermarks", filename)
+    
+    with open(filepath, "wb") as f:
+        f.write(content)
+        
+    return {"status": "success", "path": f"/data/watermarks/{filename}", "url": f"/api/files/watermarks/{filename}"}
 
 @router.post("/start")
 async def start_processor(request: ProcessRequest):
@@ -61,15 +101,20 @@ async def start_processor(request: ProcessRequest):
                     "opt_zoom": request.opt_zoom,
                     "opt_color": request.opt_color,
                     "opt_noise": request.opt_noise,
-                    "opt_pitch": request.opt_pitch
+                    "opt_pitch": request.opt_pitch,
+                    "subtitle_font_family": request.subtitle_font_family,
+                    "subtitle_text_color": request.subtitle_text_color,
+                    "subtitle_bg_color": request.subtitle_bg_color,
+                    "subtitle_font_size": request.subtitle_font_size,
+                    "subtitle_margin_v": request.subtitle_margin_v,
+                    "subtitle_bg_padding": request.subtitle_bg_padding
                 }
                 record.process_config = json.dumps(config_data)
         db.commit()
         db.close()
     except Exception as e:
         logger.error(f"Lỗi update DB khi start: {e}")
-        
-    task = process_video_task.delay(cleaned_paths, request.voice_mode, request.bg_volume, request.flip_video, request.force_render, request.subtitle_style, request.opt_zoom, request.opt_color, request.opt_noise, request.opt_pitch)
+    task = process_video_task.delay(cleaned_paths, request.voice_mode, request.bg_volume, request.flip_video, request.force_render, request.subtitle_style, request.opt_zoom, request.opt_color, request.opt_noise, request.opt_pitch, request.subtitle_text_color, request.subtitle_bg_color, request.subtitle_font_size, request.subtitle_margin_v, request.subtitle_bg_padding, request.subtitle_bg_opacity, request.watermark_type, request.watermark_text, request.watermark_image_path, request.watermark_x, request.watermark_y, request.watermark_size, request.watermark_color, request.watermark_opacity, request.subtitle_font_family)
     return {"status": "started", "task_id": task.id, "video_count": len(cleaned_paths)}
 
 @router.get("/scan-folder")

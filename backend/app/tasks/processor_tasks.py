@@ -13,7 +13,7 @@ redis_client = redis.Redis.from_url(REDIS_URL)
 pipeline_instance = None
 
 @celery_app.task(bind=True, name="processor_tasks.process_video")
-def process_video_task(self, video_paths: list, voice_mode: str, bg_volume: int, flip_video: bool = False, force_render: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False):
+def process_video_task(self, video_paths: list, voice_mode: str, bg_volume: int, flip_video: bool = False, force_render: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False, subtitle_text_color: str = "#000000", subtitle_bg_color: str = "#FFFFFF", subtitle_font_size: int = 20, subtitle_margin_v: int = 40, subtitle_bg_padding: int = 2, subtitle_bg_opacity: int = 100, watermark_type: str = "none", watermark_text: str = None, watermark_image_path: str = None, watermark_x: float = 50.0, watermark_y: float = 50.0, watermark_size: float = 20.0, watermark_color: str = "#FFFFFF", watermark_opacity: float = 50.0, subtitle_font_family: str = "Liberation Sans"):
     global pipeline_instance
     task_id = self.request.id
     channel = f"task_log_{task_id}"
@@ -40,7 +40,7 @@ def process_video_task(self, video_paths: list, voice_mode: str, bg_volume: int,
         
         def process_single(vp):
             try:
-                pipeline_instance.process_video(vp, log_callback, voice_mode, bg_volume, flip_video, force_render, subtitle_style, opt_zoom, opt_color, opt_noise, opt_pitch)
+                pipeline_instance.process_video(vp, log_callback, voice_mode, bg_volume, flip_video, force_render, subtitle_style, opt_zoom, opt_color, opt_noise, opt_pitch, subtitle_text_color, subtitle_bg_color, subtitle_font_size, subtitle_margin_v, subtitle_bg_padding, subtitle_bg_opacity, watermark_type, watermark_text, watermark_image_path, watermark_x, watermark_y, watermark_size, watermark_color, watermark_opacity, subtitle_font_family)
             except Exception as e:
                 logger.error(f"Lỗi khi xử lý {vp}: {e}")
                 log_callback(f"[!] Lỗi khi xử lý {vp}: {e}\n")

@@ -121,7 +121,7 @@ class DouyinScraper:
             aweme_list = data.get("aweme_list", [])
             if not aweme_list:
                 if total_fetched == 0:
-                    yield "[!] Không tìm thấy video nào. Có thể do Cookie hết hạn, tài khoản bị khóa riêng tư, hoặc thuật toán chống bot đã chặn.\n"
+                    yield "[!] Không tìm thấy video nào. Có thể do tài khoản bị khóa riêng tư, hoặc thuật toán chống bot quá mạnh (Hệ thống Playwright đã thử vượt Captcha ngầm nhưng không thành công). Vui lòng cập nhật Cookie thủ công!\n"
                 break
                 
             for aweme in aweme_list:
@@ -171,55 +171,73 @@ class DouyinScraper:
         os.makedirs(target_dir, exist_ok=True)
         
         output_file = os.path.join(target_dir, f"{video_id}.mp4")
+        temp_file = output_file + ".part"
         
-        try:
-            with httpx.Client() as hx_client:
-                with hx_client.stream("GET", video_url, headers=client.headers, cookies=client.cookies, timeout=30, follow_redirects=True) as response:
-                    response.raise_for_status()
-                    
-                    total_size = int(response.headers.get('content-length', 0))
-                    downloaded = 0
-                    
-                    if total_size > 0:
-                        mb_size = round(total_size / (1024 * 1024), 2)
-                        yield f"[*] Bắt đầu tải file, kích thước: {mb_size} MB\n"
-                    else:
-                        yield f"[*] Bắt đầu tải file (không xác định dung lượng)...\n"
-                        
-                    last_percent = 0
-                    with open(output_file, 'wb') as f:
-                        for chunk in response.iter_bytes(chunk_size=8192*4):
-                            if chunk:
-                                f.write(chunk)
-                                downloaded += len(chunk)
-                                if total_size > 0:
-                                    percent = int((downloaded / total_size) * 100)
-                                    if percent >= last_percent + 10:
-                                        yield f"[download] {percent}% of {mb_size}MB\n"
-                                        last_percent = percent
-            
-            logger.info(f"Tải thành công video: {video_id}")
-            yield f"[*] Tải thành công video: {video_id}\n"
-            self.sync_manager.mark_as_downloaded(video_id)
-            
-            db = SessionLocal()
+        max_retries = 3
+        for attempt in range(max_retries):
             try:
-                record = db.query(VideoHistory).filter(VideoHistory.raw_video_path == output_file).first()
-                if not record:
-                    record = VideoHistory(
-                        original_name=f"{video_id}.mp4",
-                        source=f"Douyin - {uploader}",
-                        raw_video_path=output_file,
-                        status=ProcessStatus.PENDING
-                    )
-                    db.add(record)
-                    db.commit()
-            except Exception as e:
-                logger.error(f"Lỗi khi lưu DB VideoHistory: {e}")
-            finally:
-                db.close()
+                with httpx.Client() as hx_client:
+                    with hx_client.stream("GET", video_url, headers=client.headers, cookies=client.cookies, timeout=30, follow_redirects=True) as response:
+                        response.raise_for_status()
+                        
+                        total_size = int(response.headers.get('content-length', 0))
+                        downloaded = 0
+                        
+                        if total_size > 0:
+                            mb_size = round(total_size / (1024 * 1024), 2)
+                            yield f"[*] Bắt đầu tải file, kích thước: {mb_size} MB\n"
+                        else:
+                            yield f"[*] Bắt đầu tải file (không xác định dung lượng)...\n"
+                            
+                        last_percent = 0
+                        with open(temp_file, 'wb') as f:
+                            for chunk in response.iter_bytes(chunk_size=8192*8):
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+                                    if total_size > 0:
+                                        percent = int((downloaded / total_size) * 100)
+                                        if percent >= last_percent + 10:
+                                            yield f"[download] {percent}% of {mb_size}MB\n"
+                                            last_percent = percent
                 
-        except Exception as e:
-            logger.error(f"Lỗi hệ thống khi tải video {video_id}: {str(e)}", exc_info=True)
-            yield f"[!] Lỗi hệ thống khi tải video {video_id}: {str(e)}\n"
+                # Đổi tên file part thành mp4 sau khi tải xong 100%
+                if os.path.exists(temp_file):
+                    os.rename(temp_file, output_file)
+                    
+                logger.info(f"Tải thành công video: {video_id}")
+                yield f"[*] Tải thành công video: {video_id}\n"
+                self.sync_manager.mark_as_downloaded(video_id)
+                
+                db = SessionLocal()
+                try:
+                    record = db.query(VideoHistory).filter(VideoHistory.raw_video_path == output_file).first()
+                    if not record:
+                        record = VideoHistory(
+                            original_name=f"{video_id}.mp4",
+                            source=f"Douyin - {uploader}",
+                            raw_video_path=output_file,
+                            status=ProcessStatus.PENDING
+                        )
+                        db.add(record)
+                        db.commit()
+                except Exception as e:
+                    logger.error(f"Lỗi khi lưu DB VideoHistory: {e}")
+                finally:
+                    db.close()
+                    
+                break # Thành công, thoát vòng lặp retry
+                
+            except Exception as e:
+                if os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except:
+                        pass
+                        
+                if attempt == max_retries - 1:
+                    logger.error(f"Lỗi hệ thống khi tải video {video_id}: {str(e)}", exc_info=True)
+                    yield f"[!] Lỗi hệ thống khi tải video {video_id}: {str(e)}\n"
+                else:
+                    yield f"[*] Mất kết nối khi tải, đang thử lại ({attempt + 1}/{max_retries})...\n"
 

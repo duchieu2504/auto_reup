@@ -7,6 +7,7 @@ from urllib.parse import urlencode, urlparse, parse_qs
 from dotenv import load_dotenv
 from app.core.security import decrypt_data
 from .abogus import ABogus
+from .cookie_fetcher import fetch_fresh_cookies
 
 _USER_AGENT_POOL = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -26,6 +27,9 @@ class DouyinAPIClient:
         }
         self.abogus_generator = ABogus(user_agent=self.user_agent)
         
+        self._load_cookies_from_env()
+
+    def _load_cookies_from_env(self):
         # Parse cookie from env (always load latest)
         env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/.env"))
         load_dotenv(env_path, override=True)
@@ -62,6 +66,15 @@ class DouyinAPIClient:
             random_token = ''.join(random.choices(string.ascii_letters + string.digits + "=_", k=107))
             self.cookies["msToken"] = random_token
 
+    def refresh_cookies(self):
+        """Khởi chạy Playwright để lấy cookie mới và load lại vào instance này"""
+        try:
+            fetch_fresh_cookies()
+            self._load_cookies_from_env()
+            return True
+        except Exception:
+            return False
+
     def _default_query(self) -> dict:
         return {
             "device_platform": "webapp",
@@ -97,7 +110,7 @@ class DouyinAPIClient:
         base_url = f"{self.BASE_URL}{path}?{query}&a_bogus={abogus_param}"
         return base_url
 
-    def request_json(self, path: str, params: dict) -> dict:
+    def request_json(self, path: str, params: dict, auto_retry: bool = True) -> dict:
         signed_url = self.build_signed_url(path, params)
         try:
             response = httpx.get(
@@ -109,9 +122,32 @@ class DouyinAPIClient:
             )
             if response.status_code == 200:
                 try:
-                    return response.json()
+                    data = response.json()
+                    # Kiểm tra xem có bị lỗi Captcha/Anti-spam hay không (mặc dù HTTP 200)
+                    if isinstance(data, dict):
+                        nil_type = None
+                        if "search_nil_info" in data:
+                            nil_type = data["search_nil_info"].get("search_nil_type")
+                        elif "search_nil_type" in data:
+                            nil_type = data.get("search_nil_type")
+                            
+                        # Douyin đôi khi trả về mảng rỗng nếu thiếu __ac_signature
+                        aweme_list = data.get("aweme_list", [])
+                        
+                        if nil_type in ["antispam_check", "verify_check"] or (path.endswith("/post/") and not aweme_list and data.get("status_code", 0) != 0):
+                            if auto_retry:
+                                # Kích hoạt giải cứu bằng Playwright
+                                if self.refresh_cookies():
+                                    params["msToken"] = self.cookies.get("msToken", "")
+                                    return self.request_json(path, params, auto_retry=False)
+                    return data
                 except Exception:
                     pass
+            elif response.status_code == 403: # Bị chặn
+                if auto_retry:
+                    if self.refresh_cookies():
+                        params["msToken"] = self.cookies.get("msToken", "")
+                        return self.request_json(path, params, auto_retry=False)
         except Exception as e:
             pass
         return {}

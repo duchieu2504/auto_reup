@@ -26,6 +26,34 @@ class KeysUpdate(BaseModel):
     use_groq: bool = False
     use_gpu_acceleration: bool = False
 
+@router.get("/fonts")
+async def get_available_fonts():
+    fonts_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../data/fonts"))
+    fonts = []
+    
+    # Mặc định luôn có font Liberation Sans của hệ thống Linux/FFmpeg
+    default_font = {"id": "Liberation Sans", "name": "Liberation Sans (Mặc định)", "file": ""}
+    
+    try:
+        if os.path.exists(fonts_dir):
+            for file in os.listdir(fonts_dir):
+                if file.lower().endswith(('.ttf', '.otf')):
+                    # Lấy tên file bỏ đuôi làm tên Font
+                    font_name = os.path.splitext(file)[0]
+                    fonts.append({
+                        "id": font_name,
+                        "name": font_name,
+                        "file": file
+                    })
+    except Exception as e:
+        print(f"Error reading fonts dir: {e}")
+        
+    if not fonts:
+        return {"fonts": [default_font]}
+        
+    # Thêm font mặc định vào đầu danh sách
+    return {"fonts": [default_font] + sorted(fonts, key=lambda x: x["name"])}
+
 @router.get("/voices")
 async def get_available_voices():
     load_dotenv(ENV_PATH, override=True)
@@ -171,11 +199,13 @@ async def validate_keys(data: KeysUpdate):
     # 2. Test Gemini API Key
     if data.gemini_api_key and data.gemini_api_key.strip():
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=data.gemini_api_key)
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            from google import genai
+            client = genai.Client(api_key=data.gemini_api_key)
             # Test simple completion
-            model.generate_content("hello")
+            client.models.generate_content(
+                model='gemini-3.5-flash',
+                contents='hello'
+            )
             results["gemini_api_key"] = "valid"
         except Exception as e:
             print("Gemini Test Error:", e)

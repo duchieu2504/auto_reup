@@ -13,6 +13,40 @@ from app.models.social_account import SocialAccount
 
 router = APIRouter()
 
+import subprocess
+import hashlib
+from fastapi.responses import FileResponse
+import imageio_ffmpeg
+
+@router.get("/thumbnail")
+def get_thumbnail(path: str, time: int = 3):
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="File not found")
+        
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../data"))
+    temp_dir = os.path.join(base_dir, "temp")
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    # Format time to HH:MM:SS
+    hours = time // 3600
+    minutes = (time % 3600) // 60
+    seconds = time % 60
+    time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    
+    file_hash = hashlib.md5(f"{path}_{time}".encode()).hexdigest()
+    thumb_path = os.path.join(temp_dir, f"thumb_{file_hash}.jpg")
+    
+    if not os.path.exists(thumb_path):
+        try:
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            subprocess.run([
+                ffmpeg_exe, '-y', '-i', path, '-ss', time_str, '-vframes', '1', thumb_path
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+            
+    return FileResponse(thumb_path, media_type="image/jpeg")
+
 class SocialAccountSimple(BaseModel):
     id: int
     platform: str
@@ -353,3 +387,4 @@ def sync_data(db: Session = Depends(get_db)):
         
     db.commit()
     return {"status": "success", "added_count": added_count, "updated_count": updated_count}
+

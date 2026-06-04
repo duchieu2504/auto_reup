@@ -2,19 +2,20 @@ import React, { useEffect, useRef, useState } from 'react';
 import { FileVideo, PlayCircle, Settings } from 'lucide-react';
 import { useProcessor } from '../context/ProcessorContext';
 import { toast } from 'react-hot-toast';
+import { useSubtitleState } from '../hooks/useSubtitleState';
+import { SubtitleConfigPanel } from '../components/subtitle/SubtitleConfigPanel';
+import { WatermarkConfigPanel } from '../components/subtitle/WatermarkConfigPanel';
 
 const Phase2Processor = () => {
   const { videoPath, setVideoPath, isProcessing, logs, startProcessing } = useProcessor();
   const logContainerRef = useRef(null);
+  
+  const subtitleState = useSubtitleState();
 
   const [voices, setVoices] = useState([]);
   const [voiceMode, setVoiceMode] = useState("edge_auto");
   const [bgVolume, setBgVolume] = useState(10);
-  const [flipVideo, setFlipVideo] = useState(false);
-  const [optZoom, setOptZoom] = useState(false);
-  const [optColor, setOptColor] = useState(false);
-  const [optNoise, setOptNoise] = useState(false);
-  const [optPitch, setOptPitch] = useState(false);
+
   const [isScanning, setIsScanning] = useState(false);
 
   useEffect(() => {
@@ -32,7 +33,15 @@ const Phase2Processor = () => {
 
   const handleStart = (e) => {
     e.preventDefault();
-    startProcessing(videoPath, { voiceMode, bgVolume, flipVideo, optZoom, optColor, optNoise, optPitch });
+    startProcessing(videoPath, { 
+      voiceMode, bgVolume, 
+      flipVideo: subtitleState.flipVideo, 
+      optZoom: subtitleState.optZoom, 
+      optColor: subtitleState.optColor, 
+      optNoise: subtitleState.optNoise, 
+      optPitch: subtitleState.optPitch,
+      subConfig: subtitleState.subConfig
+    });
   };
 
   const handleScanFolder = async () => {
@@ -110,50 +119,9 @@ const Phase2Processor = () => {
             </div>
           </div>
           
-          <div className="bg-bg-secondary rounded-xl border border-border-subtle p-3">
-            <div className="flex items-center justify-between mb-3 border-b border-border-subtle pb-2">
-              <label className="text-sm font-semibold text-text-primary">
-                Tính năng Siêu lách bản quyền (Micro-alterations)
-              </label>
-              <button 
-                type="button" 
-                onClick={() => {
-                  const newState = !(flipVideo && optZoom && optColor && optNoise && optPitch);
-                  setFlipVideo(newState);
-                  setOptZoom(newState);
-                  setOptColor(newState);
-                  setOptNoise(newState);
-                  setOptPitch(newState);
-                }}
-                className="text-xs bg-brand-primary/10 text-brand-primary px-2 py-1 rounded hover:bg-brand-primary/20"
-              >
-                Chọn tất cả
-              </button>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="flipVideoPhase2" checked={flipVideo} onChange={(e) => setFlipVideo(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
-                <label htmlFor="flipVideoPhase2" className="text-xs text-text-secondary cursor-pointer select-none">Lật gương (Mirror)</label>
-              </div>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="optZoomPhase2" checked={optZoom} onChange={(e) => setOptZoom(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
-                <label htmlFor="optZoomPhase2" className="text-xs text-text-secondary cursor-pointer select-none">Zoom 2%</label>
-              </div>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="optColorPhase2" checked={optColor} onChange={(e) => setOptColor(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
-                <label htmlFor="optColorPhase2" className="text-xs text-text-secondary cursor-pointer select-none">Tăng màu (EQ)</label>
-              </div>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="optNoisePhase2" checked={optNoise} onChange={(e) => setOptNoise(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
-                <label htmlFor="optNoisePhase2" className="text-xs text-text-secondary cursor-pointer select-none">Nhiễu hạt (Noise)</label>
-              </div>
-              <div className="flex items-center gap-2 col-span-2">
-                <input type="checkbox" id="optPitchPhase2" checked={optPitch} onChange={(e) => setOptPitch(e.target.checked)} className="w-4 h-4 accent-brand-primary cursor-pointer" />
-                <label htmlFor="optPitchPhase2" className="text-xs text-text-secondary cursor-pointer select-none">Đổi tần số âm thanh (Pitch 2%)</label>
-              </div>
-            </div>
-          </div>
+
+          <SubtitleConfigPanel config={subtitleState} />
+          <WatermarkConfigPanel config={subtitleState} />
           
           <div className="pt-2">
              <button 

@@ -1,5 +1,5 @@
 import os
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
 ENV_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/.env"))
@@ -28,9 +28,8 @@ class Translator:
                 if not gemini_key:
                     raise Exception("Tính năng Phân vai Nam/Nữ qua âm thanh yêu cầu phải cấu hình Gemini API Key.")
                 
-                genai.configure(api_key=gemini_key)
-                model = genai.GenerativeModel('gemini-2.5-flash')
-                audio_file = genai.upload_file(path=audio_path)
+                client = genai.Client(api_key=gemini_key)
+                audio_file = client.files.upload(file=audio_path)
                 
                 prompt = f"""
 Bạn là chuyên gia dịch thuật tiếng Trung sang tiếng Việt.
@@ -44,7 +43,10 @@ TUYỆT ĐỐI GIỮ NGUYÊN cấu trúc thời gian và số thứ tự của f
 SRT Gốc:
 {content}
 """
-                response = model.generate_content([prompt, audio_file])
+                response = client.models.generate_content(
+                    model='gemini-3.5-flash',
+                    contents=[prompt, audio_file]
+                )
                 translated_text = response.text
                 
             else:
@@ -62,9 +64,11 @@ SRT Gốc:
                 
                 if active_provider == "gemini":
                     if not gemini_key: raise Exception("Chưa cấu hình Gemini API Key")
-                    genai.configure(api_key=gemini_key)
-                    model = genai.GenerativeModel('gemini-2.5-flash')
-                    response = model.generate_content(prompt)
+                    client = genai.Client(api_key=gemini_key)
+                    response = client.models.generate_content(
+                        model='gemini-3.5-flash',
+                        contents=prompt
+                    )
                     translated_text = response.text
                     
                 elif active_provider == "openai":
