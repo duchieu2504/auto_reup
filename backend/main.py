@@ -13,7 +13,22 @@ from app.api.upload_schedule import router as upload_schedule_router
 # Tạo folder data nếu chưa có
 os.makedirs("/data", exist_ok=True)
 
-Base.metadata.create_all(bind=engine)
+import time
+from sqlalchemy.exc import OperationalError
+
+# Retry logic for database connection (handles Postgres slow startup on fresh clone)
+max_retries = 5
+for i in range(max_retries):
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("Database connected and initialized successfully.")
+        break
+    except OperationalError as e:
+        if i == max_retries - 1:
+            print("Failed to connect to the database after multiple retries. Exiting.")
+            raise e
+        print(f"Database connection failed, retrying in 5 seconds... ({i+1}/{max_retries})")
+        time.sleep(5)
 
 app = FastAPI(title="Video Reup System API")
 
