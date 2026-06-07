@@ -107,17 +107,37 @@ class AdbWarmupEngine(BaseWarmupEngine):
             logger.info(f"[Warmup-ADB] Đang connect tới {device_id}...")
             subprocess.run(f"adb connect {device_id}", shell=True)
             
-        adb_cmd = f"adb -s {device_id}"
+        adb_cmd = ["adb", "-s", device_id]
         
         logger.info(f"[Warmup-ADB] Khởi động Tiktok trên thiết bị {device_id}")
         # Mở app Tiktok (Thử lần lượt các phiên bản Quốc tế, Châu Á, Douyin)
         packages = ["com.zhiliaoapp.musically", "com.ss.android.ugc.trill", "com.ss.android.ugc.aweme"]
+        app_launched = False
+        
         for pkg in packages:
-            res = subprocess.run(f"{adb_cmd} shell monkey -p {pkg} -c android.intent.category.LAUNCHER 1", shell=True, capture_output=True, text=True)
-            if "No activities found to run" not in res.stderr and "No activities found to run" not in res.stdout:
-                logger.info(f"[Warmup-ADB] Đã khởi chạy package {pkg}")
+            res = subprocess.run(adb_cmd + ["shell", "monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1"], capture_output=True, text=True)
+            output = res.stdout + res.stderr
+            if "No activities found to run" not in output and "error:" not in output and "device offline" not in output and "not found" not in output:
+                logger.info(f"[Warmup-ADB] Đã gửi lệnh khởi chạy package {pkg}")
+                app_launched = True
                 break
-        time.sleep(8) # Đợi app load
+                
+        if not app_launched:
+            raise Exception("Lỗi: Không thể khởi chạy Tiktok (Chưa cài đặt app, sai IP hoặc bị HĐH chặn lệnh monkey).")
+            
+        time.sleep(10) # Đợi app load
+        
+        # Xác minh app có thực sự đang mở trên màn hình hay không
+        try:
+            from app.services.uploader.adb_automator import ADBAutomator
+            automator = ADBAutomator(device_id)
+            if not automator.find_element(texts=["Trang chủ", "Home", "Hồ sơ", "Profile", "Tạo", "Create", "Hộp thư", "Inbox"]):
+                raise Exception("Lỗi: Tiktok tải quá chậm, bị treo, hoặc lệnh monkey bị HĐH chặn (Cần bật Gỡ lỗi USB bảo mật).")
+        except Exception as e:
+            if "Tiktok tải quá chậm" in str(e) or "bị HĐH chặn" in str(e):
+                raise e
+            logger.warning(f"[Warmup-ADB] Không thể xác minh giao diện Tiktok nhưng vẫn tiếp tục: {e}")
+        
         
         warmup_duration = random.randint(600, 900)
         end_time = time.time() + warmup_duration
@@ -125,8 +145,10 @@ class AdbWarmupEngine(BaseWarmupEngine):
         videos_watched = 0
         likes_given = 0
         
+        adb_cmd_str = f"adb -s {device_id}"
+        
         # Tính toán kích thước màn hình động để vuốt cho chuẩn xác
-        res_wm = subprocess.run(f"{adb_cmd} shell wm size", shell=True, capture_output=True, text=True)
+        res_wm = subprocess.run(f"{adb_cmd_str} shell wm size", shell=True, capture_output=True, text=True)
         width, height = 720, 1280
         if "Physical size:" in res_wm.stdout:
             size_str = res_wm.stdout.split("Physical size:")[1].strip()
@@ -169,12 +191,12 @@ class AdbWarmupEngine(BaseWarmupEngine):
             start_y = int(height * 0.8)
             end_x = int(width * 0.5)
             end_y = int(height * 0.2)
-            subprocess.run(f"{adb_cmd} shell input swipe {start_x} {start_y} {end_x} {end_y} 300", shell=True)
+            subprocess.run(f"{adb_cmd_str} shell input swipe {start_x} {start_y} {end_x} {end_y} 300", shell=True)
             videos_watched += 1
             
         logger.info(f"[Warmup-ADB] Hoàn tất phiên nuôi! Đã lướt {videos_watched} video, thả {likes_given} tim.")
         # Về màn hình chính hoặc tắt màn
-        subprocess.run(f"{adb_cmd} shell input keyevent 3", shell=True)
+        subprocess.run(f"{adb_cmd_str} shell input keyevent 3", shell=True)
 
 class WarmupEngineFactory:
     @staticmethod
