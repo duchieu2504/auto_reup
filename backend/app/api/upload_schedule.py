@@ -95,8 +95,15 @@ def create_schedule(schedule: UploadScheduleCreate, db: Session = Depends(get_db
     db.commit()
     db.refresh(db_schedule)
     
-    # Nếu scheduled_time là None (đăng ngay), trigger task celery luôn (Sẽ tích hợp sau)
-    
+    # Nếu scheduled_time là None (đăng ngay) hoặc đã đến giờ, trigger task celery luôn
+    if db_schedule.scheduled_time is None or db_schedule.scheduled_time <= datetime.now(db_schedule.scheduled_time.tzinfo if db_schedule.scheduled_time else None):
+        try:
+            from app.tasks.uploader_tasks import execute_upload
+            db_schedule.status = "uploading"
+            db.commit()
+            execute_upload.delay(db_schedule.id)
+        except Exception as e:
+            pass
     return db_schedule
 
 @router.delete("/{schedule_id}")
