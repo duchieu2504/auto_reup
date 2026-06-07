@@ -6,6 +6,7 @@ import { useSubtitleState } from '../../hooks/useSubtitleState';
 import { SubtitleConfigPanel } from '../../components/subtitle/SubtitleConfigPanel';
 import { WatermarkConfigPanel } from '../../components/subtitle/WatermarkConfigPanel';
 import { InteractiveVideoPreview } from '../../components/subtitle/InteractiveVideoPreview';
+import { ProfileSelector, SaveProfileButton } from '../../components/subtitle/ProfileSelector';
 
 const API_BASE = 'http://localhost:8000/api';
 
@@ -56,19 +57,24 @@ const EditVideo = () => {
             <p className="text-text-secondary text-sm mt-1">{videoData.title || "Không có tiêu đề"}</p>
           </div>
         </div>
-        <button 
-          className="px-6 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-hover transition-colors font-medium flex items-center gap-2 shadow-lg shadow-brand-primary/20"
-          onClick={() => handleSaveAndRender(subtitleConfig)}
-          disabled={saving}
-        >
-          {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-          Lưu & Render Lại
-        </button>
+        <div className="flex items-center gap-3">
+          <SaveProfileButton config={subtitleConfig} />
+          <button 
+            className="px-6 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-hover transition-colors font-medium flex items-center gap-2 shadow-lg shadow-brand-primary/20"
+            onClick={() => handleSaveAndRender(subtitleConfig)}
+            disabled={saving}
+          >
+            {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+            Lưu & Render Lại
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Col: Preview & Audio Config */}
         <div className="space-y-6">
+          <ProfileSelector config={subtitleConfig} />
+          
           <div className="bg-bg-primary border border-border-subtle rounded-2xl p-4">
             <h2 className="text-sm font-semibold text-text-primary mb-3">Xem trước Video Gốc</h2>
             {videoData.raw_video_path ? (

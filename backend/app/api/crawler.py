@@ -13,7 +13,7 @@ from app.core.logger import get_logger
 logger = get_logger(__name__)
 router = APIRouter()
 
-REDIS_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+from app.core.config import REDIS_URL
 redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
 class CrawlRequest(BaseModel):

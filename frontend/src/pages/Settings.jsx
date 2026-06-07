@@ -4,12 +4,15 @@ const Settings = () => {
   const [fptKey, setFptKey] = useState("");
   const [elevenlabsKey, setElevenlabsKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
+  const [geminiModel, setGeminiModel] = useState("gemini-3.5-flash");
   const [openaiKey, setOpenaiKey] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
   const [xaiKey, setXaiKey] = useState("");
   const [groqKey, setGroqKey] = useState("");
   const [useGroq, setUseGroq] = useState(false);
   const [useGpuAcceleration, setUseGpuAcceleration] = useState(false);
+  const [enableHealthCheck, setEnableHealthCheck] = useState(false);
+  const [healthCheckInterval, setHealthCheckInterval] = useState(4);
   const [activeAIProvider, setActiveAIProvider] = useState("gemini");
   const [activeTTSProvider, setActiveTTSProvider] = useState("edge");
   const [concurrency, setConcurrency] = useState(1);
@@ -26,12 +29,15 @@ const Settings = () => {
         if (data.fpt_ai_api_key) setFptKey(data.fpt_ai_api_key);
         if (data.elevenlabs_api_key) setElevenlabsKey(data.elevenlabs_api_key);
         if (data.gemini_api_key) setGeminiKey(data.gemini_api_key);
+        if (data.gemini_model) setGeminiModel(data.gemini_model);
         if (data.openai_api_key) setOpenaiKey(data.openai_api_key);
         if (data.anthropic_api_key) setAnthropicKey(data.anthropic_api_key);
         if (data.xai_api_key) setXaiKey(data.xai_api_key);
         if (data.groq_api_key) setGroqKey(data.groq_api_key);
         if (data.use_groq !== undefined) setUseGroq(data.use_groq);
         if (data.use_gpu_acceleration !== undefined) setUseGpuAcceleration(data.use_gpu_acceleration);
+        if (data.enable_health_check !== undefined) setEnableHealthCheck(data.enable_health_check);
+        if (data.health_check_interval_hours) setHealthCheckInterval(data.health_check_interval_hours);
         if (data.active_ai_provider) setActiveAIProvider(data.active_ai_provider);
         if (data.active_tts_provider) setActiveTTSProvider(data.active_tts_provider);
         if (data.ai_concurrency_limit) setConcurrency(data.ai_concurrency_limit);
@@ -48,6 +54,7 @@ const Settings = () => {
               fpt_ai_api_key: data.fpt_ai_api_key || "",
               elevenlabs_api_key: data.elevenlabs_api_key || "",
               gemini_api_key: data.gemini_api_key || "",
+              gemini_model: data.gemini_model || "gemini-3.5-flash",
               openai_api_key: data.openai_api_key || "",
               anthropic_api_key: data.anthropic_api_key || "",
               xai_api_key: data.xai_api_key || "",
@@ -90,6 +97,7 @@ const Settings = () => {
           fpt_ai_api_key: fptKey,
           elevenlabs_api_key: elevenlabsKey,
           gemini_api_key: geminiKey,
+          gemini_model: geminiModel,
           openai_api_key: openaiKey,
           anthropic_api_key: anthropicKey,
           xai_api_key: xaiKey,
@@ -101,7 +109,9 @@ const Settings = () => {
           gpm_api_url: gpmApiUrl,
           groq_api_key: groqKey,
           use_groq: useGroq,
-          use_gpu_acceleration: useGpuAcceleration
+          use_gpu_acceleration: useGpuAcceleration,
+          enable_health_check: enableHealthCheck,
+          health_check_interval_hours: Number(healthCheckInterval)
         })
       });
       if (res.ok) {
@@ -115,6 +125,7 @@ const Settings = () => {
             fpt_ai_api_key: fptKey,
             elevenlabs_api_key: elevenlabsKey,
             gemini_api_key: geminiKey,
+            gemini_model: geminiModel,
             openai_api_key: openaiKey,
             anthropic_api_key: anthropicKey,
             xai_api_key: xaiKey,
@@ -126,7 +137,9 @@ const Settings = () => {
             gpm_api_url: gpmApiUrl,
             groq_api_key: groqKey,
             use_groq: useGroq,
-            use_gpu_acceleration: useGpuAcceleration
+            use_gpu_acceleration: useGpuAcceleration,
+            enable_health_check: enableHealthCheck,
+            health_check_interval_hours: Number(healthCheckInterval)
           })
         });
 
@@ -149,6 +162,21 @@ const Settings = () => {
         setTimeout(() => setSaveStatus(""), 4000);
       } else {
         setSaveStatus("Lỗi khi lưu!");
+      }
+    } catch (e) {
+      setSaveStatus("Lỗi kết nối server!");
+    }
+  };
+
+  const handleCheckNow = async () => {
+    try {
+      setSaveStatus("Đang gửi lệnh kiểm tra...");
+      const res = await fetch('http://localhost:8000/api/settings/health/check_now', { method: 'POST' });
+      if (res.ok) {
+        setSaveStatus("Đã gửi lệnh kiểm tra vào hàng đợi (Xem console backend)!");
+        setTimeout(() => setSaveStatus(""), 4000);
+      } else {
+        setSaveStatus("Lỗi khi gửi lệnh!");
       }
     } catch (e) {
       setSaveStatus("Lỗi kết nối server!");
@@ -289,6 +317,21 @@ const Settings = () => {
                 else setXaiKey(e.target.value);
               }}
             />
+            {activeAIProvider === "gemini" && (
+              <div className="mt-3">
+                <label className="block text-xs font-medium text-text-secondary mb-1">Phiên bản Mô hình Gemini (Model)</label>
+                <select
+                  className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-2 px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 transition-all duration-200"
+                  value={geminiModel}
+                  onChange={(e) => setGeminiModel(e.target.value)}
+                >
+                  <option value="gemini-3.5-flash">Gemini 3.5 Flash (Mới nhất - có thể gặp lỗi quá tải)</option>
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                  <option value="gemini-2.0-flash">Gemini 2.0 Flash (Khuyên dùng - Ổn định nhất)</option>
+                  <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                </select>
+              </div>
+            )}
             {validateStatus[activeAIProvider] === "valid" && <p className="text-sm text-green-500 mt-2 font-medium">✓ API Key hợp lệ và đang hoạt động</p>}
             {validateStatus[activeAIProvider] === "invalid" && <p className="text-sm text-red-500 mt-2 font-medium">✕ API Key không hợp lệ</p>}
           </div>
@@ -389,6 +432,48 @@ const Settings = () => {
               className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200"
               placeholder="http://user:pass@ip:port"
             />
+          </div>
+
+          <div className="bg-bg-tertiary p-4 rounded-xl border border-border-subtle">
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-bold text-text-primary">🏥 Giám sát Sức khỏe Tài khoản (Shadowban Check)</label>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={enableHealthCheck}
+                  onChange={(e) => setEnableHealthCheck(e.target.checked)}
+                />
+                <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+              </label>
+            </div>
+            <p className="text-xs text-text-secondary mb-4">Tự động dùng trình duyệt quét số lượt xem của các video mới đăng trong vòng 3 ngày. Nếu 0 view liên tục, hệ thống sẽ cảnh báo đỏ (Shadowbanned).</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-2">Chu kỳ kiểm tra</label>
+                <select
+                  className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-2 px-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 transition-all duration-200"
+                  value={healthCheckInterval}
+                  onChange={(e) => setHealthCheckInterval(Number(e.target.value))}
+                  disabled={!enableHealthCheck}
+                >
+                  <option value={4}>Mỗi 4 giờ (Khuyên dùng)</option>
+                  <option value={8}>Mỗi 8 giờ</option>
+                  <option value={12}>Mỗi 12 giờ</option>
+                  <option value={24}>Mỗi 24 giờ</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={handleCheckNow}
+                  className="w-full bg-bg-secondary hover:bg-bg-tertiary border border-border-subtle text-text-primary px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
+                >
+                  <span className="mr-2">🔍</span> Kiểm tra ngay
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center gap-4 pt-2">

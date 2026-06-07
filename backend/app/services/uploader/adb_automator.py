@@ -4,7 +4,6 @@ import re
 import os
 import xml.etree.ElementTree as ET
 import logging
-
 logger = logging.getLogger(__name__)
 import urllib.request
 
@@ -146,6 +145,66 @@ class ADBAutomator:
         logger.info(f"[ADBAutomator] Click tọa độ tương đối ({pct_x:.2f}, {pct_y:.2f}) -> ({x}, {y})")
         self._run_adb(["shell", "input", "tap", str(x), str(y)])
         time.sleep(1)
+
+    def get_dynamic_y(self) -> float:
+        """Tính toán tọa độ Y chính xác bằng cách quét màn hình để tìm cụm nút Quay phim."""
+        try:
+            import tempfile
+            import xml.etree.ElementTree as ET
+            import re
+            import statistics
+            
+            xml_path = "/sdcard/window_dump_dynamic.xml"
+            self._run_adb(["shell", "uiautomator", "dump", xml_path])
+            local_path = os.path.join(tempfile.gettempdir(), "window_dump_dynamic.xml")
+            self._run_adb(["pull", xml_path, local_path])
+            
+            if os.path.exists(local_path):
+                tree = ET.parse(local_path)
+                w, h = self.screen_size if hasattr(self, 'screen_size') else self.get_screen_size()
+                x_center = w / 2
+                
+                y_candidates = []
+                for node in tree.iter():
+                    bounds_str = node.get("bounds")
+                    if not bounds_str: continue
+                    match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bounds_str)
+                    if not match: continue
+                    
+                    left, top, right, bottom = [int(x) for x in match.groups()]
+                    width = right - left
+                    height = bottom - top
+                    
+                    # Nút quay phim thường cắt ngang qua trục dọc giữa màn hình, to trên 80px, nằm ở nửa dưới
+                    if left < x_center < right and top > h / 2 and width > 80 and height > 80:
+                        y_candidates.append((top + bottom) / 2)
+                
+                if y_candidates:
+                    median_y = statistics.median(y_candidates)
+                    logger.info(f"[ADBAutomator] Đã tìm thấy cụm nút Camera tại Y={median_y} (Tỷ lệ: {median_y/h:.3f})")
+                    return median_y / h
+        except Exception as e:
+            logger.warning(f"[ADBAutomator] Lỗi khi tính Dynamic Y tự động, sử dụng fallback. Lỗi: {e}")
+            
+        w, h = self.screen_size if hasattr(self, 'screen_size') else self.get_screen_size()
+        self.screen_size = (w, h)
+        ratio = h / w
+        if ratio > 2.0:
+            return 0.80 # Màn hình dài
+        return 0.85 # Màn hình chuẩn
+
+    def click_dynamic_bottom_right(self):
+        """Bấm vào nút Upload mặc định (Thường ở bên Phải)"""
+        y = self.get_dynamic_y()
+        self.click_percentage(0.85, y)
+        time.sleep(2)
+        
+    def click_dynamic_bottom_left(self):
+        """Bấm vào nút Upload (Nếu bị đẩy sang bên Trái trên một số dòng máy)"""
+        y = self.get_dynamic_y()
+        self.click_percentage(0.15, y)
+        time.sleep(2)
+        
 
     def handle_permission_popups(self, max_popups=3):
         """Xử lý các popup cấp quyền (Camera, Mic, Bộ nhớ)"""

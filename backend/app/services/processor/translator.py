@@ -15,6 +15,7 @@ class Translator:
         
         active_provider = os.getenv("ACTIVE_AI_PROVIDER", "gemini")
         gemini_key = decrypt_data(os.getenv("GEMINI_API_KEY", ""))
+        gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
         openai_key = decrypt_data(os.getenv("OPENAI_API_KEY", ""))
         anthropic_key = decrypt_data(os.getenv("ANTHROPIC_API_KEY", ""))
         xai_key = decrypt_data(os.getenv("XAI_API_KEY", ""))
@@ -44,7 +45,7 @@ SRT Gốc:
 {content}
 """
                 response = client.models.generate_content(
-                    model='gemini-3.5-flash',
+                    model=gemini_model,
                     contents=[prompt, audio_file]
                 )
                 translated_text = response.text
@@ -66,7 +67,7 @@ SRT Gốc:
                     if not gemini_key: raise Exception("Chưa cấu hình Gemini API Key")
                     client = genai.Client(api_key=gemini_key)
                     response = client.models.generate_content(
-                        model='gemini-3.5-flash',
+                        model=gemini_model,
                         contents=prompt
                     )
                     translated_text = response.text

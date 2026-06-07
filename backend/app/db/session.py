@@ -3,14 +3,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 
-# Đường dẫn tới thư mục data nằm ở gốc dự án (cho fallback SQLite)
-DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../data"))
-os.makedirs(DATA_DIR, exist_ok=True)
+from app.core.config import DATA_DIR
 
 # Ưu tiên lấy từ biến môi trường (Docker)
 SQLALCHEMY_DATABASE_URL = os.environ.get(
     "DATABASE_URL", 
-    f"sqlite:///{os.path.join(DATA_DIR, 'history.db')}"
+    f"sqlite:///{os.path.join(DATA_DIR, 'history.db').replace(chr(92), '/')}"
 )
 
 # SQLite cần connect_args, Postgres thì không

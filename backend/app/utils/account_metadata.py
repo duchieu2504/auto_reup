@@ -2,7 +2,8 @@ import os
 import json
 from datetime import datetime
 
-ACCOUNTS_DIR = "/data/accounts"
+from app.core.config import DATA_DIR
+ACCOUNTS_DIR = os.path.join(DATA_DIR, "accounts")
 
 def save_account_metadata(account_record):
     if not os.path.exists(ACCOUNTS_DIR):

@@ -15,6 +15,19 @@ def hex_to_ass_color(hex_color: str, alpha: str = "00") -> str:
     r, g, b = hex_color[0:2], hex_color[2:4], hex_color[4:6]
     return f"&H{alpha}{b}{g}{r}"
 
+def get_video_duration(video_path: str) -> float:
+    try:
+        import re
+        cmd = [ffmpeg_exe, "-i", video_path]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        match = re.search(r"Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})", result.stderr)
+        if match:
+            h, m, s = match.groups()
+            return int(h) * 3600 + int(m) * 60 + float(s)
+    except Exception:
+        pass
+    return 0.0
+
 class VideoEditor:
     def get_optimal_video_encoder(self, use_gpu: bool = False) -> str:
         if not use_gpu:
@@ -38,7 +51,7 @@ class VideoEditor:
         return "libx264"
         return "libx264"
 
-    def burn_subtitles(self, input_video: str, srt_file: str, output_video: str, tts_audio: str = None, bg_volume: int = 10, flip_video: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False, subtitle_text_color: str = "#000000", subtitle_bg_color: str = "#FFFFFF", subtitle_font_size: int = 18, subtitle_margin_v: int = 40, subtitle_bg_padding: int = 15, subtitle_bg_opacity: int = 100, watermark_type: str = "none", watermark_text: str = None, watermark_image_path: str = None, watermark_x: float = 50.0, watermark_y: float = 50.0, watermark_size: float = 20.0, watermark_color: str = "#FFFFFF", watermark_opacity: float = 50.0, subtitle_font_family: str = "Liberation Sans"):
+    def burn_subtitles(self, input_video: str, srt_file: str, output_video: str, tts_audio: str = None, bg_volume: int = 10, flip_video: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False, subtitle_text_color: str = "#000000", subtitle_bg_color: str = "#FFFFFF", subtitle_font_size: int = 18, subtitle_margin_v: int = 40, subtitle_bg_padding: int = 15, subtitle_bg_opacity: int = 100, watermark_type: str = "none", watermark_text: str = None, watermark_image_path: str = None, watermark_x: float = 50.0, watermark_y: float = 50.0, watermark_size: float = 20.0, watermark_color: str = "#FFFFFF", watermark_opacity: float = 50.0, subtitle_font_family: str = "Liberation Sans", log_callback=None):
         load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/.env")), override=True)
         use_gpu = os.getenv("USE_GPU_ACCELERATION", "False").lower() == "true"
         vcodec = self.get_optimal_video_encoder(use_gpu)
@@ -164,8 +177,24 @@ class VideoEditor:
             
         cmd.append(output_video)
         
+        total_duration = get_video_duration(input_video)
+        
         try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            import re
+            process = subprocess.Popen(cmd, stderr=subprocess.PIPE, universal_newlines=True, encoding='utf-8', errors='replace')
+            for line in process.stderr:
+                if log_callback and total_duration > 0:
+                    match = re.search(r"time=(\d{2}):(\d{2}):(\d{2}\.\d{2})", line)
+                    if match:
+                        h, m, s = match.groups()
+                        current_sec = int(h) * 3600 + int(m) * 60 + float(s)
+                        percent = 40.0 + (current_sec / total_duration) * 50.0
+                        percent = min(90.0, max(40.0, percent))
+                        log_callback(f"[*] Đang Render... {current_sec:.1f}s / {total_duration:.1f}s\n", progress=round(percent, 1))
+            
+            process.wait()
+            if process.returncode != 0:
+                raise Exception(f"FFmpeg exited with code {process.returncode}")
             return output_video
-        except subprocess.CalledProcessError as e:
-            raise Exception(f"Lỗi FFmpeg khi burn sub: {e.stderr}")
+        except Exception as e:
+            raise Exception(f"Lỗi FFmpeg khi burn sub: {e}")

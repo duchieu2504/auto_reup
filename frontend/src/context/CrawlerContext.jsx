@@ -3,9 +3,10 @@ import React, { createContext, useState, useContext, useRef } from 'react';
 const CrawlerContext = createContext();
 
 export const CrawlerProvider = ({ children }) => {
-  const [url, setUrl] = useState('');
+  const [urls, setUrls] = useState('');
   const [isCrawling, setIsCrawling] = useState(false);
-  const [logs, setLogs] = useState(["[System] Đang chờ lệnh mới..."]);
+  const [logs, setLogs] = useState(["[System] Đang chờ lệnh..."]);
+  const [progress, setProgress] = useState(0);
   const eventSourceRef = useRef(null);
 
   const startCrawling = async (submitUrl) => {
@@ -13,10 +14,11 @@ export const CrawlerProvider = ({ children }) => {
     
     // Parse multiple URLs
     const urlList = submitUrl.split('\n').map(u => u.trim()).filter(u => u);
-    if (urlList.length === 0) return;
+    if (!submitUrl.trim()) return;
 
     setIsCrawling(true);
-    setLogs(["[System] Đang khởi tạo luồng..."]);
+    setProgress(0);
+    setLogs(["[System] Đang khởi tạo tiến trình cào dữ liệu..."]);
 
     try {
       const res = await fetch('http://localhost:8000/api/crawler/start', {
@@ -43,9 +45,20 @@ export const CrawlerProvider = ({ children }) => {
         const newLog = event.data;
         if (newLog.includes("[DONE]")) {
           setIsCrawling(false);
+          setProgress(100);
           eventSource.close();
         } else {
-          setLogs(prev => [...prev, newLog]);
+          try {
+            const parsed = JSON.parse(newLog);
+            if (parsed.progress !== undefined) {
+              setProgress(parsed.progress);
+            }
+            if (parsed.log) {
+              setLogs(prev => [...prev, parsed.log]);
+            }
+          } catch (e) {
+            setLogs(prev => [...prev, newLog]);
+          }
         }
       };
 
@@ -63,7 +76,7 @@ export const CrawlerProvider = ({ children }) => {
   };
 
   return (
-    <CrawlerContext.Provider value={{ url, setUrl, isCrawling, logs, startCrawling }}>
+    <CrawlerContext.Provider value={{ urls, setUrls, isCrawling, logs, progress, startCrawling }}>
       {children}
     </CrawlerContext.Provider>
   );

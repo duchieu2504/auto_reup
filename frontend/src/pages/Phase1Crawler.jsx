@@ -4,15 +4,15 @@ import { Search, Download, PlayCircle } from 'lucide-react';
 import { useCrawler } from '../context/CrawlerContext';
 
 const Phase1Crawler = () => {
-  const { url, setUrl, isCrawling, logs, startCrawling } = useCrawler();
+  const { urls, setUrls, isCrawling, logs, progress, startCrawling } = useCrawler();
   const logContainerRef = useRef(null);
   const location = useLocation();
 
   useEffect(() => {
     if (location.state?.presetUrl) {
-      setUrl(location.state.presetUrl);
+      setUrls(location.state.presetUrl);
     }
-  }, [location.state, setUrl]);
+  }, [location.state, setUrls]);
 
   useEffect(() => {
     if (logContainerRef.current) {
@@ -22,7 +22,7 @@ const Phase1Crawler = () => {
 
   const handleStart = (e) => {
     e.preventDefault();
-    startCrawling(url);
+    startCrawling(urls);
   };
 
   return (
@@ -38,8 +38,8 @@ const Phase1Crawler = () => {
                 <textarea 
                   className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 pl-12 pr-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 resize-none" 
                   placeholder="Nhập 1 hoặc nhiều link (Profile hoặc Video), mỗi link 1 dòng..." 
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
+                  value={urls}
+                  onChange={(e) => setUrls(e.target.value)}
                   rows={3}
                 />
               </div>
@@ -57,7 +57,20 @@ const Phase1Crawler = () => {
       </div>
 
       <div className="glass-panel p-6 rounded-2xl">
-        <h3 className="text-xl font-bold mb-6 tracking-tight">Log Hoạt Động (Live Stream)</h3>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-bold tracking-tight">Log Hoạt Động (Live Stream)</h3>
+          {isCrawling && (
+            <div className="flex items-center gap-3 w-1/3">
+              <span className="text-sm font-medium text-brand-primary">{progress}%</span>
+              <div className="flex-1 h-2 bg-border-subtle rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-brand-primary transition-all duration-300 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
         <div 
           ref={logContainerRef}
           className="bg-[#010409] border border-border-subtle rounded-xl p-6 font-mono text-sm h-[400px] overflow-y-auto leading-relaxed shadow-inner"

@@ -3,7 +3,8 @@ import json
 import re
 from datetime import datetime
 
-METADATA_DIR = "/data/metadata"
+from app.core.config import DATA_DIR
+METADATA_DIR = os.path.join(DATA_DIR, "metadata")
 
 def _extract_id(name):
     if not name:

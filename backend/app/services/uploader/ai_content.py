@@ -1,5 +1,5 @@
 import os
-import google.generativeai as genai
+from google import genai
 from typing import Dict
 
 class AIContentGenerator:
@@ -18,8 +18,7 @@ class AIContentGenerator:
         
         self.is_configured = False
         if self.active_provider == "gemini" and self.gemini_key:
-            genai.configure(api_key=self.gemini_key)
-            self.model = genai.GenerativeModel('gemini-2.5-flash')
+            self.gemini_client = genai.Client(api_key=self.gemini_key)
             self.is_configured = True
         elif self.active_provider == "openai" and self.openai_key:
             from openai import OpenAI
@@ -64,7 +63,10 @@ class AIContentGenerator:
         try:
             result_text = ""
             if self.active_provider == "gemini":
-                response = self.model.generate_content(prompt)
+                response = self.gemini_client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt
+                )
                 result_text = response.text.strip()
             elif self.active_provider == "openai":
                 response = self.openai_client.chat.completions.create(

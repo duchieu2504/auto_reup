@@ -6,11 +6,13 @@ export const ProcessorProvider = ({ children }) => {
   const [videoPath, setVideoPath] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [logs, setLogs] = useState(["[System] Đang chờ lệnh xử lý..."]);
+  const [progress, setProgress] = useState(0);
   const eventSourceRef = useRef(null);
 
   const startProcessing = async (submitPath, options = {}) => {
     if (!submitPath) return;
     setIsProcessing(true);
+    setProgress(0);
     setLogs(["[System] Đang khởi tạo luồng xử lý..."]);
 
     try {
@@ -91,9 +93,20 @@ export const ProcessorProvider = ({ children }) => {
         const newLog = event.data;
         if (newLog.includes("[DONE]")) {
           setIsProcessing(false);
+          setProgress(100);
           eventSource.close();
         } else {
-          setLogs(prev => [...prev, newLog]);
+          try {
+            const parsed = JSON.parse(newLog);
+            if (parsed.progress !== undefined) {
+              setProgress(parsed.progress);
+            }
+            if (parsed.log) {
+              setLogs(prev => [...prev, parsed.log]);
+            }
+          } catch (e) {
+            setLogs(prev => [...prev, newLog]);
+          }
         }
       };
 
@@ -111,7 +124,7 @@ export const ProcessorProvider = ({ children }) => {
   };
 
   return (
-    <ProcessorContext.Provider value={{ videoPath, setVideoPath, isProcessing, logs, startProcessing }}>
+    <ProcessorContext.Provider value={{ videoPath, setVideoPath, isProcessing, logs, progress, startProcessing }}>
       {children}
     </ProcessorContext.Provider>
   );

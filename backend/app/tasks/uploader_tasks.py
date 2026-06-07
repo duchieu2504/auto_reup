@@ -1,5 +1,6 @@
 from app.core.celery_app import celery_app
 from celery.utils.log import get_task_logger
+from celery.exceptions import MaxRetriesExceededError
 from app.db.session import SessionLocal
 from app.models.upload_schedule import UploadSchedule
 from datetime import datetime
@@ -40,8 +41,8 @@ def check_scheduled_uploads():
     finally:
         db.close()
 
-@celery_app.task(name="execute_upload")
-def execute_upload(schedule_id: int):
+@celery_app.task(bind=True, name="execute_upload", max_retries=3)
+def execute_upload(self, schedule_id: int):
     """
     Thực thi upload dựa vào engine_type
     """
@@ -98,16 +99,39 @@ def execute_upload(schedule_id: int):
         db.commit()
         
     except Exception as e:
-        logger.error(f"Upload thất bại schedule_id={schedule_id}: {e}")
-        schedule.status = "failed"
-        schedule.error_message = str(e)
-        schedule.retry_count += 1
-        db.commit()
+        error_msg = str(e).lower()
+        fatal_keywords = ["không tồn tại", "không được hỗ trợ", "cấm đăng bài", "bị khóa", "bị chết", "xóa khỏi", "bị cấm"]
+        is_fatal = any(kw in error_msg for kw in fatal_keywords)
+
+        if is_fatal:
+            logger.error(f"Upload thất bại chí mạng (Fatal) schedule_id={schedule_id}: {e}")
+            schedule.status = "failed"
+            schedule.error_message = str(e)
+            db.commit()
+        else:
+            try:
+                # Exponential backoff: 60s, 120s, 300s
+                backoff_delays = [60, 120, 300]
+                retries = self.request.retries
+                delay = backoff_delays[retries] if retries < len(backoff_delays) else 300
+                
+                logger.warning(f"Lỗi tạm thời khi upload schedule_id={schedule_id}: {e}. Đang thử lại lần {retries + 1} sau {delay} giây...")
+                schedule.status = "retrying"
+                schedule.error_message = f"Đang thử lại lần {retries + 1}: {e}"
+                schedule.retry_count += 1
+                db.commit()
+                
+                raise self.retry(exc=e, countdown=delay)
+            except MaxRetriesExceededError:
+                logger.error(f"Hết số lần thử lại schedule_id={schedule_id}: {e}")
+                schedule.status = "failed"
+                schedule.error_message = f"Đã thử lại tối đa 3 lần thất bại: {e}"
+                db.commit()
     finally:
         db.close()
 
-@celery_app.task(name="tasks.warmup_account")
-def warmup_account_task(account_data: dict):
+@celery_app.task(bind=True, name="tasks.warmup_account", max_retries=3)
+def warmup_account_task(self, account_data: dict):
     from app.services.uploader.warmup_engine import WarmupEngineFactory
     from app.db.session import SessionLocal
     from app.models.social_account import SocialAccount
@@ -129,11 +153,36 @@ def warmup_account_task(account_data: dict):
         engine.warmup()
         logger.info(f"Hoàn tất nuôi tài khoản: {account_data.get('username')}")
     except Exception as e:
-        logger.error(f"Lỗi khi nuôi tài khoản {account_data.get('username')}: {e}")
+        error_msg = str(e).lower()
+        fatal_keywords = ["không tồn tại", "không được hỗ trợ", "cấm", "bị khóa", "bị chết", "xóa khỏi"]
+        is_fatal = any(kw in error_msg for kw in fatal_keywords)
+
+        if is_fatal:
+            logger.error(f"Lỗi nghiêm trọng khi nuôi tài khoản {account_data.get('username')}: {e}")
+            if account_id:
+                acc = db.query(SocialAccount).filter_by(id=account_id).first()
+                if acc:
+                    acc.status = "failed"
+                    db.commit()
+        else:
+            try:
+                backoff_delays = [60, 120, 300]
+                retries = self.request.retries
+                delay = backoff_delays[retries] if retries < len(backoff_delays) else 300
+                
+                logger.warning(f"Lỗi tạm thời khi nuôi tài khoản {account_data.get('username')}: {e}. Đang thử lại sau {delay}s...")
+                raise self.retry(exc=e, countdown=delay)
+            except MaxRetriesExceededError:
+                logger.error(f"Hết lần thử lại nuôi tài khoản {account_data.get('username')}: {e}")
+                if account_id:
+                    acc = db.query(SocialAccount).filter_by(id=account_id).first()
+                    if acc:
+                        acc.status = "failed"
+                        db.commit()
     finally:
-        if account_id:
+        if account_id and 'acc' in locals() and acc.status not in ["failed", "retrying"]:
             acc = db.query(SocialAccount).filter_by(id=account_id).first()
-            if acc:
+            if acc and acc.status == "warming_up":
                 acc.status = "active"
                 db.commit()
         db.close()

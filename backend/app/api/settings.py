@@ -13,6 +13,7 @@ class KeysUpdate(BaseModel):
     fpt_ai_api_key: str = ""
     elevenlabs_api_key: str = ""
     gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.5-flash"
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     xai_api_key: str = ""
@@ -25,6 +26,8 @@ class KeysUpdate(BaseModel):
     groq_api_key: str = ""
     use_groq: bool = False
     use_gpu_acceleration: bool = False
+    enable_health_check: bool = False
+    health_check_interval_hours: int = 4
 
 @router.get("/fonts")
 async def get_available_fonts():
@@ -104,6 +107,7 @@ async def get_keys():
         "fpt_ai_api_key": decrypt_data(os.getenv("FPT_AI_API_KEY", "")),
         "elevenlabs_api_key": decrypt_data(os.getenv("ELEVENLABS_API_KEY", "")),
         "gemini_api_key": decrypt_data(os.getenv("GEMINI_API_KEY", "")),
+        "gemini_model": os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
         "openai_api_key": decrypt_data(os.getenv("OPENAI_API_KEY", "")),
         "anthropic_api_key": decrypt_data(os.getenv("ANTHROPIC_API_KEY", "")),
         "xai_api_key": decrypt_data(os.getenv("XAI_API_KEY", "")),
@@ -115,7 +119,9 @@ async def get_keys():
         "gpm_api_url": os.getenv("GPM_API_URL", ""),
         "groq_api_key": decrypt_data(os.getenv("GROQ_API_KEY", "")),
         "use_groq": os.getenv("USE_GROQ", "False").lower() == "true",
-        "use_gpu_acceleration": os.getenv("USE_GPU_ACCELERATION", "False").lower() == "true"
+        "use_gpu_acceleration": os.getenv("USE_GPU_ACCELERATION", "False").lower() == "true",
+        "enable_health_check": os.getenv("ENABLE_HEALTH_CHECK", "False").lower() == "true",
+        "health_check_interval_hours": int(os.getenv("HEALTH_CHECK_INTERVAL_HOURS", 4))
     }
 
 @router.post("/keys")
@@ -128,6 +134,7 @@ async def update_keys(data: KeysUpdate):
     set_key(ENV_PATH, "FPT_AI_API_KEY", encrypt_data(data.fpt_ai_api_key))
     set_key(ENV_PATH, "ELEVENLABS_API_KEY", encrypt_data(data.elevenlabs_api_key))
     set_key(ENV_PATH, "GEMINI_API_KEY", encrypt_data(data.gemini_api_key))
+    set_key(ENV_PATH, "GEMINI_MODEL", data.gemini_model)
     set_key(ENV_PATH, "OPENAI_API_KEY", encrypt_data(data.openai_api_key))
     set_key(ENV_PATH, "ANTHROPIC_API_KEY", encrypt_data(data.anthropic_api_key))
     set_key(ENV_PATH, "XAI_API_KEY", encrypt_data(data.xai_api_key))
@@ -140,6 +147,8 @@ async def update_keys(data: KeysUpdate):
     set_key(ENV_PATH, "GROQ_API_KEY", encrypt_data(data.groq_api_key))
     set_key(ENV_PATH, "USE_GROQ", str(data.use_groq))
     set_key(ENV_PATH, "USE_GPU_ACCELERATION", str(data.use_gpu_acceleration))
+    set_key(ENV_PATH, "ENABLE_HEALTH_CHECK", str(data.enable_health_check))
+    set_key(ENV_PATH, "HEALTH_CHECK_INTERVAL_HOURS", str(data.health_check_interval_hours))
     
     # Save cookie to file in Netscape format for yt-dlp (Lưu ý: yt-dlp cần file raw text)
     cookie_path = os.path.join(os.path.dirname(ENV_PATH), "douyin_cookie.txt")
@@ -203,13 +212,18 @@ async def validate_keys(data: KeysUpdate):
             client = genai.Client(api_key=data.gemini_api_key)
             # Test simple completion
             client.models.generate_content(
-                model='gemini-3.5-flash',
+                model=data.gemini_model,
                 contents='hello'
             )
             results["gemini_api_key"] = "valid"
         except Exception as e:
+            error_str = str(e).lower()
             print("Gemini Test Error:", e)
-            results["gemini_api_key"] = "invalid"
+            if "429" in error_str or "resource_exhausted" in error_str or "503" in error_str or "unavailable" in error_str:
+                # Authenticaton succeeded, just quota/server issues
+                results["gemini_api_key"] = "valid"
+            else:
+                results["gemini_api_key"] = "invalid"
 
     # 3. Test OpenAI API Key
     if data.openai_api_key and data.openai_api_key.strip():
@@ -339,3 +353,13 @@ async def validate_keys(data: KeysUpdate):
             results["gpm_api_url"] = "invalid"
             
     return results
+
+@router.post("/health/check_now")
+async def trigger_health_check_now():
+    try:
+        from app.tasks.health_tasks import check_all_accounts_health_task
+        check_all_accounts_health_task.delay()
+        return {"status": "success", "message": "Đã đưa lệnh kiểm tra sức khỏe tài khoản vào hàng đợi (Celery Queue)."}
+    except Exception as e:
+        return {"status": "error", "message": f"Lỗi kích hoạt task: {str(e)}"}
+

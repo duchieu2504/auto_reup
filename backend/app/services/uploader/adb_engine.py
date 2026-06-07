@@ -116,12 +116,18 @@ class ADBUploader(BaseUploaderEngine):
         automator = ADBAutomator(self.adb_ip)
         automator.check_adb_keyboard()
         
-        if platform == "douyin":
-            return self._upload_douyin(remote_path, full_caption, automator)
-        elif platform == "tiktok":
-            return self._upload_tiktok_mobile(remote_path, full_caption, automator)
-        else:
-            raise Exception(f"Nền tảng App {platform} chưa được hỗ trợ qua ADB.")
+        try:
+            if platform == "douyin":
+                return self._upload_douyin(remote_path, full_caption, automator)
+            elif platform == "tiktok":
+                return self._upload_tiktok_mobile(remote_path, full_caption, automator)
+            else:
+                raise Exception(f"Nền tảng App {platform} chưa được hỗ trợ qua ADB.")
+        finally:
+            logger.info("[ADB] Dọn dẹp: Đóng hoàn toàn các App sau quá trình upload...")
+            self._run_adb_cmd(["shell", "am", "force-stop", "com.zhiliaoapp.musically"])
+            self._run_adb_cmd(["shell", "am", "force-stop", "com.ss.android.ugc.trill"])
+            self._run_adb_cmd(["shell", "am", "force-stop", "com.ss.android.ugc.aweme"])
 
     def _upload_douyin(self, remote_video_path: str, text: str, automator: ADBAutomator) -> str:
         logger.info("[ADB] Khởi động Douyin App...")
@@ -155,13 +161,15 @@ class ADBUploader(BaseUploaderEngine):
         # 2. Bấm nút Tải lên (Upload)
         logger.info("[ADB] Bấm nút Tải lên (Upload) Douyin...")
         if not automator.click_element(texts=["相册", "上传", "上传视频"], wait=3):
-            logger.info("[ADB] Không tìm thấy nút Tải lên bằng chữ, dùng chuỗi 3 nhát bấm tọa độ...")
-            automator.click_percentage(0.8, 0.85)
-            time.sleep(2)
-            automator.click_percentage(0.85, 0.85)
-            time.sleep(2)
-            automator.click_percentage(0.8, 0.8)
-            time.sleep(3)
+            logger.info("[ADB] Không tìm thấy nút Tải lên bằng chữ, dùng thuật toán dò mìn (Phải -> Trái)...")
+            automator.click_dynamic_bottom_right()
+            
+            # Douyin check tab Video
+            if not automator.find_element(texts=["Video", "Videos", "视频"]):
+                logger.info("[ADB] Bấm bên phải không ra Thư viện. Hủy thao tác và thử bấm bên Trái...")
+                self._run_adb_cmd(["shell", "input", "keyevent", "4"]) # Bấm Back
+                time.sleep(2)
+                automator.click_dynamic_bottom_left()
             
         automator.handle_permission_popups()
             
@@ -183,19 +191,18 @@ class ADBUploader(BaseUploaderEngine):
         
         # 7. Gõ caption
         logger.info("[ADB] Nhập caption qua ADBKeyboard...")
+        # Đảm bảo có khoảng trắng ở cuối để Douyin tự bắt định dạng Hashtag
+        if not text.endswith(" "):
+            text += " "
+            
         if not automator.click_element(texts_contains=["添加描述", "分享你的"], wait=2):
             automator.click_percentage(0.3, 0.2)
         time.sleep(1)
         self._run_adb_cmd(["shell", "am", "broadcast", "-a", "ADB_INPUT_TEXT", "--es", "msg", f"'{text}'"])
-        time.sleep(2)
+        time.sleep(3) # Chờ 3s để Douyin xử lý chuỗi và render hashtag (nếu có)
         
-        # Bấm một thẻ hashtag gợi ý bất kỳ (ở ngay dưới ô caption) để lấy tag xanh và tắt bảng gợi ý
-        logger.info("[ADB] Click vào hashtag gợi ý...")
-        automator.click_percentage(0.3, 0.6) # Hạ thấp tọa độ xuống để chắc chắn không bấm nhầm vào ô caption
-        time.sleep(1)
-        
-        # Bấm Nút Back (Trở về) của Android để đảm bảo mọi Popup/Bàn phím đều bị thu gọn
-        logger.info("[ADB] Gửi lệnh Back để đóng toàn bộ Popup...")
+        # Bấm Nút Back (Trở về) của Android để đảm bảo mọi Popup, bảng gợi ý hashtag và Bàn phím đều bị thu gọn
+        logger.info("[ADB] Gửi lệnh Back để đóng toàn bộ Popup và thoát focus...")
         self._run_adb_cmd(["shell", "input", "keyevent", "4"])
         time.sleep(2)
         
@@ -232,23 +239,27 @@ class ADBUploader(BaseUploaderEngine):
             
         logger.info("[ADB] Tiktok đã mở thành công.")
         
-        # 1. Bấm nút + (Tạo mới)
-        if not automator.click_element(texts=["Tạo", "Create", "Upload", "Tải lên"], wait=3):
-            automator.click_percentage(0.5, 0.92)
-            time.sleep(3)
+        # 1. Bấm nút + (Tạo mới) ở giữa cạnh dưới
+        logger.info("[ADB] Bấm nút + (Tạo mới) ở giữa cạnh dưới màn hình...")
+        automator.click_percentage(0.5, 0.92)
+        time.sleep(3)
             
         automator.handle_permission_popups()
             
         # 2. Bấm nút Tải lên (Upload)
         logger.info("[ADB] Bấm nút Tải lên (Upload)...")
         if not automator.click_element(texts=["Tải lên", "Upload", "Album", "Gallery"], wait=3):
-            logger.info("[ADB] Không tìm thấy nút Tải lên bằng chữ, dùng chuỗi 3 nhát bấm tọa độ...")
-            automator.click_percentage(0.8, 0.85)
-            time.sleep(2)
-            automator.click_percentage(0.85, 0.85)
-            time.sleep(2)
-            automator.click_percentage(0.8, 0.8)
-            time.sleep(3)
+            logger.info("[ADB] Không tìm thấy nút Tải lên bằng chữ, dùng thuật toán dò mìn (Phải -> Trái)...")
+            # Lần 1: Bấm dò bên Phải
+            automator.click_dynamic_bottom_right()
+            automator.handle_permission_popups()
+            
+            # Kiểm tra xem có vào được thư viện (chứa tab Video) chưa?
+            if not automator.find_element(texts=["Video", "Videos", "视频"]):
+                logger.info("[ADB] Bấm bên phải không ra Thư viện. Hủy thao tác và thử bấm bên Trái...")
+                self._run_adb_cmd(["shell", "input", "keyevent", "4"]) # Bấm Back để đóng panel vừa mở nhầm
+                time.sleep(2)
+                automator.click_dynamic_bottom_left()
             
         automator.handle_permission_popups()
             
@@ -262,27 +273,32 @@ class ADBUploader(BaseUploaderEngine):
         automator.click_percentage(0.25, 0.3)
         time.sleep(2)
         
-        # 4. Bấm Tiếp / Next
-        automator.click_element(texts=["Tiếp", "Next", "Tiếp theo", "Continue"], wait=4)
+        # 4. Bấm Tiếp / Next (Màn hình chọn video)
+        logger.info("[ADB] Bấm Tiếp (Màn hình chọn video)")
+        if not automator.click_element(texts=["Tiếp", "Next", "Tiếp theo", "Continue"], wait=4):
+            automator.click_percentage(0.85, 0.95)
+            time.sleep(2)
         
         # 5. Bấm Tiếp / Next (Màn hình edit video)
-        automator.click_element(texts=["Tiếp", "Next", "Tiếp theo", "Continue"], wait=3)
+        logger.info("[ADB] Bấm Tiếp (Màn hình chỉnh sửa video)")
+        if not automator.click_element(texts=["Tiếp", "Next", "Tiếp theo", "Continue"], wait=3):
+            automator.click_percentage(0.85, 0.95)
+            time.sleep(2)
         
         # 7. Gõ caption
         logger.info("[ADB] Nhập caption qua ADBKeyboard...")
+        # Đảm bảo có khoảng trắng ở cuối để Tiktok tự bắt định dạng Hashtag
+        if not text.endswith(" "):
+            text += " "
+            
         if not automator.click_element(texts_contains=["Mô tả", "Thêm mô tả", "Add description", "Describe your post"], wait=2):
             automator.click_percentage(0.3, 0.2)
         time.sleep(1)
         self._run_adb_cmd(["shell", "am", "broadcast", "-a", "ADB_INPUT_TEXT", "--es", "msg", f"'{text}'"])
-        time.sleep(2)
+        time.sleep(3) # Chờ 3s để Tiktok xử lý chuỗi và render hashtag (nếu có)
         
-        # Bấm một thẻ hashtag gợi ý bất kỳ (ở ngay dưới ô caption) để lấy tag xanh và tắt bảng gợi ý
-        logger.info("[ADB] Click vào hashtag gợi ý...")
-        automator.click_percentage(0.3, 0.6)
-        time.sleep(1)
-        
-        # Bấm Nút Back (Trở về) của Android để đảm bảo mọi Popup/Bàn phím đều bị thu gọn
-        logger.info("[ADB] Gửi lệnh Back để đóng toàn bộ Popup...")
+        # Bấm Nút Back (Trở về) của Android để đảm bảo mọi Popup, bảng gợi ý hashtag và Bàn phím đều bị thu gọn
+        logger.info("[ADB] Gửi lệnh Back để đóng toàn bộ Popup và thoát focus...")
         self._run_adb_cmd(["shell", "input", "keyevent", "4"])
         time.sleep(2)
         

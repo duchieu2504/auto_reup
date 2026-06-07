@@ -41,25 +41,32 @@ class DouyinAPIClient:
                 k, v = part.split("=", 1)
                 self.cookies[k] = v
                 
-        # Attempt to extract User-Agent from cookie to match browser exactly
-        if "__druidClientInfo=" in self.raw_cookie:
-            import base64
-            import json
-            import urllib.parse
-            try:
-                for part in self.raw_cookie.split(";"):
-                    part = part.strip()
-                    if part.startswith("__druidClientInfo="):
-                        val = urllib.parse.unquote(part.split("=", 1)[1])
-                        decoded = base64.b64decode(val).decode('utf-8')
-                        info = json.loads(decoded)
-                        if "userAgent" in info:
-                            self.user_agent = info["userAgent"]
-                            self.headers["User-Agent"] = self.user_agent
-                            self.abogus_generator = ABogus(user_agent=self.user_agent)
-                        break
-            except Exception:
-                pass
+        # Load User-Agent from .env first
+        env_ua = os.getenv("DOUYIN_USER_AGENT", "").strip()
+        if env_ua:
+            self.user_agent = env_ua
+            self.headers["User-Agent"] = self.user_agent
+            self.abogus_generator = ABogus(user_agent=self.user_agent)
+        else:
+            # Attempt to extract User-Agent from cookie to match browser exactly (Fallback)
+            if "__druidClientInfo=" in self.raw_cookie:
+                import base64
+                import json
+                import urllib.parse
+                try:
+                    for part in self.raw_cookie.split(";"):
+                        part = part.strip()
+                        if part.startswith("__druidClientInfo="):
+                            val = urllib.parse.unquote(part.split("=", 1)[1])
+                            decoded = base64.b64decode(val).decode('utf-8')
+                            info = json.loads(decoded)
+                            if "userAgent" in info:
+                                self.user_agent = info["userAgent"]
+                                self.headers["User-Agent"] = self.user_agent
+                                self.abogus_generator = ABogus(user_agent=self.user_agent)
+                            break
+                except Exception:
+                    pass
 
         # Generate random msToken if not exist
         if "msToken" not in self.cookies:

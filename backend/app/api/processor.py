@@ -3,6 +3,7 @@ import os
 import sys
 import uuid
 import shutil
+from app.core.config import DATA_DIR
 from fastapi import APIRouter, Request, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -16,7 +17,7 @@ from app.core.logger import get_logger
 logger = get_logger(__name__)
 router = APIRouter()
 
-REDIS_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+from app.core.config import REDIS_URL
 redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
 class ProcessRequest(BaseModel):
@@ -59,14 +60,14 @@ async def upload_logo(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Kích thước file không được vượt quá 5MB.")
     
     # Save file
-    os.makedirs("/data/watermarks", exist_ok=True)
+    os.makedirs(os.path.join(DATA_DIR, "watermarks"), exist_ok=True)
     filename = f"logo_{uuid.uuid4().hex[:8]}.{ext}"
-    filepath = os.path.join("/data/watermarks", filename)
+    filepath = os.path.join(DATA_DIR, "watermarks", filename)
     
     with open(filepath, "wb") as f:
         f.write(content)
         
-    return {"status": "success", "path": f"/data/watermarks/{filename}", "url": f"/api/files/watermarks/{filename}"}
+    return {"status": "success", "path": filepath, "url": f"/api/files/watermarks/{filename}"}
 
 @router.post("/start")
 async def start_processor(request: ProcessRequest):
@@ -74,7 +75,7 @@ async def start_processor(request: ProcessRequest):
     for vp in request.video_paths:
         vp_clean = vp.replace("\\", "/")
         if "data/raw_videos/" in vp_clean:
-            vp_clean = "/data/raw_videos/" + vp_clean.split("data/raw_videos/")[-1]
+            vp_clean = os.path.join(DATA_DIR, "raw_videos") + "/" + vp_clean.split("data/raw_videos/")[-1]
         cleaned_paths.append(vp_clean)
         
     logger.info(f"Nhận API request xử lý {len(cleaned_paths)} video qua Celery (Flip: {request.flip_video}, Force: {request.force_render})")
@@ -120,7 +121,7 @@ async def start_processor(request: ProcessRequest):
 @router.get("/scan-folder")
 async def scan_folder(folder_path: str):
     import glob
-    base_raw_dir = "/data/raw_videos"
+    base_raw_dir = os.path.join(DATA_DIR, "raw_videos")
     target_dir = os.path.join(base_raw_dir, folder_path).replace("\\", "/")
     
     if not os.path.exists(target_dir):
@@ -139,7 +140,7 @@ class PauseRequest(BaseModel):
 async def pause_processor(request: PauseRequest):
     vp_clean = request.video_path.replace("\\", "/")
     if "data/raw_videos/" in vp_clean:
-        vp_clean = "/data/raw_videos/" + vp_clean.split("data/raw_videos/")[-1]
+        vp_clean = os.path.join(DATA_DIR, "raw_videos") + "/" + vp_clean.split("data/raw_videos/")[-1]
     
     base_name = os.path.basename(vp_clean).split('.')[0]
     await redis_client.set(f"pause_video_{base_name}", "1")

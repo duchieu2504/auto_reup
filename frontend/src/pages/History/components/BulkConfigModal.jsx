@@ -2,6 +2,7 @@ import React from 'react';
 import { SubtitleConfigPanel } from '../../../components/subtitle/SubtitleConfigPanel';
 import { WatermarkConfigPanel } from '../../../components/subtitle/WatermarkConfigPanel';
 import { InteractiveVideoPreview } from '../../../components/subtitle/InteractiveVideoPreview';
+import { ProfileSelector, SaveProfileButton } from '../../../components/subtitle/ProfileSelector';
 import { PlayCircle } from 'lucide-react';
 
 export const BulkConfigModal = ({ hook, subtitleConfig }) => {
@@ -23,6 +24,8 @@ export const BulkConfigModal = ({ hook, subtitleConfig }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Left Col: Cấu hình */}
           <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+            <ProfileSelector config={subtitleConfig} />
+            
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-2">Giọng Lồng Tiếng AI</label>
               <select 
@@ -98,6 +101,9 @@ export const BulkConfigModal = ({ hook, subtitleConfig }) => {
           >
             Hủy
           </button>
+          
+          <SaveProfileButton config={subtitleConfig} />
+          
           <button 
             className="px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-hover transition-colors font-medium flex items-center gap-2"
             onClick={() => submitProcessing(subtitleConfig)}

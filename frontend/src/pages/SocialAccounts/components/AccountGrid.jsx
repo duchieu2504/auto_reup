@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2, Edit2, Activity, Globe, Shield, RefreshCw, Smartphone } from 'lucide-react';
+import { Trash2, Edit2, Activity, Globe, Shield, RefreshCw, Smartphone, AlertTriangle } from 'lucide-react';
 
 export const AccountGrid = ({ hook }) => {
   const { 
@@ -61,8 +61,9 @@ export const AccountGrid = ({ hook }) => {
           <div className="space-y-3 mb-6">
             <div className="flex items-center justify-between text-sm">
               <span className="text-text-secondary flex items-center gap-1.5"><Activity size={14}/> Trạng thái</span>
-              <span className={`px-2 py-0.5 rounded text-xs font-bold ${acc.status === 'active' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-                {acc.status === 'active' ? 'Hoạt động' : acc.status === 'warming_up' ? 'Đang nuôi' : 'Đứt kết nối'}
+              <span className={`px-2 py-0.5 rounded text-xs font-bold flex items-center gap-1 ${acc.status === 'active' ? 'bg-green-500/10 text-green-500' : acc.status === 'shadowbanned' ? 'bg-red-500/20 text-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-red-500/10 text-red-500'}`}>
+                {acc.status === 'shadowbanned' && <AlertTriangle size={12} className="animate-pulse" />}
+                {acc.status === 'active' ? 'Hoạt động' : acc.status === 'warming_up' ? 'Đang nuôi' : acc.status === 'shadowbanned' ? 'Bị Shadowban' : 'Đứt kết nối'}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm">

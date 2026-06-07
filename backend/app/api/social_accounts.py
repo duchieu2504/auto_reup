@@ -21,9 +21,11 @@ class SocialAccountBase(BaseModel):
     proxy_port: Optional[str] = None
     proxy_username: Optional[str] = None
     proxy_password: Optional[str] = None
+    proxy_id: Optional[int] = None
     connection_type: Optional[str] = "web_playwright"
     device_id: Optional[str] = None
     status: Optional[str] = "active"
+    user_agent: Optional[str] = None
 
 class SocialAccountCreate(SocialAccountBase):
     pass
@@ -153,15 +155,35 @@ def warmup_account(account_id: int, db: Session = Depends(get_db)):
     if db_account.proxy_password:
         db_account.proxy_password = decrypt_data(db_account.proxy_password)
         
+    # Fetch proxy from proxy_id if present
+    proxy_host = db_account.proxy_host
+    proxy_port = db_account.proxy_port
+    proxy_username = db_account.proxy_username
+    proxy_password = db_account.proxy_password
+    
+    if db_account.proxy_id:
+        from app.models.proxy import Proxy
+        proxy_obj = db.query(Proxy).filter(Proxy.id == db_account.proxy_id).first()
+        if proxy_obj:
+            proxy_host = proxy_obj.host
+            proxy_port = proxy_obj.port
+            proxy_username = proxy_obj.username
+            if proxy_obj.password:
+                try:
+                    proxy_password = decrypt_data(proxy_obj.password)
+                except:
+                    pass
+
     account_dict = {
         "id": db_account.id,
         "platform": db_account.platform,
         "username": db_account.username,
         "auth_data": db_account.auth_data,
-        "proxy_host": db_account.proxy_host,
-        "proxy_port": db_account.proxy_port,
-        "proxy_username": db_account.proxy_username,
-        "proxy_password": db_account.proxy_password,
+        "proxy_host": proxy_host,
+        "proxy_port": proxy_port,
+        "proxy_username": proxy_username,
+        "proxy_password": proxy_password,
+        "proxy_id": db_account.proxy_id,
         "connection_type": db_account.connection_type,
         "device_id": db_account.device_id
     }
@@ -203,6 +225,7 @@ def sync_accounts(db: Session = Depends(get_db)):
             acc.proxy_port = data.get("proxy_port", acc.proxy_port)
             acc.proxy_username = data.get("proxy_username", acc.proxy_username)
             acc.proxy_password = data.get("proxy_password", acc.proxy_password)
+            acc.proxy_id = data.get("proxy_id", acc.proxy_id)
             acc.connection_type = data.get("connection_type", acc.connection_type)
             acc.device_id = data.get("device_id", acc.device_id)
             acc.status = data.get("status", acc.status)
@@ -220,6 +243,7 @@ def sync_accounts(db: Session = Depends(get_db)):
                 proxy_port=data.get("proxy_port"),
                 proxy_username=data.get("proxy_username"),
                 proxy_password=data.get("proxy_password"),
+                proxy_id=data.get("proxy_id"),
                 connection_type=data.get("connection_type", "web_playwright"),
                 device_id=data.get("device_id"),
                 status=data.get("status", "active"),

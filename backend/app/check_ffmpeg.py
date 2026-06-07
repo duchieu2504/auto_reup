@@ -1,10 +1,12 @@
 import os
 import sys
+import subprocess
+from app.core.config import DATA_DIR
 
 # Giả lập lệnh ffmpeg
-video_path = "/data/raw_videos/鼠鼠视界/7646719676520746266.mp4"
-vi_srt = "/data/subtitles/7646719676520746266_vi.srt"
-tts_audio = "/data/audio/7646719676520746266_tts.mp3"
+video_path = os.path.join(DATA_DIR, "raw_videos", "鼠鼠视界", "7646719676520746266.mp4")
+vi_srt = os.path.join(DATA_DIR, "subtitles", "7646719676520746266_vi.srt")
+tts_audio = os.path.join(DATA_DIR, "audio", "7646719676520746266_tts.mp3")
 
 watermark_type = "text"
 watermark_text = "@Zhiu'Nika"

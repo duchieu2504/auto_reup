@@ -20,9 +20,13 @@ export const useAccountsData = () => {
     proxy_port: '',
     proxy_username: '',
     proxy_password: '',
+    proxy_id: '',
     connection_type: 'web_playwright',
-    device_id: ''
+    device_id: '',
+    user_agent: ''
   });
+
+  const [proxiesList, setProxiesList] = useState([]);
 
   const fetchAccounts = async () => {
     try {
@@ -36,8 +40,19 @@ export const useAccountsData = () => {
     }
   };
 
+  const fetchProxiesList = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/proxies/`);
+      const data = await res.json();
+      setProxiesList(data);
+    } catch (err) {
+      console.error('Không thể tải danh sách proxy');
+    }
+  };
+
   useEffect(() => {
     fetchAccounts();
+    fetchProxiesList();
   }, []);
 
   const handleInputChange = (e) => {
@@ -55,8 +70,10 @@ export const useAccountsData = () => {
       proxy_port: '',
       proxy_username: '',
       proxy_password: '',
+      proxy_id: '',
       connection_type: 'web_playwright',
-      device_id: ''
+      device_id: '',
+      user_agent: ''
     });
     setEditingId(null);
   };
@@ -88,7 +105,18 @@ export const useAccountsData = () => {
 
   const handleAutoLogin = async () => {
     let proxyString = "";
-    if (formData.proxy_host) {
+    
+    // Check if proxy_id is selected
+    if (formData.proxy_id) {
+      const selectedProxy = proxiesList.find(p => p.id === parseInt(formData.proxy_id));
+      if (selectedProxy) {
+        proxyString = `http://`;
+        if (selectedProxy.username) {
+          proxyString += `${selectedProxy.username}:${selectedProxy.password}@`;
+        }
+        proxyString += `${selectedProxy.host}:${selectedProxy.port || '80'}`;
+      }
+    } else if (formData.proxy_host) { // Fallback for old legacy proxy configuration
       proxyString = `http://`;
       if (formData.proxy_username) {
         proxyString += `${formData.proxy_username}:${formData.proxy_password}@`;
@@ -184,6 +212,7 @@ export const useAccountsData = () => {
       proxy_port: account.proxy_port || '',
       proxy_username: account.proxy_username || '',
       proxy_password: account.proxy_password || '',
+      proxy_id: account.proxy_id || '',
       connection_type: account.connection_type || 'web_playwright',
       device_id: account.device_id || ''
     });
@@ -219,8 +248,8 @@ export const useAccountsData = () => {
   };
 
   return {
-    accounts, loading, isModalOpen, setIsModalOpen, editingId, warmingUpIds,
+    accounts, proxiesList, loading, isModalOpen, setIsModalOpen, editingId, warmingUpIds,
     formData, handleInputChange, resetForm, handleSubmit, handleAutoLogin,
-    handleDelete, checkStatus, openEditModal, handleSync, triggerWarmup
+    handleDelete, checkStatus, openEditModal, handleSync, triggerWarmup, fetchProxiesList
   };
 };

@@ -1,5 +1,6 @@
 import os
 from fastapi import APIRouter, Depends, HTTPException, Query
+from app.core.config import DATA_DIR
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from typing import List, Optional
@@ -143,20 +144,20 @@ def backup_data():
     zip_path = os.path.join(temp_dir, backup_filename)
     
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        metadata_dir = "/data/metadata"
+        metadata_dir = os.path.join(DATA_DIR, "metadata")
         if os.path.exists(metadata_dir):
             for root, dirs, files in os.walk(metadata_dir):
                 for file in files:
                     file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, "/data")
+                    arcname = os.path.relpath(file_path, DATA_DIR)
                     zipf.write(file_path, arcname)
                     
-        accounts_dir = "/data/accounts"
+        accounts_dir = os.path.join(DATA_DIR, "accounts")
         if os.path.exists(accounts_dir):
             for root, dirs, files in os.walk(accounts_dir):
                 for file in files:
                     file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, "/data")
+                    arcname = os.path.relpath(file_path, DATA_DIR)
                     zipf.write(file_path, arcname)
                     
     return FileResponse(
@@ -290,9 +291,9 @@ def sync_data(db: Session = Depends(get_db)):
     db.commit()
 
     # 2. Quét file mồ côi (Fallback nếu không có JSON)
-    all_mp4 = glob.glob("/data/**/*.mp4", recursive=True)
-    all_mp3 = glob.glob("/data/**/*.mp3", recursive=True)
-    all_srt = glob.glob("/data/**/*.srt", recursive=True)
+    all_mp4 = glob.glob(os.path.join(DATA_DIR, "**", "*.mp4"), recursive=True)
+    all_mp3 = glob.glob(os.path.join(DATA_DIR, "**", "*.mp3"), recursive=True)
+    all_srt = glob.glob(os.path.join(DATA_DIR, "**", "*.srt"), recursive=True)
     
     grouped = defaultdict(dict)
     

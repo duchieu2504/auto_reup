@@ -25,6 +25,10 @@ class UploadSchedule(Base):
     error_message = Column(Text, nullable=True)
     retry_count = Column(Integer, default=0)
     
+    # Account Health Tracking
+    views_count = Column(Integer, nullable=True)
+    health_status = Column(String(50), default="unknown") # unknown, healthy, shadowbanned
+    
     # Phân loại uploader
     engine_type = Column(String(50), default="playwright") # playwright, adb
     

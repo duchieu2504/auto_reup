@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.session import Base
+from app.models.proxy import Proxy
 
 class SocialAccount(Base):
     __tablename__ = "social_accounts"
@@ -18,9 +20,14 @@ class SocialAccount(Base):
     connection_type = Column(String(50), default="web_playwright") # web_playwright, adb_device
     device_id = Column(String(255), nullable=True) # Optional device id if adb_device
     status = Column(String(50), default="active") # active, expired, checkpoint
+    user_agent = Column(String(500), nullable=True) # Để bypass anti-bot
     last_checked_at = Column(DateTime(timezone=True), nullable=True)
+    health_checked_at = Column(DateTime(timezone=True), nullable=True) # Check shadowban
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    proxy_id = Column(Integer, ForeignKey("proxies.id", ondelete="SET NULL"), nullable=True)
+    proxy = relationship("Proxy", foreign_keys=[proxy_id])
 
 from sqlalchemy import event
 

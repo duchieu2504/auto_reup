@@ -66,6 +66,49 @@ export const useSubtitleState = (initialConfig = {}) => {
     setIsDraggingWatermark(false);
   };
 
+  const [loadedProfileConfig, setLoadedProfileConfig] = useState(null);
+
+  const getCurrentConfigObj = () => ({
+    voice, volume, flipVideo, optZoom, optColor, optNoise, optPitch,
+    subtitleFont, subtitleStyle, subtitleTextColor, subtitleBgColor,
+    subtitleFontSize, subtitleMarginV, subtitleBgPadding, subtitleBgOpacity,
+    watermarkType, watermarkText, watermarkImagePreview,
+    watermarkX, watermarkY, watermarkSize, watermarkColor, watermarkOpacity
+  });
+
+  const normalizeConfig = (configObj) => {
+    if (!configObj) return null;
+    return {
+      voice: String(configObj.voice || ''),
+      volume: String(configObj.volume || ''),
+      flipVideo: Boolean(configObj.flipVideo),
+      optZoom: Boolean(configObj.optZoom),
+      optColor: Boolean(configObj.optColor),
+      optNoise: Boolean(configObj.optNoise),
+      optPitch: Boolean(configObj.optPitch),
+      subtitleFont: String(configObj.subtitleFont || ''),
+      subtitleStyle: String(configObj.subtitleStyle || ''),
+      subtitleTextColor: String(configObj.subtitleTextColor || ''),
+      subtitleBgColor: String(configObj.subtitleBgColor || ''),
+      subtitleFontSize: String(configObj.subtitleFontSize || ''),
+      subtitleMarginV: String(configObj.subtitleMarginV || ''),
+      subtitleBgPadding: String(configObj.subtitleBgPadding || ''),
+      subtitleBgOpacity: String(configObj.subtitleBgOpacity || ''),
+      watermarkType: String(configObj.watermarkType || ''),
+      watermarkText: String(configObj.watermarkText || ''),
+      watermarkImagePreview: String(configObj.watermarkImagePreview || ''),
+      watermarkX: String(configObj.watermarkX || ''),
+      watermarkY: String(configObj.watermarkY || ''),
+      watermarkSize: String(configObj.watermarkSize || ''),
+      watermarkColor: String(configObj.watermarkColor || ''),
+      watermarkOpacity: String(configObj.watermarkOpacity || '')
+    };
+  };
+
+  const isDirty = loadedProfileConfig 
+    ? JSON.stringify(normalizeConfig(loadedProfileConfig)) !== JSON.stringify(normalizeConfig(getCurrentConfigObj())) 
+    : true;
+
   return {
     // State values
     voice, volume,
@@ -77,6 +120,9 @@ export const useSubtitleState = (initialConfig = {}) => {
     watermarkX, watermarkY, watermarkSize, watermarkColor, watermarkOpacity,
     isDragging, isDraggingWatermark,
     
+    // Dirty tracking
+    loadedProfileConfig, isDirty,
+    
     // Setters
     setVoice, setVolume,
     setFlipVideo, setOptZoom, setOptColor, setOptNoise, setOptPitch,
@@ -85,10 +131,12 @@ export const useSubtitleState = (initialConfig = {}) => {
     setWatermarkType, setWatermarkText, setWatermarkImageFile, setWatermarkImagePreview,
     setWatermarkX, setWatermarkY, setWatermarkSize, setWatermarkColor, setWatermarkOpacity,
     setIsDragging, setIsDraggingWatermark,
+    setLoadedProfileConfig,
 
     // Handlers
     toggleAllMicroAlterations,
     handleMouseMove,
-    handleMouseUpOrLeave
+    handleMouseUpOrLeave,
+    getCurrentConfigObj
   };
 };

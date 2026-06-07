@@ -5,6 +5,7 @@ import time
 from typing import Dict, Any
 from .base_engine import BaseUploaderEngine
 from playwright.sync_api import sync_playwright
+from app.core.config import DATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +91,13 @@ class PlaywrightUploader(BaseUploaderEngine):
                         launch_args["proxy"]["password"] = self.proxy_auth["password"]
 
                 browser = p.chromium.launch(**launch_args)
+                
+                ua = self.account_data.get("user_agent")
+                if not ua:
+                    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                
                 context = browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                    user_agent=ua
                 )
                 
                 # Add cookies
@@ -115,7 +121,7 @@ class PlaywrightUploader(BaseUploaderEngine):
                     
             except Exception as e:
                 # Capture screenshot khi lỗi để debug
-                page.screenshot(path=f"/data/error_{int(time.time())}.png")
+                page.screenshot(path=os.path.join(DATA_DIR, f"error_{int(time.time())}.png"))
                 raise e
             finally:
                 if is_gpm:

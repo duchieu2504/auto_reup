@@ -4,7 +4,8 @@ import { Globe, Shield, Smartphone } from 'lucide-react';
 export const AddAccountModal = ({ hook }) => {
   const { 
     isModalOpen, setIsModalOpen, editingId,
-    formData, handleInputChange, handleSubmit, handleAutoLogin
+    formData, handleInputChange, handleSubmit, handleAutoLogin,
+    proxiesList, fetchProxiesList
   } = hook;
 
   if (!isModalOpen) return null;
@@ -69,26 +70,79 @@ export const AddAccountModal = ({ hook }) => {
                 <p className="text-xs text-brand-primary mt-1">Sử dụng nút "Lấy Cookie Tự Động" hoặc copy thủ công đoạn JSON cookie vào đây.</p>
               </div>
 
-              <h3 className="font-bold text-text-primary mb-4 flex items-center gap-2"><Shield size={18} className="text-text-secondary"/> Cấu hình Proxy (Tùy chọn)</h3>
-              <p className="text-xs text-text-secondary mb-3">Nếu điền Proxy dưới đây, hãy điền TRƯỚC KHI bấm Lấy Cookie Tự Động để hệ thống bọc IP luôn.</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-text-secondary mb-1">IP Host</label>
-                  <input name="proxy_host" value={formData.proxy_host} onChange={handleInputChange} placeholder="VD: 192.168.1.1" className="w-full bg-bg-primary border border-border-subtle rounded-xl px-3 py-2 text-text-primary text-sm focus:border-brand-primary outline-none" />
+              <div className="mb-6">
+                <div className="flex justify-between items-end mb-2">
+                  <label className="block text-sm font-medium text-text-secondary">User Agent (Trình duyệt ảo)</label>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      const uas = [
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.4; rv:124.0) Gecko/20100101 Firefox/124.0",
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/123.0.0.0 Safari/537.36"
+                      ];
+                      const randomUa = uas[Math.floor(Math.random() * uas.length)];
+                      handleInputChange({ target: { name: 'user_agent', value: randomUa } });
+                    }}
+                    className="flex items-center gap-1.5 text-xs font-bold bg-border-subtle text-text-primary px-3 py-1.5 rounded-lg hover:bg-glass-hover transition-colors"
+                  >
+                    Tạo Ngẫu Nhiên
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-text-secondary mb-1">Port</label>
-                  <input name="proxy_port" value={formData.proxy_port} onChange={handleInputChange} placeholder="VD: 8080" className="w-full bg-bg-primary border border-border-subtle rounded-xl px-3 py-2 text-text-primary text-sm focus:border-brand-primary outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-text-secondary mb-1">Proxy Username</label>
-                  <input name="proxy_username" value={formData.proxy_username} onChange={handleInputChange} placeholder="Tùy chọn" className="w-full bg-bg-primary border border-border-subtle rounded-xl px-3 py-2 text-text-primary text-sm focus:border-brand-primary outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-text-secondary mb-1">Proxy Password</label>
-                  <input type="password" name="proxy_password" value={formData.proxy_password} onChange={handleInputChange} placeholder="Tùy chọn" className="w-full bg-bg-primary border border-border-subtle rounded-xl px-3 py-2 text-text-primary text-sm focus:border-brand-primary outline-none" />
-                </div>
+                <input name="user_agent" value={formData.user_agent || ''} onChange={handleInputChange} placeholder="Để trống hệ thống sẽ dùng Chrome mặc định..." className="w-full bg-bg-primary border border-border-subtle rounded-xl px-4 py-3 text-text-primary focus:border-brand-primary outline-none text-sm" />
+                <p className="text-xs text-text-secondary mt-1">Nên tạo User-Agent riêng biệt cho từng tài khoản để tránh bị TikTok quét dính bot (Shadowban).</p>
               </div>
+
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-text-primary flex items-center gap-2"><Shield size={18} className="text-text-secondary"/> Cấu hình Proxy (Tùy chọn)</h3>
+                <button 
+                  type="button"
+                  onClick={fetchProxiesList}
+                  className="text-xs text-brand-primary hover:underline flex items-center gap-1"
+                >
+                  ↻ Tải lại danh sách
+                </button>
+              </div>
+              <p className="text-xs text-text-secondary mb-3">Nếu chọn Proxy dưới đây, hãy chọn TRƯỚC KHI bấm Lấy Cookie Tự Động để hệ thống bọc IP luôn.</p>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-text-secondary mb-2">Chọn Proxy từ Kho dữ liệu</label>
+                <select 
+                  name="proxy_id" 
+                  value={formData.proxy_id || ''} 
+                  onChange={handleInputChange} 
+                  className="w-full bg-bg-primary border border-border-subtle rounded-xl px-4 py-3 text-text-primary focus:border-brand-primary outline-none"
+                >
+                  <option value="">-- Không dùng Proxy (Sử dụng IP Máy chủ) --</option>
+                  {proxiesList && proxiesList.map(proxy => (
+                    <option key={proxy.id} value={proxy.id}>
+                      {proxy.name} ({proxy.host}:{proxy.port}) - {proxy.status === 'active' ? '🟢 Live' : '🔴 Dead'}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-text-secondary mt-2">
+                  Bạn có thể quản lý và thêm mới Proxy trong menu <b>Quản lý Proxy</b> ở thanh điều hướng bên trái.
+                </p>
+              </div>
+              
+              {/* Legacy fallback - only show if no proxy_id is selected and there's old data */}
+              {!formData.proxy_id && formData.proxy_host && (
+                <div className="mt-4 p-4 border border-yellow-500/20 bg-yellow-500/5 rounded-xl">
+                  <p className="text-xs text-yellow-500 mb-3 font-medium">Tài khoản này đang dùng cấu hình Proxy cũ (Legacy). Khuyến nghị chuyển sang chọn Proxy từ danh sách phía trên.</p>
+                  <div className="grid grid-cols-2 gap-4 opacity-70 cursor-not-allowed">
+                    <div>
+                      <label className="block text-xs font-medium text-text-secondary mb-1">IP Host (Legacy)</label>
+                      <input disabled value={formData.proxy_host || ''} className="w-full bg-bg-secondary border border-border-subtle rounded-xl px-3 py-2 text-text-secondary text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-text-secondary mb-1">Port (Legacy)</label>
+                      <input disabled value={formData.proxy_port || ''} className="w-full bg-bg-secondary border border-border-subtle rounded-xl px-3 py-2 text-text-secondary text-sm" />
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <div className="mb-6">

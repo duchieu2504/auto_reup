@@ -1,14 +1,13 @@
 import os
 from celery import Celery
 
-# Ưu tiên lấy từ biến môi trường, mặc định là localhost cho dev local
-REDIS_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+from app.core.config import REDIS_URL
 
 celery_app = Celery(
     "autoreup_tasks",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.tasks.crawler_tasks", "app.tasks.processor_tasks", "app.tasks.uploader_tasks"]
+    include=["app.tasks.crawler_tasks", "app.tasks.processor_tasks", "app.tasks.uploader_tasks", "app.tasks.health_tasks", "app.tasks.faceless_tasks"]
 )
 
 # Tối ưu hóa cấu hình Celery
@@ -28,5 +27,9 @@ celery_app.conf.beat_schedule = {
     "check-scheduled-uploads-every-minute": {
         "task": "check_scheduled_uploads",
         "schedule": crontab(minute="*/10"), # Chạy mỗi 10 phút
+    },
+    "check-account-health-every-hour": {
+        "task": "check_all_accounts_health_task",
+        "schedule": crontab(minute="0"), # Chạy mỗi đầu giờ
     }
 }

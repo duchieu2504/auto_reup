@@ -198,7 +198,7 @@ class DouyinScraper:
                                     if total_size > 0:
                                         percent = int((downloaded / total_size) * 100)
                                         if percent >= last_percent + 10:
-                                            yield f"[download] {percent}% of {mb_size}MB\n"
+                                            yield {"log": f"[download] {percent}% of {mb_size}MB\n", "progress": percent}
                                             last_percent = percent
                 
                 # Đổi tên file part thành mp4 sau khi tải xong 100%
@@ -206,7 +206,7 @@ class DouyinScraper:
                     os.rename(temp_file, output_file)
                     
                 logger.info(f"Tải thành công video: {video_id}")
-                yield f"[*] Tải thành công video: {video_id}\n"
+                yield {"log": f"[*] Tải thành công video: {video_id}\n", "progress": 100}
                 self.sync_manager.mark_as_downloaded(video_id)
                 
                 db = SessionLocal()

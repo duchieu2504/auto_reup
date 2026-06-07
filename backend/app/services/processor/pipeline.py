@@ -10,7 +10,7 @@ from app.models.history import VideoHistory, ProcessStatus
 from app.utils.metadata import save_video_metadata
 import redis
 
-REDIS_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+from app.core.config import REDIS_URL
 sync_redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 
 class ProcessorPipeline:
@@ -74,18 +74,18 @@ class ProcessorPipeline:
                 return
 
             if os.path.exists(orig_srt) and os.path.getsize(orig_srt) > 0:
-                log_callback(f"[*] Bước 1: Tìm thấy phụ đề gốc đã tạo, bỏ qua Whisper...\n")
+                log_callback(f"[*] Bước 1: Tìm thấy phụ đề gốc đã tạo, bỏ qua Whisper...\n", progress=15.0)
                 record.srt_origin_path = orig_srt
                 db.commit()
             else:
-                log_callback(f"[*] Bước 1: Nhận diện giọng nói (Whisper) cho video...\n")
+                log_callback(f"[*] Bước 1: Nhận diện giọng nói (Whisper) cho video...\n", progress=5.0)
                 try:
                     record.status = ProcessStatus.TRANSCRIBING
                     db.commit()
                     self.transcriber.transcribe(video_path, orig_srt)
                     record.srt_origin_path = orig_srt
                     db.commit()
-                    log_callback(f"[*] Đã tạo phụ đề gốc thành công.\n")
+                    log_callback(f"[*] Đã tạo phụ đề gốc thành công.\n", progress=15.0)
                 except GroqQuotaExceeded:
                     log_callback(f"[!] Groq API đã hết hạn miễn phí. Tạm dừng tiến trình.\n")
                     record.status = ProcessStatus.PAUSED
@@ -104,11 +104,11 @@ class ProcessorPipeline:
                 return
 
             if os.path.exists(vi_srt) and os.path.getsize(vi_srt) > 0:
-                log_callback(f"[*] Bước 2: Tìm thấy phụ đề dịch sẵn, bỏ qua dịch thuật Gemini...\n")
+                log_callback(f"[*] Bước 2: Tìm thấy phụ đề dịch sẵn, bỏ qua dịch thuật Gemini...\n", progress=25.0)
                 record.srt_translated_path = vi_srt
                 db.commit()
             else:
-                log_callback(f"[*] Bước 2: Dịch thuật tiếng Trung -> Việt bằng Gemini...\n")
+                log_callback(f"[*] Bước 2: Dịch thuật tiếng Trung -> Việt bằng Gemini...\n", progress=15.0)
                 try:
                     record.status = ProcessStatus.TRANSLATING
                     db.commit()
@@ -117,7 +117,7 @@ class ProcessorPipeline:
                     self.translator.translate_srt(orig_srt, vi_srt, voice_mode, audio_tmp)
                     record.srt_translated_path = vi_srt
                     db.commit()
-                    log_callback(f"[*] Dịch thuật thành công.\n")
+                    log_callback(f"[*] Dịch thuật thành công.\n", progress=25.0)
                 
                     if os.path.exists(audio_tmp):
                         os.remove(audio_tmp)
@@ -137,18 +137,18 @@ class ProcessorPipeline:
                     return
 
                 if tts_audio and os.path.exists(tts_audio) and os.path.getsize(tts_audio) > 0:
-                    log_callback(f"[*] Bước 3: Tìm thấy audio lồng tiếng AI sẵn, bỏ qua TTS...\n")
+                    log_callback(f"[*] Bước 3: Tìm thấy audio lồng tiếng AI sẵn, bỏ qua TTS...\n", progress=35.0)
                     record.audio_tts_path = tts_audio
                     db.commit()
                 else:
-                    log_callback(f"[*] Bước 3: Tạo âm thanh lồng tiếng AI...\n")
+                    log_callback(f"[*] Bước 3: Tạo âm thanh lồng tiếng AI...\n", progress=25.0)
                     try:
                         record.status = ProcessStatus.GENERATING_TTS
                         db.commit()
                         self.tts.generate_tts_track(vi_srt, tts_audio, voice_mode, video_path, log_callback)
                         record.audio_tts_path = tts_audio
                         db.commit()
-                        log_callback(f"[*] Sinh audio lồng tiếng thành công.\n")
+                        log_callback(f"[*] Sinh audio lồng tiếng thành công.\n", progress=35.0)
                     except Exception as e:
                         record.status = ProcessStatus.FAILED
                         record.error_message = f"TTS: {str(e)}"
@@ -165,13 +165,13 @@ class ProcessorPipeline:
                 return
 
             if os.path.exists(output_video) and os.path.getsize(output_video) > 0:
-                log_callback(f"[*] Bước 4: Tìm thấy video thành phẩm, bỏ qua Render.\n")
+                log_callback(f"[*] Bỏ qua render do video đã tồn tại.\n", progress=100.0)
                 record.final_video_path = output_video
                 record.status = ProcessStatus.COMPLETED
                 db.commit()
                 log_callback(f"[*] Video đã hoàn tất từ trước!\n[*] File đầu ra: {output_video}\n")
             else:
-                log_callback(f"[*] Bước 4: Đốt phụ đề và Render video...\n")
+                log_callback(f"[*] Bước 4: Đốt phụ đề và Render video...\n", progress=40.0)
                 try:
                     record.status = ProcessStatus.RENDERING
                     db.commit()
@@ -192,12 +192,13 @@ class ProcessorPipeline:
                         watermark_size=watermark_size,
                         watermark_color=watermark_color,
                         watermark_opacity=watermark_opacity,
-                        subtitle_font_family=subtitle_font_family
+                        subtitle_font_family=subtitle_font_family,
+                        log_callback=log_callback
                     )
                     record.final_video_path = output_video
                     record.status = ProcessStatus.COMPLETED
                     db.commit()
-                    log_callback(f"[*] Render video thành công!\n[*] File đầu ra: {output_video}\n")
+                    log_callback(f"[*] Render video thành công!\n[*] File đầu ra: {output_video}\n", progress=100.0)
                 
                 except Exception as e:
                     record.status = ProcessStatus.FAILED

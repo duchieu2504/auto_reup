@@ -16,6 +16,9 @@ const EditVideo = lazy(() => import('./pages/EditVideo'));
 const Discovery = lazy(() => import('./pages/Discovery'));
 const SocialAccounts = lazy(() => import('./pages/SocialAccounts'));
 const UploadSchedule = lazy(() => import('./pages/UploadSchedule'));
+const Proxies = lazy(() => import('./pages/Proxies'));
+const AIFaceless = lazy(() => import('./pages/AIFaceless/AIFaceless'));
+const LiveRestream = lazy(() => import('./pages/LiveRestream'));
 
 const MainLayout = () => {
   const location = useLocation();
@@ -28,6 +31,9 @@ const MainLayout = () => {
   if (location.pathname === '/settings') title = "Cấu Hình Hệ Thống";
   if (location.pathname === '/social-accounts') title = "Quản lý Tài Khoản MXH";
   if (location.pathname === '/upload-schedule') title = "Lịch Đăng Bài Tự Động";
+  if (location.pathname === '/proxies') title = "Quản lý Proxy";
+  if (location.pathname === '/faceless') title = "Sáng Tạo AI Faceless";
+  if (location.pathname === '/live') title = "Live Restream";
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg-primary text-text-primary">
@@ -52,6 +58,9 @@ const MainLayout = () => {
               <Route path="/edit/:id" element={<EditVideo />} />
               <Route path="/social-accounts" element={<SocialAccounts />} />
               <Route path="/upload-schedule" element={<UploadSchedule />} />
+              <Route path="/proxies" element={<Proxies />} />
+              <Route path="/faceless" element={<AIFaceless />} />
+              <Route path="/live" element={<LiveRestream />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </Suspense>
