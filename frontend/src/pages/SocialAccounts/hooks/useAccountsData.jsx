@@ -84,12 +84,19 @@ export const useAccountsData = () => {
     const url = isEdit ? `${API_BASE}/social-accounts/${editingId}` : `${API_BASE}/social-accounts/`;
     const method = isEdit ? 'PUT' : 'POST';
 
+    const payload = { ...formData };
+    if (payload.proxy_id === '') {
+      payload.proxy_id = null;
+    } else if (payload.proxy_id) {
+      payload.proxy_id = parseInt(payload.proxy_id, 10);
+    }
+
     const loadingToast = toast.loading(isEdit ? 'Đang cập nhật...' : 'Đang thêm tài khoản...');
     try {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       });
       
       if (!res.ok) throw new Error('Có lỗi xảy ra');
@@ -214,7 +221,8 @@ export const useAccountsData = () => {
       proxy_password: account.proxy_password || '',
       proxy_id: account.proxy_id || '',
       connection_type: account.connection_type || 'web_playwright',
-      device_id: account.device_id || ''
+      device_id: account.device_id || '',
+      user_agent: account.user_agent || ''
     });
     setEditingId(account.id);
     setIsModalOpen(true);

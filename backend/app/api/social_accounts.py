@@ -83,7 +83,7 @@ def update_account(account_id: int, account: SocialAccountCreate, db: Session = 
     if not db_account:
         raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
     
-    update_data = account.model_dump()
+    update_data = account.model_dump(exclude_unset=True)
     
     # Mã hóa dữ liệu trước khi update
     if 'auth_data' in update_data and update_data['auth_data']:

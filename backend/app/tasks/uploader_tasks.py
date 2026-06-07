@@ -71,14 +71,37 @@ def execute_upload(self, schedule_id: int):
         import json
         from app.core.security import decrypt_data
         
+        proxy_host = account.proxy_host
+        proxy_port = account.proxy_port
+        proxy_username = account.proxy_username
+        proxy_password = account.proxy_password
+        
+        if account.proxy_id:
+            from app.models.proxy import Proxy
+            proxy_obj = db.query(Proxy).filter(Proxy.id == account.proxy_id).first()
+            if proxy_obj:
+                proxy_host = proxy_obj.host
+                proxy_port = proxy_obj.port
+                proxy_username = proxy_obj.username
+                if proxy_obj.password:
+                    try:
+                        proxy_password = decrypt_data(proxy_obj.password)
+                    except:
+                        pass
+        elif proxy_password:
+            try:
+                proxy_password = decrypt_data(proxy_password)
+            except:
+                pass
+
         account_data = {
             "platform": account.platform,
             "auth_data": decrypt_data(account.auth_data),
             "device_id": account.device_id,
-            "proxy_host": account.proxy_host,
-            "proxy_port": account.proxy_port,
-            "proxy_username": account.proxy_username,
-            "proxy_password": account.proxy_password,
+            "proxy_host": proxy_host,
+            "proxy_port": proxy_port,
+            "proxy_username": proxy_username,
+            "proxy_password": proxy_password,
         }
         
         if schedule.engine_type == "playwright":
