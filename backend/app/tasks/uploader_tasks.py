@@ -102,6 +102,8 @@ def execute_upload(self, schedule_id: int):
             "proxy_port": proxy_port,
             "proxy_username": proxy_username,
             "proxy_password": proxy_password,
+            "connection_type": account.connection_type,
+            "user_agent": account.user_agent,
         }
         
         if schedule.engine_type == "playwright":

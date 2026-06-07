@@ -185,7 +185,8 @@ def warmup_account(account_id: int, db: Session = Depends(get_db)):
         "proxy_password": proxy_password,
         "proxy_id": db_account.proxy_id,
         "connection_type": db_account.connection_type,
-        "device_id": db_account.device_id
+        "device_id": db_account.device_id,
+        "user_agent": db_account.user_agent
     }
     
     warmup_account_task.delay(account_dict)
