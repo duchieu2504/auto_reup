@@ -79,4 +79,22 @@ Nếu bạn sử dụng tính năng tự động đăng video cho nhiều thị 
 4. Mở từng máy vừa nhân bản lên -> Vào Cài đặt giả lập -> **BẤM RANDOM LẠI IMEI / ANDROID ID**.
 5. Đăng nhập TikTok, gán Proxy vào, và ném cho Bot chạy!
 
+---
+
+## 6. Khắc Phục Lỗi Thường Gặp (Troubleshooting)
+
+### Lỗi: "Xin lỗi, phiên bản openGL của quý khách quá cũ, vui lòng cập nhật..."
+Lỗi này xảy ra khi máy tính của bạn đang sử dụng Card đồ họa (VGA) quá cũ, hoặc giả lập chưa nhận được Card rời. Cách khắc phục:
+
+1. **Cập nhật Driver Card Đồ Họa (Quan trọng nhất):**
+   - Lên trang chủ của NVIDIA, AMD hoặc Intel để tải và cài đặt Driver mới nhất cho Card màn hình của bạn.
+   - Hoặc tải phần mềm như `Driver Booster` để nó tự động cập nhật Driver đồ họa.
+
+2. **Ép giả lập chạy trên Card rời (NVIDIA/AMD):**
+   - Nếu máy bạn có Card rời (như máy tính xách tay Gaming), LDPlayer có thể đang chạy nhầm trên Card Onboard (Card tích hợp yếu).
+   - **Với NVIDIA:** Chuột phải ở Desktop -> `NVIDIA Control Panel` -> `Manage 3D settings` -> Chuyển sang tab `Program Settings` -> Bấm `Add` và chọn `LDPlayer` (dnplayer.exe) -> Đổi dòng *Select the preferred graphics processor* thành **High-performance NVIDIA processor** -> Bấm Apply.
+
+3. **Bật VT (Virtualization Technology) trong BIOS:**
+   - Đảm bảo bạn đã bật ảo hóa (VT) trong BIOS của máy tính. Nếu không bật, máy ảo sẽ phải dựng hình bằng CPU (Software rendering) gây ra lỗi OpenGL. Kiểm tra bằng cách nhìn lên góc phải trên cùng của LDPlayer, nếu có biểu tượng chữ "VT" màu đỏ nghĩa là chưa bật.
+
 Chúc bạn nuôi kênh thuận lợi và "lên xu hướng"! 🦊🚀
