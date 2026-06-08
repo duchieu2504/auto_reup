@@ -35,6 +35,7 @@ class SocialAccountResponse(SocialAccountBase):
     last_checked_at: Optional[datetime]
     created_at: datetime
     updated_at: Optional[datetime]
+    warmup_end_time: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -50,6 +51,18 @@ def get_accounts(db: Session = Depends(get_db)):
             acc.auth_data = decrypt_data(acc.auth_data)
         if acc.proxy_password:
             acc.proxy_password = decrypt_data(acc.proxy_password)
+            
+    try:
+        from app.core.config import REDIS_URL
+        import redis
+        r = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+        keys = [f"warmup_end:{acc.id}" for acc in accounts]
+        end_times = r.mget(keys) if keys else []
+        for acc, end_time in zip(accounts, end_times):
+            setattr(acc, "warmup_end_time", end_time)
+    except Exception as e:
+        pass
+        
     return accounts
 
 @router.post("/", response_model=SocialAccountResponse)
@@ -189,9 +202,65 @@ def warmup_account(account_id: int, db: Session = Depends(get_db)):
         "user_agent": db_account.user_agent
     }
     
-    warmup_account_task.delay(account_dict)
+    import random
+    warmup_duration = random.randint(600, 900)
+    account_dict["warmup_duration"] = warmup_duration
+    
+    task = warmup_account_task.delay(account_dict)
+    
+    try:
+        from app.core.config import REDIS_URL
+        import redis
+        r = redis.Redis.from_url(REDIS_URL)
+        r.set(f"warmup_task:{account_id}", task.id, ex=3600) # Expire in 1 hour
+        
+        # Lưu thời gian kết thúc ước tính để hiển thị UI (Dùng UTC+7)
+        import datetime
+        end_time_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7, seconds=warmup_duration)).strftime("%H:%M")
+        r.set(f"warmup_end:{account_id}", end_time_str, ex=warmup_duration + 300)
+    except Exception as e:
+        pass
     
     return {"status": "success", "message": f"Đã đưa tiến trình nuôi tài khoản {db_account.username} vào hàng đợi nền."}
+
+@router.post("/{account_id}/stop-warmup")
+def stop_warmup(account_id: int, db: Session = Depends(get_db)):
+    db_account = db.query(SocialAccount).filter(SocialAccount.id == account_id).first()
+    if not db_account:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
+        
+    try:
+        from app.core.config import REDIS_URL
+        from app.core.celery_app import celery_app
+        import redis
+        import subprocess
+        
+        r = redis.Redis.from_url(REDIS_URL)
+        task_id = r.get(f"warmup_task:{account_id}")
+        
+        if task_id:
+            task_id_str = task_id.decode('utf-8')
+            celery_app.control.revoke(task_id_str, terminate=True)
+            r.delete(f"warmup_task:{account_id}")
+            
+        # Tắt app tiktok nếu là adb_device
+        if db_account.connection_type == "adb_device" and db_account.device_id:
+            device_id = db_account.device_id
+            # Chạy celery task force_stop vì FastAPI backend không có truy cập ADB trực tiếp
+            from app.tasks.uploader_tasks import force_stop_device_task
+            force_stop_device_task.delay(device_id)
+            
+        db_account.status = "active"
+        db.commit()
+        
+        try:
+            r.delete(f"warmup_end:{account_id}")
+        except:
+            pass
+            
+        return {"status": "success", "message": f"Đã dừng tiến trình nuôi cho tài khoản {db_account.username}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khi dừng: {e}")
 
 @router.post("/sync")
 def sync_accounts(db: Session = Depends(get_db)):

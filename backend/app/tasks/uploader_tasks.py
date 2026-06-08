@@ -124,34 +124,10 @@ def execute_upload(self, schedule_id: int):
         db.commit()
         
     except Exception as e:
-        error_msg = str(e).lower()
-        fatal_keywords = ["không tồn tại", "không được hỗ trợ", "cấm đăng bài", "bị khóa", "bị chết", "xóa khỏi", "bị cấm"]
-        is_fatal = any(kw in error_msg for kw in fatal_keywords)
-
-        if is_fatal:
-            logger.error(f"Upload thất bại chí mạng (Fatal) schedule_id={schedule_id}: {e}")
-            schedule.status = "failed"
-            schedule.error_message = str(e)
-            db.commit()
-        else:
-            try:
-                # Exponential backoff: 60s, 120s, 300s
-                backoff_delays = [60, 120, 300]
-                retries = self.request.retries
-                delay = backoff_delays[retries] if retries < len(backoff_delays) else 300
-                
-                logger.warning(f"Lỗi tạm thời khi upload schedule_id={schedule_id}: {e}. Đang thử lại lần {retries + 1} sau {delay} giây...")
-                schedule.status = "retrying"
-                schedule.error_message = f"Đang thử lại lần {retries + 1}: {e}"
-                schedule.retry_count += 1
-                db.commit()
-                
-                raise self.retry(exc=e, countdown=delay)
-            except MaxRetriesExceededError:
-                logger.error(f"Hết số lần thử lại schedule_id={schedule_id}: {e}")
-                schedule.status = "failed"
-                schedule.error_message = f"Đã thử lại tối đa 3 lần thất bại: {e}"
-                db.commit()
+        logger.error(f"Upload thất bại schedule_id={schedule_id}: {e}")
+        schedule.status = "failed"
+        schedule.error_message = str(e)
+        db.commit()
     finally:
         db.close()
 
@@ -211,3 +187,15 @@ def warmup_account_task(self, account_data: dict):
                 acc.status = "active"
                 db.commit()
         db.close()
+
+@celery_app.task(bind=True, max_retries=1)
+def force_stop_device_task(self, device_id: str):
+    import subprocess
+    logger.info(f"Đang gọi ADB để đóng ứng dụng cho thiết bị {device_id} từ Celery worker...")
+    try:
+        subprocess.run(["adb", "-s", device_id, "shell", "am", "force-stop", "com.ss.android.ugc.aweme"], timeout=5)
+        subprocess.run(["adb", "-s", device_id, "shell", "am", "force-stop", "com.zhiliaoapp.musically"], timeout=5)
+        subprocess.run(["adb", "-s", device_id, "shell", "am", "force-stop", "com.ss.android.ugc.trill"], timeout=5)
+        subprocess.run(["adb", "-s", device_id, "shell", "input", "keyevent", "3"], timeout=5)
+    except Exception as e:
+        logger.error(f"Lỗi khi đóng ứng dụng trên {device_id}: {e}")

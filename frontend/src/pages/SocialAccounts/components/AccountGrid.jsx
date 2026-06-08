@@ -1,10 +1,10 @@
 import React from 'react';
-import { Trash2, Edit2, Activity, Globe, Shield, RefreshCw, Smartphone, AlertTriangle } from 'lucide-react';
+import { Trash2, Edit2, Activity, Globe, Shield, RefreshCw, Smartphone, AlertTriangle, Square } from 'lucide-react';
 
 export const AccountGrid = ({ hook }) => {
   const { 
     accounts, loading, warmingUpIds,
-    handleDelete, checkStatus, openEditModal, triggerWarmup
+    handleDelete, checkStatus, openEditModal, triggerWarmup, stopWarmup
   } = hook;
 
   if (loading) {
@@ -83,20 +83,23 @@ export const AccountGrid = ({ hook }) => {
             </button>
             
             {(acc.connection_type === 'gpm_login' || acc.connection_type === 'adb_device') && (
-              <button 
-                onClick={() => {
-                  if (warmingUpIds.includes(acc.id) || acc.status === 'warming_up') return;
-                  triggerWarmup(acc.id);
-                }}
-                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors border ${
-                  warmingUpIds.includes(acc.id) || acc.status === 'warming_up'
-                    ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                    : 'bg-brand-primary/20 hover:bg-brand-primary/40 text-brand-primary border-brand-primary/30'
-                }`}
-              >
-                <Activity size={16} className={warmingUpIds.includes(acc.id) || acc.status === 'warming_up' ? 'animate-pulse' : ''} /> 
-                {warmingUpIds.includes(acc.id) || acc.status === 'warming_up' ? 'Đang nuôi...' : 'Nuôi (Warm-up)'}
-              </button>
+              (warmingUpIds.includes(acc.id) || acc.status === 'warming_up') ? (
+                <button 
+                  onClick={() => stopWarmup(acc.id)}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors border bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
+                >
+                  <Square size={16} /> 
+                  Dừng nuôi {acc.warmup_end_time ? `(${acc.warmup_end_time})` : ''}
+                </button>
+              ) : (
+                <button 
+                  onClick={() => triggerWarmup(acc.id)}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors border bg-brand-primary/20 hover:bg-brand-primary/40 text-brand-primary border-brand-primary/30"
+                >
+                  <Activity size={16} /> 
+                  Nuôi (Warm-up)
+                </button>
+              )
             )}
           </div>
         </div>

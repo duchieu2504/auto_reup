@@ -105,7 +105,18 @@ class AdbWarmupEngine(BaseWarmupEngine):
             
         if ":" in device_id:
             logger.info(f"[Warmup-ADB] Đang connect tới {device_id}...")
-            subprocess.run(f"adb connect {device_id}", shell=True)
+            subprocess.run(f"adb connect {device_id}", shell=True, capture_output=True)
+            
+        # Kiểm tra thiết bị có thực sự online không
+        devices = subprocess.run(["adb", "devices"], capture_output=True, text=True).stdout
+        is_online = False
+        for line in devices.splitlines():
+            if device_id in line and "device" in line and "offline" not in line and "unauthorized" not in line:
+                is_online = True
+                break
+        
+        if not is_online:
+            raise Exception(f"Thiết bị {device_id} đang offline hoặc chưa kết nối ADB. Không thể nuôi tài khoản.")
             
         adb_cmd = ["adb", "-s", device_id]
         
@@ -131,15 +142,16 @@ class AdbWarmupEngine(BaseWarmupEngine):
         try:
             from app.services.uploader.adb_automator import ADBAutomator
             automator = ADBAutomator(device_id)
-            if not automator.find_element(texts=["Trang chủ", "Home", "Hồ sơ", "Profile", "Tạo", "Create", "Hộp thư", "Inbox"]):
+            if not automator.wait_for_app_foreground([tiktok_pkg], timeout=60):
                 raise Exception("Lỗi: Tiktok tải quá chậm, bị treo, hoặc lệnh monkey bị HĐH chặn (Cần bật Gỡ lỗi USB bảo mật).")
+            time.sleep(5) # Chờ 5s cho UI ổn định và tải xong video đầu tiên
         except Exception as e:
             if "Tiktok tải quá chậm" in str(e) or "bị HĐH chặn" in str(e):
                 raise e
             logger.warning(f"[Warmup-ADB] Không thể xác minh giao diện Tiktok nhưng vẫn tiếp tục: {e}")
         
         
-        warmup_duration = random.randint(600, 900)
+        warmup_duration = self.account_data.get("warmup_duration", random.randint(600, 900))
         end_time = time.time() + warmup_duration
         
         videos_watched = 0
@@ -162,7 +174,7 @@ class AdbWarmupEngine(BaseWarmupEngine):
         logger.info(f"[Warmup-ADB] Kích thước màn hình: {width}x{height}")
         
         while time.time() < end_time:
-            watch_time = random.randint(10, 45)
+            watch_time = random.randint(10, 20)
             logger.info(f"[Warmup-ADB] Đang xem video {videos_watched + 1} trong {watch_time}s...")
             time.sleep(watch_time)
             
@@ -191,7 +203,12 @@ class AdbWarmupEngine(BaseWarmupEngine):
             start_y = int(height * 0.8)
             end_x = int(width * 0.5)
             end_y = int(height * 0.2)
-            subprocess.run(f"{adb_cmd_str} shell input swipe {start_x} {start_y} {end_x} {end_y} 300", shell=True)
+            swipe_res = subprocess.run(f"{adb_cmd_str} shell input swipe {start_x} {start_y} {end_x} {end_y} 300", shell=True, capture_output=True, text=True)
+            
+            # Nếu thiết bị đột ngột bị ngắt kết nối giữa chừng
+            if "device offline" in swipe_res.stdout or "not found" in swipe_res.stdout or "device offline" in swipe_res.stderr or "not found" in swipe_res.stderr:
+                raise Exception(f"Thiết bị {device_id} đã bị ngắt kết nối giữa quá trình nuôi tài khoản.")
+                
             videos_watched += 1
             
         logger.info(f"[Warmup-ADB] Hoàn tất phiên nuôi! Đã lướt {videos_watched} video, thả {likes_given} tim.")

@@ -21,6 +21,27 @@ class ADBAutomator:
             logger.error(f"[ADBAutomator] Lỗi chạy lệnh {cmd}: {e}")
             return ""
 
+    def wait_for_app_foreground(self, package_names: list, timeout: int = 60) -> bool:
+        """Đợi cho đến khi một trong các package_names nằm ở Foreground."""
+        start_time = time.time()
+        logger.info(f"[ADBAutomator] Đang chờ app {package_names} khởi động lên Foreground...")
+        while time.time() - start_time < timeout:
+            output = self._run_adb(["shell", "dumpsys", "activity", "activities"])
+            # Kiểm tra dòng mCurrentFocus hoặc mFocusedApp hoặc mResumedActivity
+            for pkg in package_names:
+                if f"mCurrentFocus" in output and pkg in output:
+                    logger.info(f"[ADBAutomator] Đã thấy {pkg} ở Foreground (mCurrentFocus) sau {int(time.time() - start_time)}s")
+                    return True
+                if f"mFocusedApp" in output and pkg in output:
+                    logger.info(f"[ADBAutomator] Đã thấy {pkg} ở Foreground (mFocusedApp) sau {int(time.time() - start_time)}s")
+                    return True
+                if f"mResumedActivity" in output and pkg in output:
+                    logger.info(f"[ADBAutomator] Đã thấy {pkg} ở Foreground (mResumedActivity) sau {int(time.time() - start_time)}s")
+                    return True
+            time.sleep(2)
+        logger.error(f"[ADBAutomator] Quá thời gian chờ {timeout}s nhưng không thấy app nào trong {package_names} ở Foreground.")
+        return False
+
     def dump_ui(self) -> ET.Element:
         """Kéo file giao diện XML từ thiết bị về và parse."""
         remote_xml = "/sdcard/window_dump.xml"
@@ -209,7 +230,7 @@ class ADBAutomator:
     def handle_permission_popups(self, max_popups=3):
         """Xử lý các popup cấp quyền (Camera, Mic, Bộ nhớ)"""
         for _ in range(max_popups):
-            if self.click_element(texts=["Cho phép", "Allow", "Trong khi dùng ứng dụng", "While using the app", "OK", "Đồng ý"], retries=1, wait=1):
+            if self.click_element(texts=["Cho phép", "Allow", "Trong khi dùng ứng dụng", "While using the app", "OK", "Đồng ý", "Agree", "Got it"], retries=1, wait=1):
                 logger.info("[ADBAutomator] Đã đồng ý cấp quyền truy cập.")
                 time.sleep(1)
             else:

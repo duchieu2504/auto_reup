@@ -2,6 +2,7 @@ import logging
 import os
 import subprocess
 import time
+import random
 from datetime import datetime
 from typing import Dict, Any
 from .base_engine import BaseUploaderEngine
@@ -160,8 +161,8 @@ class ADBUploader(BaseUploaderEngine):
             
         # 2. Bấm nút Tải lên (Upload)
         logger.info("[ADB] Bấm nút Tải lên (Upload) Douyin...")
-        if not automator.click_element(texts=["相册", "上传", "上传视频"], wait=3):
-            logger.info("[ADB] Không tìm thấy nút Tải lên bằng chữ, dùng thuật toán dò mìn (Phải -> Trái)...")
+        if not automator.click_element(texts=["相册", "上传", "上传视频"], content_descs=["相册", "上传", "上传视频"], wait=3):
+            logger.info("[ADB] Không tìm thấy nút Tải lên bằng chữ hoặc mô tả, dùng thuật toán dò mìn (Phải -> Trái)...")
             automator.click_dynamic_bottom_right()
             
             # Douyin check tab Video
@@ -215,29 +216,78 @@ class ADBUploader(BaseUploaderEngine):
         logger.info("[ADB] Upload Douyin App hoàn tất!")
         return "https://www.douyin.com/"
         
+    def _get_tiktok_package(self) -> str:
+        """Tự động phát hiện phiên bản TikTok đang cài trên máy"""
+        output = self._run_adb_cmd(["shell", "pm", "list", "packages"])
+        if output:
+            if "package:com.ss.android.ugc.trill" in output:
+                return "com.ss.android.ugc.trill" # TikTok Asia
+            if "package:com.zhiliaoapp.musically" in output:
+                return "com.zhiliaoapp.musically" # TikTok Global
+        return "com.zhiliaoapp.musically" # Default fallback
+        
     def _upload_tiktok_mobile(self, remote_video_path: str, text: str, automator: ADBAutomator) -> str:
         logger.info("[ADB] Khởi động Tiktok Mobile App...")
+        
+        # Tự động dò tìm Package name
+        tiktok_pkg = self._get_tiktok_package()
+        logger.info(f"[ADB] Đã phát hiện phiên bản TikTok: {tiktok_pkg}")
+        
         # Ép buộc đóng app cũ để xóa cache thư viện
-        self._run_adb_cmd(["shell", "am", "force-stop", "com.zhiliaoapp.musically"])
+        self._run_adb_cmd(["shell", "am", "force-stop", tiktok_pkg])
         time.sleep(2)
-        # Lệnh mở Tiktok Quốc tế (Package: com.zhiliaoapp.musically) và Tiktok Asia (com.ss.android.ugc.trill)
-        # Chạy cả 2 lệnh, máy có bản nào thì nó sẽ mở bản đó
-        self._run_adb_cmd(["shell", "monkey", "-p", "com.zhiliaoapp.musically", "-c", "android.intent.category.LAUNCHER", "1"])
-        self._run_adb_cmd(["shell", "monkey", "-p", "com.ss.android.ugc.trill", "-c", "android.intent.category.LAUNCHER", "1"])
+        
+        # Lệnh mở Tiktok
+        self._run_adb_cmd(["shell", "monkey", "-p", tiktok_pkg, "-c", "android.intent.category.LAUNCHER", "1"])
         
         logger.info("[ADB] Đang chờ Tiktok tải trang chủ...")
-        app_opened = False
-        for i in range(12): # Chờ tối đa 60 giây (12 * 5s) cho các máy cực chậm
-            time.sleep(5)
-            # Kiểm tra xem trang chủ đã load chưa bằng cách tìm các chữ thường có ở thanh menu dưới cùng
-            if automator.find_element(texts=["Trang chủ", "Home", "Hồ sơ", "Profile", "Tạo", "Create", "Hộp thư", "Inbox"]):
-                app_opened = True
-                break
+        app_opened = automator.wait_for_app_foreground([tiktok_pkg], timeout=60)
+        if app_opened:
+            time.sleep(5) # Chờ thêm 5s cho UI ổn định và video bắt đầu phát
         
         if not app_opened:
             raise Exception("Lỗi: Tiktok tải quá chậm hoặc bị treo, không thể vào trang chủ!")
             
         logger.info("[ADB] Tiktok đã mở thành công.")
+        
+        # Helper: Lướt video và tìm trang chủ an toàn (Không Live, không Quảng cáo)
+        def _swipe_to_safe_home():
+            swipes = random.randint(1, 2)
+            logger.info(f"[ADB] Lướt {swipes} video để tăng độ trust trước khi đăng...")
+            
+            # Tính toán kích thước màn hình
+            res_wm = subprocess.run(f"adb -s {self.adb_ip} shell wm size", shell=True, capture_output=True, text=True)
+            width, height = 720, 1280
+            if "Physical size:" in res_wm.stdout:
+                try:
+                    w, h = res_wm.stdout.split("Physical size:")[1].strip().split("x")
+                    width, height = int(w), int(h)
+                except:
+                    pass
+            start_x, start_y = int(width * 0.5), int(height * 0.8)
+            end_x, end_y = int(width * 0.5), int(height * 0.2)
+            
+            # Lướt 1-2 video ban đầu
+            for _ in range(swipes):
+                subprocess.run(["adb", "-s", self.adb_ip, "shell", "input", "swipe", str(start_x), str(start_y), str(end_x), str(end_y), "300"])
+                time.sleep(random.randint(3, 5))
+                
+            # Đảm bảo đang ở trang chủ (có thanh menu dưới cùng) và không kẹt ở Live
+            max_retries = 5
+            for _ in range(max_retries):
+                if automator.find_element(
+                    texts=["Hồ sơ", "Profile", "Hộp thư", "Inbox", "Trang chủ", "Home"],
+                    content_descs=["Hồ sơ", "Profile", "Hộp thư", "Inbox", "Trang chủ", "Home"]
+                ):
+                    logger.info("[ADB] Đã xác nhận trang chủ an toàn, sẵn sàng đăng bài.")
+                    return True
+                logger.info("[ADB] Đang ở Live hoặc Quảng cáo che mất thanh menu, lướt tiếp...")
+                subprocess.run(["adb", "-s", self.adb_ip, "shell", "input", "swipe", str(start_x), str(start_y), str(end_x), str(end_y), "300"])
+                time.sleep(4)
+                
+            return False
+
+        _swipe_to_safe_home()
         
         # 1. Bấm nút + (Tạo mới) ở giữa cạnh dưới
         logger.info("[ADB] Bấm nút + (Tạo mới) ở giữa cạnh dưới màn hình...")
@@ -248,8 +298,13 @@ class ADBUploader(BaseUploaderEngine):
             
         # 2. Bấm nút Tải lên (Upload)
         logger.info("[ADB] Bấm nút Tải lên (Upload)...")
-        if not automator.click_element(texts=["Tải lên", "Upload", "Album", "Gallery"], wait=3):
-            logger.info("[ADB] Không tìm thấy nút Tải lên bằng chữ, dùng thuật toán dò mìn (Phải -> Trái)...")
+        if not automator.click_element(
+            texts=["Tải lên", "Upload", "Album", "Gallery"], 
+            content_descs=["Tải lên", "Upload", "Album", "Gallery", "Thư viện"], 
+            resource_ids=["com.ss.android.ugc.trill:id/upload_btn", "com.zhiliaoapp.musically:id/upload_btn", "com.ss.android.ugc.trill:id/upload_hot_area", "com.zhiliaoapp.musically:id/upload_hot_area"],
+            wait=3
+        ):
+            logger.info("[ADB] Không tìm thấy nút Tải lên bằng chữ hoặc mô tả, dùng thuật toán dò mìn (Phải -> Trái)...")
             # Lần 1: Bấm dò bên Phải
             automator.click_dynamic_bottom_right()
             automator.handle_permission_popups()
@@ -275,18 +330,19 @@ class ADBUploader(BaseUploaderEngine):
         
         # 4. Bấm Tiếp / Next (Màn hình chọn video)
         logger.info("[ADB] Bấm Tiếp (Màn hình chọn video)")
-        if not automator.click_element(texts=["Tiếp", "Next", "Tiếp theo", "Continue"], wait=4):
+        if not automator.click_element(texts_contains=["Tiếp", "Next", "Continue"], wait=4):
             automator.click_percentage(0.85, 0.95)
             time.sleep(2)
         
         # 5. Bấm Tiếp / Next (Màn hình edit video)
         logger.info("[ADB] Bấm Tiếp (Màn hình chỉnh sửa video)")
-        if not automator.click_element(texts=["Tiếp", "Next", "Tiếp theo", "Continue"], wait=3):
+        if not automator.click_element(texts_contains=["Tiếp", "Next", "Continue"], wait=3):
             automator.click_percentage(0.85, 0.95)
             time.sleep(2)
         
         # 7. Gõ caption
         logger.info("[ADB] Nhập caption qua ADBKeyboard...")
+        import base64
         # Đảm bảo có khoảng trắng ở cuối để Tiktok tự bắt định dạng Hashtag
         if not text.endswith(" "):
             text += " "
@@ -294,13 +350,16 @@ class ADBUploader(BaseUploaderEngine):
         if not automator.click_element(texts_contains=["Mô tả", "Thêm mô tả", "Add description", "Describe your post"], wait=2):
             automator.click_percentage(0.3, 0.2)
         time.sleep(1)
-        self._run_adb_cmd(["shell", "am", "broadcast", "-a", "ADB_INPUT_TEXT", "--es", "msg", f"'{text}'"])
+        
+        # Mã hóa Base64 để tránh lỗi ký tự đặc biệt (dấu nháy, khoảng trắng)
+        b64_text = base64.b64encode(text.encode('utf-8')).decode('utf-8')
+        self._run_adb_cmd(["shell", "am", "broadcast", "-a", "ADB_INPUT_B64", "--es", "msg", b64_text])
         time.sleep(3) # Chờ 3s để Tiktok xử lý chuỗi và render hashtag (nếu có)
         
         # Bấm Nút Back (Trở về) của Android để đảm bảo mọi Popup, bảng gợi ý hashtag và Bàn phím đều bị thu gọn
-        logger.info("[ADB] Gửi lệnh Back để đóng toàn bộ Popup và thoát focus...")
-        self._run_adb_cmd(["shell", "input", "keyevent", "4"])
-        time.sleep(2)
+        # logger.info("[ADB] Gửi lệnh Back để đóng toàn bộ Popup và thoát focus...")
+        # self._run_adb_cmd(["shell", "input", "keyevent", "4"])
+        # time.sleep(2)
         
         # 8. Bấm Đăng / Post
         automator.click_element(texts=["Đăng", "Post"], wait=5)
@@ -308,7 +367,24 @@ class ADBUploader(BaseUploaderEngine):
         # 8. Xử lý bảng hỏi xác nhận "Đăng video công khai?" (Nếu có)
         automator.click_element(texts=["Đăng ngay", "Post now", "Xác nhận", "Confirm", "OK", "Đồng ý"], retries=1, wait=3)
         
-        # Gửi máy về màn hình chính của Android để tiến trình upload chạy ngầm
+        # 9. Lướt thêm vài video sau khi đăng để ngụy trang
+        logger.info("[ADB] Đang chờ Tiktok quay lại trang chính để lướt thêm video ngụy trang...")
+        time.sleep(5)
+        # Bấm về Trang chủ TikTok nếu chưa ở đó
+        automator.click_element(texts=["Trang chủ", "Home"], wait=2)
+        time.sleep(1)
+        
+        # NHẤN Trang chủ MỘT LẦN NỮA HOẶC NHẤN TAB "Đề xuất" / "Dành cho bạn" để thoát khỏi tab Bạn bè
+        logger.info("[ADB] Chuyển sang tab Đề xuất (For You) để tránh kẹt ở tab Bạn bè...")
+        if not automator.click_element(texts=["Đề xuất", "Recommended", "Dành cho bạn", "For You"], wait=1):
+            # Fallback: Bấm vào tọa độ giữa cạnh trên màn hình (vị trí mặc định của tab Dành cho bạn)
+            automator.click_percentage(0.5, 0.08)
+        time.sleep(2)
+        
+        # Gọi lại hàm lướt video an toàn
+        _swipe_to_safe_home()
+        
+        # Gửi máy về màn hình chính của Android
         logger.info("[ADB] Trở về màn hình chính Android...")
         self._run_adb_cmd(["shell", "input", "keyevent", "3"])
         

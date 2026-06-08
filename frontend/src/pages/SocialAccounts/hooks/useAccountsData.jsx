@@ -250,6 +250,20 @@ export const useAccountsData = () => {
       if (!res.ok) throw new Error(data.detail || 'Lỗi khi gọi API');
       toast.success(data.message || 'Đã đưa vào hàng đợi chạy ngầm!', { id: loadingToast });
       setWarmingUpIds(prev => [...prev, accId]);
+      fetchAccounts();
+    } catch (err) {
+      toast.error(err.message, { id: loadingToast });
+    }
+  };
+  const stopWarmup = async (accId) => {
+    const loadingToast = toast.loading('Đang dừng tiến trình Nuôi tài khoản...');
+    try {
+      const res = await fetch(`${API_BASE}/social-accounts/${accId}/stop-warmup`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Lỗi khi gọi API');
+      toast.success(data.message || 'Đã dừng nuôi tài khoản!', { id: loadingToast });
+      setWarmingUpIds(prev => prev.filter(id => id !== accId));
+      fetchAccounts(); // Lấy lại status mới nhất
     } catch (err) {
       toast.error(err.message, { id: loadingToast });
     }
@@ -258,6 +272,6 @@ export const useAccountsData = () => {
   return {
     accounts, proxiesList, loading, isModalOpen, setIsModalOpen, editingId, warmingUpIds,
     formData, handleInputChange, resetForm, handleSubmit, handleAutoLogin,
-    handleDelete, checkStatus, openEditModal, handleSync, triggerWarmup, fetchProxiesList
+    handleDelete, checkStatus, openEditModal, handleSync, triggerWarmup, stopWarmup, fetchProxiesList
   };
 };
