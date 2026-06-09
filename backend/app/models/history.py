@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, Enum
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import enum
 from app.db.session import Base
@@ -45,6 +46,9 @@ class VideoHistory(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationship for eager loading (lazy='noload' = only loaded when explicitly requested)
+    schedules = relationship("UploadSchedule", back_populates="history", lazy="noload")
 
 from sqlalchemy import event
 

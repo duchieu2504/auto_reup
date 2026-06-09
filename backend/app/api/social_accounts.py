@@ -53,9 +53,8 @@ def get_accounts(db: Session = Depends(get_db)):
             acc.proxy_password = decrypt_data(acc.proxy_password)
             
     try:
-        from app.core.config import REDIS_URL
-        import redis
-        r = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+        from app.core.redis_pool import get_sync_redis
+        r = get_sync_redis(decode_responses=True)
         keys = [f"warmup_end:{acc.id}" for acc in accounts]
         end_times = r.mget(keys) if keys else []
         for acc, end_time in zip(accounts, end_times):
@@ -161,41 +160,24 @@ def warmup_account(account_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Tính năng nuôi tài khoản hiện chỉ hỗ trợ GPM Login hoặc điện thoại giả lập ADB.")
         
     from app.tasks.uploader_tasks import warmup_account_task
+    from app.utils.proxy_resolver import resolve_proxy
     
     # Giải mã trước khi ném vào task
     if db_account.auth_data:
         db_account.auth_data = decrypt_data(db_account.auth_data)
-    if db_account.proxy_password:
-        db_account.proxy_password = decrypt_data(db_account.proxy_password)
         
-    # Fetch proxy from proxy_id if present
-    proxy_host = db_account.proxy_host
-    proxy_port = db_account.proxy_port
-    proxy_username = db_account.proxy_username
-    proxy_password = db_account.proxy_password
-    
-    if db_account.proxy_id:
-        from app.models.proxy import Proxy
-        proxy_obj = db.query(Proxy).filter(Proxy.id == db_account.proxy_id).first()
-        if proxy_obj:
-            proxy_host = proxy_obj.host
-            proxy_port = proxy_obj.port
-            proxy_username = proxy_obj.username
-            if proxy_obj.password:
-                try:
-                    proxy_password = decrypt_data(proxy_obj.password)
-                except:
-                    pass
+    # Resolve proxy using DRY helper
+    proxy = resolve_proxy(db_account, db)
 
     account_dict = {
         "id": db_account.id,
         "platform": db_account.platform,
         "username": db_account.username,
         "auth_data": db_account.auth_data,
-        "proxy_host": proxy_host,
-        "proxy_port": proxy_port,
-        "proxy_username": proxy_username,
-        "proxy_password": proxy_password,
+        "proxy_host": proxy["host"],
+        "proxy_port": proxy["port"],
+        "proxy_username": proxy["username"],
+        "proxy_password": proxy["password"],
         "proxy_id": db_account.proxy_id,
         "connection_type": db_account.connection_type,
         "device_id": db_account.device_id,
@@ -209,14 +191,15 @@ def warmup_account(account_id: int, db: Session = Depends(get_db)):
     task = warmup_account_task.delay(account_dict)
     
     try:
-        from app.core.config import REDIS_URL
-        import redis
-        r = redis.Redis.from_url(REDIS_URL)
-        r.set(f"warmup_task:{account_id}", task.id, ex=3600) # Expire in 1 hour
+        from app.core.redis_pool import get_sync_redis
+        r = get_sync_redis()
+        r.set(f"warmup_task:{account_id}", task.id, ex=3600)
         
-        # Lưu thời gian kết thúc ước tính để hiển thị UI (Dùng UTC+7)
-        import datetime
-        end_time_str = (datetime.datetime.utcnow() + datetime.timedelta(hours=7, seconds=warmup_duration)).strftime("%H:%M")
+        # Lưu thời gian kết thúc ước tính (UTC+7)
+        from datetime import datetime, timedelta, timezone
+        import zoneinfo
+        vn_tz = zoneinfo.ZoneInfo("Asia/Ho_Chi_Minh")
+        end_time_str = (datetime.now(vn_tz) + timedelta(seconds=warmup_duration)).strftime("%H:%M")
         r.set(f"warmup_end:{account_id}", end_time_str, ex=warmup_duration + 300)
     except Exception as e:
         pass
@@ -230,12 +213,10 @@ def stop_warmup(account_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
         
     try:
-        from app.core.config import REDIS_URL
+        from app.core.redis_pool import get_sync_redis
         from app.core.celery_app import celery_app
-        import redis
-        import subprocess
         
-        r = redis.Redis.from_url(REDIS_URL)
+        r = get_sync_redis()
         task_id = r.get(f"warmup_task:{account_id}")
         
         if task_id:
@@ -246,7 +227,6 @@ def stop_warmup(account_id: int, db: Session = Depends(get_db)):
         # Tắt app tiktok nếu là adb_device
         if db_account.connection_type == "adb_device" and db_account.device_id:
             device_id = db_account.device_id
-            # Chạy celery task force_stop vì FastAPI backend không có truy cập ADB trực tiếp
             from app.tasks.uploader_tasks import force_stop_device_task
             force_stop_device_task.delay(device_id)
             

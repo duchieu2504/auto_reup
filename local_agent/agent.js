@@ -220,6 +220,9 @@ app.post('/open-login', async (req, res) => {
 
     } catch (error) {
         console.error(`[-] Lỗi hệ thống:`, error);
+        if (browser && browser.isConnected()) {
+            await browser.close().catch(() => {});
+        }
         res.status(500).json({ error: error.message });
     }
 });

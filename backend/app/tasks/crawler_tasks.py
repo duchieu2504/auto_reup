@@ -1,24 +1,23 @@
-import redis
 import os
+import json
+
 from app.core.celery_app import celery_app
 from app.services.crawler.douyin_scraper import DouyinScraper
 from app.core.logger import get_logger
+from app.core.redis_pool import get_sync_redis
 from celery.exceptions import MaxRetriesExceededError
 
 logger = get_logger(__name__)
-
-from app.core.config import REDIS_URL
-redis_client = redis.Redis.from_url(REDIS_URL)
 
 @celery_app.task(bind=True, name="crawler_tasks.scrape_profile", max_retries=3)
 def scrape_profile_task(self, urls: list):
     task_id = self.request.id
     channel = f"task_log_{task_id}"
 
+    redis_client = get_sync_redis()
     redis_client.delete(channel)
 
     def log_callback(msg: str, progress: float = None):
-        import json
         payload = {"log": msg.strip()}
         if progress is not None:
             payload["progress"] = progress

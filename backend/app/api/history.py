@@ -97,6 +97,8 @@ def get_history(
     skip: int = 0,
     limit: int = 100
 ):
+    from sqlalchemy.orm import joinedload
+
     query = db.query(VideoHistory)
     if source:
         query = query.filter(VideoHistory.source == source)
@@ -106,11 +108,16 @@ def get_history(
         # Lọc theo ngày (YYYY-MM-DD)
         query = query.filter(func.date(VideoHistory.created_at) == date)
     
-    records = query.order_by(VideoHistory.created_at.desc()).offset(skip).limit(limit).all()
+    # Eager load schedules + account in a single query (fixes N+1)
+    records = (
+        query
+        .options(joinedload(VideoHistory.schedules).joinedload(UploadSchedule.account))
+        .order_by(VideoHistory.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     
-    for r in records:
-        r.schedules = db.query(UploadSchedule).filter(UploadSchedule.video_history_id == r.id).all()
-        
     return records
 
 class StatusResponse(BaseModel):

@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
-from datetime import datetime, timedelta
-import json
+from sqlalchemy import func, desc, case
+from datetime import datetime, timedelta, timezone
 
 from app.db.session import get_db
 from app.models.history import VideoHistory, ProcessStatus, UploadStatus
@@ -10,29 +9,33 @@ from app.models.social_account import SocialAccount
 
 router = APIRouter()
 
+
 @router.get("/dashboard-stats")
 async def get_dashboard_stats(db: Session = Depends(get_db)):
-    # 1. KPIs
-    total_videos = db.query(VideoHistory).count()
-    processed_videos = db.query(VideoHistory).filter(VideoHistory.status == ProcessStatus.COMPLETED).count()
-    uploaded_videos = db.query(VideoHistory).filter(VideoHistory.upload_status == UploadStatus.UPLOADED).count()
-    
-    total_accounts = db.query(SocialAccount).count()
-    active_accounts = db.query(SocialAccount).filter(SocialAccount.status == "active").count()
+    now = datetime.now(timezone.utc)
+
+    # 1. KPIs — consolidated into 2 queries instead of 5 separate COUNT(*)
+    video_stats = db.query(
+        func.count(VideoHistory.id).label("total"),
+        func.count(case((VideoHistory.status == ProcessStatus.COMPLETED, 1))).label("processed"),
+        func.count(case((VideoHistory.upload_status == UploadStatus.UPLOADED, 1))).label("uploaded"),
+    ).first()
+
+    account_stats = db.query(
+        func.count(SocialAccount.id).label("total"),
+        func.count(case((SocialAccount.status == "active", 1))).label("active"),
+    ).first()
 
     # 2. Charts - Activity 7 Days
-    # To handle both SQLite and PostgreSQL without raw complex queries, 
-    # we'll fetch the last 7 days of records and aggregate them in Python
-    # This is safe because 7 days of data is small.
-    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+    seven_days_ago = now - timedelta(days=7)
     recent_videos = db.query(VideoHistory).filter(VideoHistory.created_at >= seven_days_ago).all()
-    
+
     # Initialize dictionary for the last 7 days
     activity_dict = {}
     for i in range(7):
-        date_str = (datetime.utcnow() - timedelta(days=6-i)).strftime("%m-%d")
+        date_str = (now - timedelta(days=6 - i)).strftime("%m-%d")
         activity_dict[date_str] = {"date": date_str, "downloaded": 0, "processed": 0, "uploaded": 0}
-        
+
     for video in recent_videos:
         if not video.created_at:
             continue
@@ -43,7 +46,7 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
                 activity_dict[date_str]["processed"] += 1
             if video.upload_status == UploadStatus.UPLOADED:
                 activity_dict[date_str]["uploaded"] += 1
-                
+
     activity_7_days = list(activity_dict.values())
 
     # 3. Charts - Platform Distribution (Download Source)
@@ -68,10 +71,10 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
     # 5. Recent Activity
     latest_videos = db.query(VideoHistory).order_by(desc(VideoHistory.updated_at)).limit(8).all()
     recent_activity = []
-    
+
     for v in latest_videos:
         time_str = v.updated_at.strftime("%H:%M") if v.updated_at else "N/A"
-        
+
         if v.status == ProcessStatus.FAILED:
             recent_activity.append({"time": time_str, "type": "PROCESS", "message": f"Lỗi xử lý video {v.original_name}", "status": "error"})
         elif v.upload_status == UploadStatus.UPLOADED:
@@ -85,16 +88,16 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
 
     return {
         "kpis": {
-            "total_videos": total_videos,
-            "processed_videos": processed_videos,
-            "uploaded_videos": uploaded_videos,
-            "active_accounts": active_accounts,
-            "total_accounts": total_accounts
+            "total_videos": video_stats.total,
+            "processed_videos": video_stats.processed,
+            "uploaded_videos": video_stats.uploaded,
+            "active_accounts": account_stats.active,
+            "total_accounts": account_stats.total,
         },
         "charts": {
             "activity_7_days": activity_7_days,
             "platform_distribution": platform_distribution,
-            "status_distribution": status_distribution
+            "status_distribution": status_distribution,
         },
-        "recent_activity": recent_activity
+        "recent_activity": recent_activity,
     }

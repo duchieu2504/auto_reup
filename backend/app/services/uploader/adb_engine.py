@@ -83,7 +83,8 @@ class ADBUploader(BaseUploaderEngine):
         # 1.5 Cập nhật Metadata Creation Time của Video thành hiện tại để đảm bảo Tiktok xếp nó lên đầu tiên
         logger.info("[ADB] Cập nhật Metadata Creation Time cho video...")
         new_video_path = video_path.replace(".mp4", f"_{int(time.time())}.mp4")
-        current_time_iso = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+        from datetime import timezone
+        current_time_iso = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
         try:
             subprocess.run([
                 "ffmpeg", "-y", "-i", video_path, 
