@@ -96,7 +96,12 @@ def create_schedule(schedule: UploadScheduleCreate, db: Session = Depends(get_db
     db.refresh(db_schedule)
     
     # Nếu scheduled_time là None (đăng ngay) hoặc đã đến giờ, trigger task celery luôn
-    if db_schedule.scheduled_time is None or db_schedule.scheduled_time <= datetime.now(db_schedule.scheduled_time.tzinfo if db_schedule.scheduled_time else None):
+    from datetime import timezone
+    should_trigger_now = (
+        db_schedule.scheduled_time is None or
+        db_schedule.scheduled_time <= datetime.now(timezone.utc)
+    )
+    if should_trigger_now:
         try:
             from app.tasks.uploader_tasks import execute_upload
             db_schedule.status = "uploading"

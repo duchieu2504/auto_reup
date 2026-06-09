@@ -4,7 +4,7 @@ import httpx
 from datetime import datetime, timedelta, timezone
 from celery import shared_task
 from sqlalchemy.orm import Session
-from app.db.session import SessionLocal
+from app.db.session import get_db_session
 from app.models.social_account import SocialAccount
 from app.models.upload_schedule import UploadSchedule
 
@@ -43,21 +43,22 @@ def check_all_accounts_health_task(self):
         print("Tính năng Health Check đang tắt.")
         return "Disabled"
         
-    db: Session = SessionLocal()
-    try:
+    with get_db_session() as db:
         interval_hours = int(os.getenv("HEALTH_CHECK_INTERVAL_HOURS", 4))
+        now = datetime.now(timezone.utc)
+        
         # Lấy các tài khoản active
         accounts = db.query(SocialAccount).filter(SocialAccount.status.in_(["active", "shadowbanned"])).all()
         for account in accounts:
             # Kiểm tra thời gian check gần nhất
             if account.health_checked_at:
-                hours_since_last_check = (datetime.now(timezone.utc) - account.health_checked_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+                hours_since_last_check = (now - account.health_checked_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
                 if hours_since_last_check < interval_hours:
                     continue # Chưa tới lúc check
             
             print(f"Đang kiểm tra sức khỏe tài khoản {account.username}...")
             # Lấy các video up thành công trong vòng 3 ngày qua mà chưa check health (hoặc check ra 0)
-            three_days_ago = datetime.now(timezone.utc) - timedelta(days=3)
+            three_days_ago = now - timedelta(days=3)
             recent_uploads = db.query(UploadSchedule).filter(
                 UploadSchedule.account_id == account.id,
                 UploadSchedule.status == "success",
@@ -75,7 +76,7 @@ def check_all_accounts_health_task(self):
                 # Check health status
                 # Tuổi của video phải > 24h thì mới kết luận shadowban
                 if upload.created_at:
-                    age_hours = (datetime.now(timezone.utc) - upload.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+                    age_hours = (now - upload.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
                     if age_hours >= 24:
                         if views == 0:
                             upload.health_status = "shadowbanned"
@@ -86,7 +87,7 @@ def check_all_accounts_health_task(self):
                         upload.health_status = "pending_24h" # Chưa đủ 24h
             
             # Cập nhật thời gian kiểm tra của account
-            account.health_checked_at = datetime.now(timezone.utc)
+            account.health_checked_at = now
             
             # Nếu có >= 3 video liên tiếp (hoặc trong 3 ngày) bị 0 view -> Đánh dấu shadowbanned
             if zero_view_count >= 3:
@@ -99,9 +100,3 @@ def check_all_accounts_health_task(self):
         db.commit()
         print("✅ Hoàn tất kiểm tra Health Check.")
         return "Success"
-    except Exception as e:
-        db.rollback()
-        print(f"Lỗi Health Check: {e}")
-        raise e
-    finally:
-        db.close()

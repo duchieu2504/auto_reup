@@ -1,7 +1,7 @@
 import os
+from contextlib import contextmanager
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from app.core.config import DATA_DIR
 
@@ -22,13 +22,29 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+class Base(DeclarativeBase):
+    pass
 
-Base = declarative_base()
 
-# Dependency
+# Dependency for FastAPI (used with Depends)
 def get_db():
     db = SessionLocal()
     try:
         yield db
+    finally:
+        db.close()
+
+
+# Context manager for Celery tasks — guarantees session cleanup
+@contextmanager
+def get_db_session():
+    """Thread-safe DB session context manager for background tasks.
+    Automatically rolls back on exception and always closes the session."""
+    db = SessionLocal()
+    try:
+        yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()

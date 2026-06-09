@@ -36,5 +36,5 @@ class UploadSchedule(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Mối quan hệ
-    history = relationship("VideoHistory")
+    history = relationship("VideoHistory", back_populates="schedules")
     account = relationship("SocialAccount")

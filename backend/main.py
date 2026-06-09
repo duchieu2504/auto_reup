@@ -15,51 +15,52 @@ from app.api.social_accounts import router as social_accounts_router
 from app.api.upload_schedule import router as upload_schedule_router
 
 import time
+from sqlalchemy import text, inspect
 from sqlalchemy.exc import OperationalError
 
 # Retry logic for database connection (handles Postgres slow startup on fresh clone)
-max_retries = 5
-for i in range(max_retries):
-    try:
-        Base.metadata.create_all(bind=engine)
-        
-        # Add proxy_id column if not exists (for Postgres/SQLite)
+def init_db():
+    max_retries = 5
+    for i in range(max_retries):
         try:
-            with engine.connect() as conn:
-                from sqlalchemy import text
-                conn.execute(text("ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS proxy_id INTEGER REFERENCES proxies(id) ON DELETE SET NULL;"))
-                conn.commit()
-        except Exception as e:
-            print(f"Error adding proxy_id column (might already exist or SQLite syntax limitation): {e}")
-
-        # Add user_agent column if not exists
-        try:
-            with engine.connect() as conn:
-                from sqlalchemy import text
-                # SQLite workaround: SQLite doesn't support IF NOT EXISTS in ALTER TABLE ADD COLUMN.
-                # It will throw an OperationalError if the column already exists.
-                conn.execute(text("ALTER TABLE social_accounts ADD COLUMN user_agent VARCHAR(500);"))
-                conn.commit()
-        except Exception as e:
-            pass # Ignore if column already exists
+            Base.metadata.create_all(bind=engine)
             
-        # Add target_account_name column if not exists
-        try:
-            with engine.connect() as conn:
-                from sqlalchemy import text
-                conn.execute(text("ALTER TABLE live_stream_jobs ADD COLUMN target_account_name VARCHAR(255);"))
-                conn.commit()
-        except Exception as e:
-            pass
+            inspector = inspect(engine)
+            
+            # Check and add proxy_id and user_agent to social_accounts
+            try:
+                if 'social_accounts' in inspector.get_table_names():
+                    social_accounts_cols = [col['name'] for col in inspector.get_columns('social_accounts')]
+                    with engine.connect() as conn:
+                        if 'proxy_id' not in social_accounts_cols:
+                            conn.execute(text("ALTER TABLE social_accounts ADD COLUMN proxy_id INTEGER REFERENCES proxies(id) ON DELETE SET NULL;"))
+                        if 'user_agent' not in social_accounts_cols:
+                            conn.execute(text("ALTER TABLE social_accounts ADD COLUMN user_agent VARCHAR(500);"))
+                        conn.commit()
+            except Exception as e:
+                print(f"Error updating social_accounts schema: {e}")
+                
+            # Check and add target_account_name to live_stream_jobs
+            try:
+                if 'live_stream_jobs' in inspector.get_table_names():
+                    live_jobs_cols = [col['name'] for col in inspector.get_columns('live_stream_jobs')]
+                    with engine.connect() as conn:
+                        if 'target_account_name' not in live_jobs_cols:
+                            conn.execute(text("ALTER TABLE live_stream_jobs ADD COLUMN target_account_name VARCHAR(255);"))
+                        conn.commit()
+            except Exception as e:
+                print(f"Error updating live_stream_jobs schema: {e}")
 
-        print("Database connected and initialized successfully.")
-        break
-    except OperationalError as e:
-        if i == max_retries - 1:
-            print("Failed to connect to the database after multiple retries. Exiting.")
-            raise e
-        print(f"Database connection failed, retrying in 5 seconds... ({i+1}/{max_retries})")
-        time.sleep(5)
+            print("Database connected and initialized successfully.")
+            break
+        except OperationalError as e:
+            if i == max_retries - 1:
+                print("Failed to connect to the database after multiple retries. Exiting.")
+                raise e
+            print(f"Database connection failed, retrying in 5 seconds... ({i+1}/{max_retries})")
+            time.sleep(5)
+
+init_db()
 
 app = FastAPI(title="Video Reup System API")
 
