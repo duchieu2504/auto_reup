@@ -96,7 +96,7 @@ def execute_upload(self, schedule_id: int):
                 uploader = PlaywrightUploader(account_data)
             elif schedule.engine_type == "adb":
                 from app.services.uploader.adb_engine import ADBUploader
-                uploader = ADBUploader(account_data)
+                uploader = ADBUploader(account_data, schedule_id=schedule_id)
             else:
                 raise Exception(f"Engine type {schedule.engine_type} không được hỗ trợ.")
 
@@ -109,11 +109,25 @@ def execute_upload(self, schedule_id: int):
             db.commit()
 
         except Exception as e:
-            logger.error(f"Upload thất bại schedule_id={schedule_id}: {e}")
-            # Guard against schedule being None (already checked above, but defensive)
-            schedule.status = "failed"
-            schedule.error_message = str(e)[:1000]  # Truncate to avoid DB overflow
+            # Check if the user manually aborted this task
+            from app.services.uploader.adb_engine import TaskAbortedByUser
+            if isinstance(e, TaskAbortedByUser):
+                logger.warning(f"Upload bị hủy bởi người dùng schedule_id={schedule_id}: {e}")
+                schedule.status = "failed"
+                schedule.error_message = "Đã bị hủy bởi người dùng"
+            else:
+                logger.error(f"Upload thất bại schedule_id={schedule_id}: {e}")
+                schedule.status = "failed"
+                schedule.error_message = str(e)[:1000]  # Truncate to avoid DB overflow
             db.commit()
+        finally:
+            # Clean up Redis control key
+            try:
+                from app.core.redis_pool import get_sync_redis
+                r = get_sync_redis(decode_responses=True)
+                r.delete(f"task_control:{schedule_id}")
+            except Exception:
+                pass
 
 
 @celery_app.task(bind=True, name="tasks.warmup_account", max_retries=3)

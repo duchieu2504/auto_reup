@@ -231,6 +231,46 @@ export const useScheduleData = () => {
     }
   };
 
+  const handlePause = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/upload-schedules/${id}/pause`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Lỗi khi tạm dừng");
+      }
+      toast.success("Đã tạm dừng tiến trình upload ⏸️");
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleResume = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/upload-schedules/${id}/resume`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Lỗi khi tiếp tục");
+      }
+      toast.success("Đã tiếp tục tiến trình upload ▶️");
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleStop = async (id) => {
+    if (!window.confirm("Bạn có chắc muốn HỦY tiến trình upload này không? Thao tác này không thể hoàn tác!")) return;
+    try {
+      const res = await fetch(`${API_BASE}/upload-schedules/${id}/stop`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Lỗi khi hủy");
+      }
+      toast.success("Đang hủy tiến trình upload... 🛑");
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   return {
     schedules, videos, accounts,
     selectedVideos, setSelectedVideos, selectedAuthor, setSelectedAuthor,
@@ -238,6 +278,6 @@ export const useScheduleData = () => {
     scheduleMode, setScheduleMode, scheduledTime, setScheduledTime, engineType, setEngineType,
     isGenerating, isSubmitting, groupedVideos, postedMap,
     handleAccountToggle, handleVideoToggle, toggleAllAuthorVideos, generateAIContent,
-    onSubmit, deleteSchedule, handleRetry, fetchData
+    onSubmit, deleteSchedule, handleRetry, handlePause, handleResume, handleStop, fetchData
   };
 };
