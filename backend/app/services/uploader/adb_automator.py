@@ -194,7 +194,46 @@ class ADBAutomator:
         time.sleep(1)
 
     def get_dynamic_y(self) -> float:
-        """Tính toán tọa độ Y chính xác bằng cách quét màn hình để tìm cụm nút Quay phim."""
+        """Tính toán tọa độ Y chính xác bằng OpenCV hoặc cào XML tìm cụm nút Quay phim."""
+        # 1. Thử dùng OpenCV (Template Matching hoặc Image Processing) trước nếu có cài cv2
+        try:
+            import cv2
+            import numpy as np
+            import tempfile
+            
+            logger.info("[ADBAutomator] Đang sử dụng OpenCV để tìm tọa độ Y của nút Đăng/Quay...")
+            img_path = os.path.join(tempfile.gettempdir(), "screencap_dynamic.png")
+            self._run_adb(["shell", "screencap", "-p", "/sdcard/screencap_dynamic.png"])
+            self._run_adb(["pull", "/sdcard/screencap_dynamic.png", img_path])
+            
+            if os.path.exists(img_path):
+                img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+                h, w = img.shape
+                # Nút Quay thường là một hình tròn trắng/đỏ rất to nằm ở nửa dưới màn hình
+                # Cắt lấy nửa dưới màn hình để tăng tốc độ và tránh nhiễu
+                bottom_half = img[int(h/2):, :]
+                
+                # Dùng thuật toán phát hiện viền hoặc hình tròn lớn nhất ở giữa
+                # Đơn giản nhất là tìm vùng sáng lớn nhất ở khoảng X = w/2
+                circles = cv2.HoughCircles(bottom_half, cv2.HOUGH_GRADIENT, dp=1.2, minDist=100,
+                                           param1=50, param2=30, minRadius=40, maxRadius=150)
+                
+                if circles is not None:
+                    circles = np.round(circles[0, :]).astype("int")
+                    # Lấy hình tròn gần tâm X nhất
+                    center_x = w / 2
+                    best_circle = min(circles, key=lambda c: abs(c[0] - center_x))
+                    cx, cy, r = best_circle
+                    
+                    real_y = int(h/2) + cy
+                    logger.info(f"[ADBAutomator] OpenCV tìm thấy nút Quay tại Y={real_y} (Tỷ lệ: {real_y/h:.3f})")
+                    return real_y / h
+        except ImportError:
+            logger.warning("[ADBAutomator] Chưa cài đặt opencv-python, chuyển sang dùng XML (Fallback)...")
+        except Exception as e:
+            logger.warning(f"[ADBAutomator] Lỗi khi dùng OpenCV tìm nút Đăng: {e}. Chuyển sang XML...")
+
+        # 2. Fallback: Dùng XML
         try:
             import tempfile
             import xml.etree.ElementTree as ET

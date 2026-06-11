@@ -1,5 +1,5 @@
-import React from 'react';
-import { CalendarClock, RefreshCw, XCircle, CheckCircle, Clock } from 'lucide-react';
+import React, { useState } from 'react';
+import { CalendarClock, RefreshCw, XCircle, CheckCircle, Clock, Pause, Play, StopCircle } from 'lucide-react';
 import { truncateFilename } from '../hooks/useScheduleData';
 
 const getStatusBadge = (status) => {
@@ -13,7 +13,8 @@ const getStatusBadge = (status) => {
 };
 
 export const ScheduleList = ({ hook }) => {
-  const { schedules, videos, accounts, fetchData, deleteSchedule, handleRetry } = hook;
+  const { schedules, videos, accounts, fetchData, deleteSchedule, handleRetry, handlePause, handleResume, handleStop } = hook;
+  const [pausedTasks, setPausedTasks] = useState(new Set());
 
   return (
     <div className="lg:col-span-2 bg-bg-secondary border border-border-subtle rounded-2xl p-6 flex flex-col h-[800px]">
@@ -114,6 +115,42 @@ export const ScheduleList = ({ hook }) => {
                 </td>
                 <td className="p-4 text-right">
                   <div className="flex justify-end gap-2">
+                    {sch.status === 'uploading' && (
+                      <>
+                        {/* Nút Pause / Play */}
+                        {pausedTasks.has(sch.id) ? (
+                          <button
+                            onClick={() => {
+                              handleResume(sch.id);
+                              setPausedTasks(prev => { const n = new Set(prev); n.delete(sch.id); return n; });
+                            }}
+                            className="text-green-400 hover:text-green-300 transition-colors p-1.5 bg-green-400/10 hover:bg-green-400/20 rounded-lg"
+                            title="Tiếp tục upload"
+                          >
+                            <Play size={16} />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              handlePause(sch.id);
+                              setPausedTasks(prev => new Set(prev).add(sch.id));
+                            }}
+                            className="text-yellow-400 hover:text-yellow-300 transition-colors p-1.5 bg-yellow-400/10 hover:bg-yellow-400/20 rounded-lg"
+                            title="Tạm dừng upload"
+                          >
+                            <Pause size={16} />
+                          </button>
+                        )}
+                        {/* Nút Stop (X) */}
+                        <button
+                          onClick={() => handleStop(sch.id)}
+                          className="text-red-400 hover:text-red-300 transition-colors p-1.5 bg-red-400/10 hover:bg-red-400/20 rounded-lg"
+                          title="Hủy tiến trình upload"
+                        >
+                          <StopCircle size={16} />
+                        </button>
+                      </>
+                    )}
                     {sch.status === 'failed' && (
                       <button 
                         onClick={() => handleRetry(sch.id)}
@@ -123,13 +160,15 @@ export const ScheduleList = ({ hook }) => {
                         <RefreshCw size={16} />
                       </button>
                     )}
-                    <button 
-                      onClick={() => deleteSchedule(sch.id)}
-                      className="text-text-tertiary hover:text-red-400 transition-colors p-1"
-                      title="Xóa lịch"
-                    >
-                      <XCircle size={18} />
-                    </button>
+                    {sch.status !== 'uploading' && (
+                      <button 
+                        onClick={() => deleteSchedule(sch.id)}
+                        className="text-text-tertiary hover:text-red-400 transition-colors p-1"
+                        title="Xóa lịch"
+                      >
+                        <XCircle size={18} />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
