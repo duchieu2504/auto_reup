@@ -3,6 +3,7 @@ import os
 import subprocess
 import time
 import random
+import re
 from datetime import datetime
 from typing import Dict, Any
 from .base_engine import BaseUploaderEngine
@@ -78,7 +79,7 @@ class ADBUploader(BaseUploaderEngine):
             raise Exception(f"File video không tồn tại: {video_path}")
 
         # 1. Dọn dẹp các video reup cũ trên điện thoại để tránh đầy bộ nhớ và chọn nhầm
-        self._run_adb_cmd(["shell", "rm", "-f", "/sdcard/DCIM/Camera/reup_*.mp4"])
+        self._run_adb_cmd(["shell", "rm", "-f", "/sdcard/DCIM/Camera/Camerep_*.mp4"])
         
         # 1.5 Cập nhật Metadata Creation Time của Video thành hiện tại để đảm bảo Tiktok xếp nó lên đầu tiên
         logger.info("[ADB] Cập nhật Metadata Creation Time cho video...")
@@ -98,7 +99,7 @@ class ADBUploader(BaseUploaderEngine):
             
         # 2. Push video sang bộ nhớ điện thoại (Thư mục Camera để Tiktok dễ nhận diện nhất)
         self._run_adb_cmd(["shell", "mkdir", "-p", "/sdcard/DCIM/Camera"])
-        remote_path = f"/sdcard/DCIM/Camera/reup_{int(time.time())}.mp4"
+        remote_path = f"/sdcard/DCIM/Camera/Camerep_{int(time.time())}.mp4"
         logger.info(f"[ADB] Pushing video to {remote_path}...")
         self._run_adb_cmd(["push", video_path, remote_path], timeout=120)
         
@@ -259,14 +260,26 @@ class ADBUploader(BaseUploaderEngine):
             # Tính toán kích thước màn hình
             res_wm = subprocess.run(f"adb -s {self.adb_ip} shell wm size", shell=True, capture_output=True, text=True)
             width, height = 720, 1280
-            if "Physical size:" in res_wm.stdout:
+            if res_wm.stdout:
                 try:
-                    w, h = res_wm.stdout.split("Physical size:")[1].strip().split("x")
-                    width, height = int(w), int(h)
-                except:
-                    pass
+                    # Ưu tiên tìm "Override size" trước vì đây là độ phân giải đang hiển thị thật
+                    if "Override size:" in res_wm.stdout:
+                        match = re.search(r"Override size: (\d+)x(\d+)", res_wm.stdout)
+                    else:
+                        # Nếu không có Override thì lấy "Physical size"
+                        match = re.search(r"Physical size: (\d+)x(\d+)", res_wm.stdout)
+                        
+                    if match:
+                        width = int(match.group(1))
+                        height = int(match.group(2))
+                        logger.info(f"[ADB] Kích thước màn hình: {width}x{height}")
+                except Exception as e:
+                    print(f"Lỗi khi lấy kích thước màn hình: {e}")
+
+            # Tiếp tục tính toán tọa độ
             start_x, start_y = int(width * 0.5), int(height * 0.8)
             end_x, end_y = int(width * 0.5), int(height * 0.2)
+            
             
             # Lướt 1-2 video ban đầu
             for _ in range(swipes):
@@ -291,8 +304,13 @@ class ADBUploader(BaseUploaderEngine):
         _swipe_to_safe_home()
         
         # 1. Bấm nút + (Tạo mới) ở giữa cạnh dưới
+        logger.info("[ADB] Bấm nút dừng video...")
+        automator.click_percentage(0.5, 0.5)
+
+
+
         logger.info("[ADB] Bấm nút + (Tạo mới) ở giữa cạnh dưới màn hình...")
-        automator.click_percentage(0.5, 0.92)
+        automator.click_percentage(0.5, 0.94)
         time.sleep(3)
             
         automator.handle_permission_popups()

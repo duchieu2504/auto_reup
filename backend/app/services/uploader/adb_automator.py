@@ -151,11 +151,37 @@ class ADBAutomator:
 
     def get_screen_size(self):
         """Lấy kích thước màn hình để bấm theo tọa độ phần trăm nếu cần"""
+        # Sử dụng hàm _run_adb có sẵn của class để nhất quán cấu trúc
         output = self._run_adb(["shell", "wm", "size"])
-        match = re.search(r'Physical size: (\d+)x(\d+)', output)
-        if match:
-            return int(match.group(1)), int(match.group(2))
-        return 1080, 1920
+        
+        # Giữ giá trị mặc định của code cũ (1080, 1920) thay vì (720, 1280) 
+        # để tránh gây lỗi ở các hàm khác đang kỳ vọng tỉ lệ này
+        width, height = 1080, 1920 
+        
+        if output:
+            try:
+                # Ưu tiên tìm "Override size" trước vì đây là độ phân giải đang hiển thị thật
+                if "Override size:" in output:
+                    match = re.search(r"Override size: (\d+)x(\d+)", output)
+                else:
+                    # Nếu không có Override thì lấy "Physical size"
+                    match = re.search(r"Physical size: (\d+)x(\d+)", output)
+                    
+                if match:
+                    width = int(match.group(1))
+                    height = int(match.group(2))
+                    # Ghi log nếu bạn có dùng thư viện logging
+                    if 'logger' in globals():
+                        logger.info(f"[ADB] Kích thước màn hình: {width}x{height}")
+                    else:
+                        print(f"[ADB] Kích thước màn hình: {width}x{height}")
+            except Exception as e:
+                print(f"Lỗi khi lấy kích thước màn hình: {e}")
+        
+        # Cập nhật lại cache để sửa lỗi rò rỉ bộ nhớ đa luồng (Worker Pool)
+        self.screen_size = (width, height)
+        
+        return width, height
 
     def click_percentage(self, pct_x: float, pct_y: float):
         """Bấm theo % chiều rộng và chiều cao màn hình"""
