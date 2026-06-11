@@ -86,8 +86,9 @@ class DouyinScraper:
                 return
                 
             try:
-                video_url = aweme["video"]["play_addr"]["url_list"][0]
-            except (KeyError, IndexError, TypeError):
+                video_urls = aweme["video"]["play_addr"]["url_list"]
+                if not video_urls: raise ValueError("Empty URL list")
+            except (KeyError, IndexError, TypeError, ValueError):
                 yield "[!] Không thể lấy link tải trực tiếp của video này (có thể là dạng hình ảnh).\n"
                 return
                 
@@ -98,7 +99,7 @@ class DouyinScraper:
                 return
                 
             yield f"[+] Đang tải video: {video_id_match} từ {uploader}\n"
-            for dl_log in self._download_video_generator(client, video_url, video_id_match, uploader):
+            for dl_log in self._download_video_generator(client, video_urls, video_id_match, uploader):
                 yield dl_log
                 
             return
@@ -130,7 +131,8 @@ class DouyinScraper:
                     continue
                 
                 try:
-                    video_url = aweme["video"]["play_addr"]["url_list"][0]
+                    video_urls = aweme["video"]["play_addr"]["url_list"]
+                    if not video_urls: continue
                 except (KeyError, IndexError, TypeError):
                     # Bỏ qua các video dạng hình ảnh / dạng lỗi
                     continue
@@ -155,13 +157,13 @@ class DouyinScraper:
                 logger.info(f"Đang tải video mới: {video_id} từ {uploader}")
                 yield f"[+] Đang tải video mới: {video_id}\n"
                 
-                for dl_log in self._download_video_generator(client, video_url, video_id, uploader):
+                for dl_log in self._download_video_generator(client, video_urls, video_id, uploader):
                     yield dl_log
                     
             cursor = data.get("max_cursor", 0)
             has_more = data.get("has_more", False)
 
-    def _download_video_generator(self, client, video_url: str, video_id: str, uploader: str):
+    def _download_video_generator(self, client, video_urls: list, video_id: str, uploader: str):
         import httpx
         user_folder = "".join(c for c in uploader if c.isalnum() or c in (' ', '_', '-')).strip()
         if not user_folder:
@@ -173,71 +175,83 @@ class DouyinScraper:
         output_file = os.path.join(target_dir, f"{video_id}.mp4")
         temp_file = output_file + ".part"
         
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                with httpx.Client() as hx_client:
-                    with hx_client.stream("GET", video_url, headers=client.headers, cookies=client.cookies, timeout=30, follow_redirects=True) as response:
-                        response.raise_for_status()
-                        
-                        total_size = int(response.headers.get('content-length', 0))
-                        downloaded = 0
-                        
-                        if total_size > 0:
-                            mb_size = round(total_size / (1024 * 1024), 2)
-                            yield f"[*] Bắt đầu tải file, kích thước: {mb_size} MB\n"
-                        else:
-                            yield f"[*] Bắt đầu tải file (không xác định dung lượng)...\n"
-                            
-                        last_percent = 0
-                        with open(temp_file, 'wb') as f:
-                            for chunk in response.iter_bytes(chunk_size=8192*8):
-                                if chunk:
-                                    f.write(chunk)
-                                    downloaded += len(chunk)
-                                    if total_size > 0:
-                                        percent = int((downloaded / total_size) * 100)
-                                        if percent >= last_percent + 10:
-                                            yield {"log": f"[download] {percent}% of {mb_size}MB\n", "progress": percent}
-                                            last_percent = percent
-                
-                # Đổi tên file part thành mp4 sau khi tải xong 100%
-                if os.path.exists(temp_file):
-                    os.rename(temp_file, output_file)
-                    
-                logger.info(f"Tải thành công video: {video_id}")
-                yield {"log": f"[*] Tải thành công video: {video_id}\n", "progress": 100}
-                self.sync_manager.mark_as_downloaded(video_id)
-                
-                db = SessionLocal()
+        success = False
+        last_error = ""
+        max_retries_per_url = 2
+        
+        for url_idx, video_url in enumerate(video_urls):
+            if success: break
+            
+            for attempt in range(max_retries_per_url):
                 try:
-                    record = db.query(VideoHistory).filter(VideoHistory.raw_video_path == output_file).first()
-                    if not record:
-                        record = VideoHistory(
-                            original_name=f"{video_id}.mp4",
-                            source=f"Douyin - {uploader}",
-                            raw_video_path=output_file,
-                            status=ProcessStatus.PENDING
-                        )
-                        db.add(record)
-                        db.commit()
-                except Exception as e:
-                    logger.error(f"Lỗi khi lưu DB VideoHistory: {e}")
-                finally:
-                    db.close()
+                    with httpx.Client() as hx_client:
+                        with hx_client.stream("GET", video_url, headers=client.headers, cookies=client.cookies, timeout=30, follow_redirects=True) as response:
+                            response.raise_for_status()
+                            
+                            total_size = int(response.headers.get('content-length', 0))
+                            downloaded = 0
+                            
+                            if total_size > 0:
+                                mb_size = round(total_size / (1024 * 1024), 2)
+                                yield f"[*] Bắt đầu tải file (CDN {url_idx + 1}), kích thước: {mb_size} MB\n"
+                            else:
+                                yield f"[*] Bắt đầu tải file (CDN {url_idx + 1})...\n"
+                                
+                            last_percent = 0
+                            with open(temp_file, 'wb') as f:
+                                for chunk in response.iter_bytes(chunk_size=8192*8):
+                                    if chunk:
+                                        f.write(chunk)
+                                        downloaded += len(chunk)
+                                        if total_size > 0:
+                                            percent = int((downloaded / total_size) * 100)
+                                            if percent >= last_percent + 10:
+                                                yield {"log": f"[download] {percent}% of {mb_size}MB\n", "progress": percent}
+                                                last_percent = percent
                     
-                break # Thành công, thoát vòng lặp retry
-                
-            except Exception as e:
-                if os.path.exists(temp_file):
-                    try:
-                        os.remove(temp_file)
-                    except:
-                        pass
+                    # Đổi tên file part thành mp4 sau khi tải xong 100%
+                    if os.path.exists(temp_file):
+                        os.rename(temp_file, output_file)
                         
-                if attempt == max_retries - 1:
-                    logger.error(f"Lỗi hệ thống khi tải video {video_id}: {str(e)}", exc_info=True)
-                    yield f"[!] Lỗi hệ thống khi tải video {video_id}: {str(e)}\n"
-                else:
-                    yield f"[*] Mất kết nối khi tải, đang thử lại ({attempt + 1}/{max_retries})...\n"
+                    logger.info(f"Tải thành công video: {video_id} từ CDN {url_idx + 1}")
+                    yield {"log": f"[*] Tải thành công video: {video_id}\n", "progress": 100}
+                    self.sync_manager.mark_as_downloaded(video_id)
+                    
+                    db = SessionLocal()
+                    try:
+                        record = db.query(VideoHistory).filter(VideoHistory.raw_video_path == output_file).first()
+                        if not record:
+                            record = VideoHistory(
+                                original_name=f"{video_id}.mp4",
+                                source=f"Douyin - {uploader}",
+                                raw_video_path=output_file,
+                                status=ProcessStatus.PENDING
+                            )
+                            db.add(record)
+                            db.commit()
+                    except Exception as e:
+                        logger.error(f"Lỗi khi lưu DB VideoHistory: {e}")
+                    finally:
+                        db.close()
+                        
+                    success = True
+                    break # Thành công, thoát vòng lặp retry
+                    
+                except Exception as e:
+                    last_error = str(e)
+                    if os.path.exists(temp_file):
+                        try:
+                            os.remove(temp_file)
+                        except:
+                            pass
+                            
+                    if attempt < max_retries_per_url - 1:
+                        yield f"[*] Mất kết nối khi tải, đang thử lại lần {attempt + 2}...\n"
+                        
+            if not success and url_idx < len(video_urls) - 1:
+                yield f"[*] CDN {url_idx + 1} không phản hồi, đang chuyển sang server dự phòng...\n"
+                
+        if not success:
+            logger.error(f"Lỗi hệ thống khi tải video {video_id}: {last_error}", exc_info=True)
+            yield f"[!] Lỗi khi tải video {video_id}: {last_error}. Bỏ qua video này.\n"
 

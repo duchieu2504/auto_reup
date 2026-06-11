@@ -33,6 +33,10 @@ export const useScheduleData = () => {
 
   useEffect(() => {
     fetchData();
+    const interval = setInterval(() => {
+      fetchData();
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchData = async () => {
@@ -205,8 +209,7 @@ export const useScheduleData = () => {
     }
   };
 
-  const deleteSchedule = async (id) => {
-    if(!window.confirm("Bạn có chắc muốn xóa lịch đăng video này không?")) return;
+  const executeDeleteSchedule = async (id) => {
     try {
       await fetch(`${API_BASE}/upload-schedules/${id}`, { method: 'DELETE' });
       toast.success("Đã gỡ lịch đăng video thành công! 🗑️");
@@ -214,6 +217,21 @@ export const useScheduleData = () => {
     } catch (error) {
       toast.error("Gặp sự cố khi xóa lịch đăng, vui lòng thử lại! ❌");
     }
+  };
+
+  const deleteSchedule = (id) => {
+    toast((t) => (
+      <div className="flex flex-col gap-4 p-1">
+        <p className="text-sm font-medium">Bạn có chắc muốn xóa lịch đăng video này không?</p>
+        <div className="flex justify-end gap-2 mt-2">
+          <button className="px-3 py-1.5 bg-bg-secondary border border-border-subtle text-text-primary hover:bg-glass-hover rounded-lg text-xs transition-colors" onClick={() => toast.dismiss(t.id)}>Hủy</button>
+          <button className="px-3 py-1.5 bg-red-500 text-white hover:bg-red-600 rounded-lg text-xs transition-colors" onClick={() => {
+            toast.dismiss(t.id);
+            executeDeleteSchedule(id);
+          }}>Xác nhận Xóa</button>
+        </div>
+      </div>
+    ), { duration: Infinity });
   };
 
   const handleRetry = async (id) => {
@@ -257,8 +275,7 @@ export const useScheduleData = () => {
     }
   };
 
-  const handleStop = async (id) => {
-    if (!window.confirm("Bạn có chắc muốn HỦY tiến trình upload này không? Thao tác này không thể hoàn tác!")) return;
+  const executeStop = async (id) => {
     try {
       const res = await fetch(`${API_BASE}/upload-schedules/${id}/stop`, { method: 'POST' });
       if (!res.ok) {
@@ -269,6 +286,21 @@ export const useScheduleData = () => {
     } catch (error) {
       toast.error(error.message);
     }
+  };
+
+  const handleStop = (id) => {
+    toast((t) => (
+      <div className="flex flex-col gap-4 p-1">
+        <p className="text-sm font-medium">Bạn có chắc muốn HỦY tiến trình upload này không? Thao tác này không thể hoàn tác!</p>
+        <div className="flex justify-end gap-2 mt-2">
+          <button className="px-3 py-1.5 bg-bg-secondary border border-border-subtle text-text-primary hover:bg-glass-hover rounded-lg text-xs transition-colors" onClick={() => toast.dismiss(t.id)}>Quay lại</button>
+          <button className="px-3 py-1.5 bg-red-500 text-white hover:bg-red-600 rounded-lg text-xs transition-colors" onClick={() => {
+            toast.dismiss(t.id);
+            executeStop(id);
+          }}>Xác nhận Hủy</button>
+        </div>
+      </div>
+    ), { duration: Infinity });
   };
 
   return {

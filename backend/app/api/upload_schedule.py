@@ -66,9 +66,11 @@ def generate_ai_content(req: GenerateContentRequest, db: Session = Depends(get_d
                 pass
                 
     ai_gen = AIContentGenerator()
-    content = ai_gen.generate_viral_content(video_title=video.original_name or "Video", translated_text=translated_text)
-    
-    return content
+    try:
+        content = ai_gen.generate_viral_content(video_title=video.original_name or "Video", translated_text=translated_text)
+        return content
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/", response_model=UploadScheduleResponse)
 def create_schedule(schedule: UploadScheduleCreate, db: Session = Depends(get_db)):
@@ -116,6 +118,16 @@ def delete_schedule(schedule_id: int, db: Session = Depends(get_db)):
     db_schedule = db.query(UploadSchedule).filter(UploadSchedule.id == schedule_id).first()
     if not db_schedule:
         raise HTTPException(status_code=404, detail="Không tìm thấy lịch đăng")
+    
+    # Nếu đang upload, phải gửi tín hiệu hủy cho Celery worker qua Redis
+    if db_schedule.status == "uploading":
+        try:
+            from app.core.redis_pool import get_sync_redis
+            r = get_sync_redis(decode_responses=True)
+            r.set(f"task_control:{schedule_id}", "stop", ex=300)
+        except Exception:
+            pass
+
     db.delete(db_schedule)
     db.commit()
     return {"status": "success"}
@@ -153,7 +165,7 @@ def pause_upload(schedule_id: int, db: Session = Depends(get_db)):
     if not db_schedule:
         raise HTTPException(status_code=404, detail="Không tìm thấy lịch đăng")
     if db_schedule.status != "uploading":
-        raise HTTPException(status_code=400, detail="Chỉ có thể tạm dừng các tiến trình đang upload")
+        raise HTTPException(status_code=400, detail=f"Tiến trình đang ở trạng thái '{db_schedule.status}', không thể tạm dừng")
     
     from app.core.redis_pool import get_sync_redis
     r = get_sync_redis(decode_responses=True)
@@ -167,7 +179,7 @@ def resume_upload(schedule_id: int, db: Session = Depends(get_db)):
     if not db_schedule:
         raise HTTPException(status_code=404, detail="Không tìm thấy lịch đăng")
     if db_schedule.status != "uploading":
-        raise HTTPException(status_code=400, detail="Chỉ có thể resume các tiến trình đang upload")
+        raise HTTPException(status_code=400, detail=f"Tiến trình đang ở trạng thái '{db_schedule.status}', không thể tiếp tục")
     
     from app.core.redis_pool import get_sync_redis
     r = get_sync_redis(decode_responses=True)
@@ -181,7 +193,7 @@ def stop_upload(schedule_id: int, db: Session = Depends(get_db)):
     if not db_schedule:
         raise HTTPException(status_code=404, detail="Không tìm thấy lịch đăng")
     if db_schedule.status != "uploading":
-        raise HTTPException(status_code=400, detail="Chỉ có thể hủy các tiến trình đang upload")
+        raise HTTPException(status_code=400, detail=f"Tiến trình đang ở trạng thái '{db_schedule.status}', không thể hủy")
     
     from app.core.redis_pool import get_sync_redis
     r = get_sync_redis(decode_responses=True)

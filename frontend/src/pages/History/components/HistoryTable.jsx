@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Trash2, Edit, PlayCircle, PauseCircle, Filter, CheckCircle2, Circle, Loader2, RefreshCw } from 'lucide-react';
+import { Pagination } from '../../../components/Pagination';
 import { workflowSteps, getStepIndex } from '../hooks/useHistoryData';
 
 const truncateFilename = (filename) => {
@@ -24,6 +25,16 @@ export const HistoryTable = ({ hook }) => {
   const filteredData = historyData.filter(item => 
     item.original_name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterSource, filterDate, filterStatus, historyData.length]);
+
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const currentData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -125,8 +136,9 @@ export const HistoryTable = ({ hook }) => {
              <Loader2 className="animate-spin" size={24} /> Đang tải dữ liệu...
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-black/20 text-text-secondary text-sm uppercase tracking-wider">
                   <th className="p-4 border-b border-border-subtle w-12 text-center">
@@ -148,7 +160,7 @@ export const HistoryTable = ({ hook }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">
-                {filteredData.map((item, index) => (
+                {currentData.map((item, index) => (
                   <tr 
                     key={item.id} 
                     className={`hover:bg-white/5 transition-colors ${selectedIds.includes(item.id) ? 'bg-red-500/5' : ''} ${item.status === 'failed' ? 'bg-red-500/10' : ''}`}
@@ -161,7 +173,7 @@ export const HistoryTable = ({ hook }) => {
                         className="rounded border-border-subtle bg-bg-secondary cursor-pointer accent-brand-primary"
                       />
                     </td>
-                    <td className="p-4 text-center text-text-secondary text-sm">{index + 1}</td>
+                    <td className="p-4 text-center text-text-secondary text-sm">{(currentPage - 1) * itemsPerPage + index + 1}</td>
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-16 shrink-0 rounded-lg overflow-hidden bg-black/50 border border-white/5 relative group/vid">
@@ -375,6 +387,14 @@ export const HistoryTable = ({ hook }) => {
               </tbody>
             </table>
           </div>
+          <Pagination 
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+            itemsPerPage={itemsPerPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
+        </>
         )}
       </div>
     </div>

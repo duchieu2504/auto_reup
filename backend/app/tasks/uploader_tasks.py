@@ -111,15 +111,21 @@ def execute_upload(self, schedule_id: int):
         except Exception as e:
             # Check if the user manually aborted this task
             from app.services.uploader.adb_engine import TaskAbortedByUser
-            if isinstance(e, TaskAbortedByUser):
-                logger.warning(f"Upload bị hủy bởi người dùng schedule_id={schedule_id}: {e}")
-                schedule.status = "failed"
-                schedule.error_message = "Đã bị hủy bởi người dùng"
+            
+            # Re-fetch schedule to check if it was deleted
+            db_schedule = db.query(UploadSchedule).filter(UploadSchedule.id == schedule_id).first()
+            if db_schedule:
+                if isinstance(e, TaskAbortedByUser):
+                    logger.warning(f"Upload bị hủy bởi người dùng schedule_id={schedule_id}: {e}")
+                    db_schedule.status = "failed"
+                    db_schedule.error_message = "Đã bị hủy bởi người dùng"
+                else:
+                    logger.error(f"Upload thất bại schedule_id={schedule_id}: {e}")
+                    db_schedule.status = "failed"
+                    db_schedule.error_message = str(e)[:1000]  # Truncate to avoid DB overflow
+                db.commit()
             else:
-                logger.error(f"Upload thất bại schedule_id={schedule_id}: {e}")
-                schedule.status = "failed"
-                schedule.error_message = str(e)[:1000]  # Truncate to avoid DB overflow
-            db.commit()
+                logger.warning(f"Schedule {schedule_id} đã bị xóa, bỏ qua cập nhật trạng thái lỗi.")
         finally:
             # Clean up Redis control key
             try:

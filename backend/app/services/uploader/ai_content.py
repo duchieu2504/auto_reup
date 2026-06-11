@@ -12,6 +12,7 @@ class AIContentGenerator:
         
         self.active_provider = os.getenv("ACTIVE_AI_PROVIDER", "gemini")
         self.gemini_key = decrypt_data(os.getenv("GEMINI_API_KEY", ""))
+        self.gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
         self.openai_key = decrypt_data(os.getenv("OPENAI_API_KEY", ""))
         self.anthropic_key = decrypt_data(os.getenv("ANTHROPIC_API_KEY", ""))
         self.xai_key = decrypt_data(os.getenv("XAI_API_KEY", ""))
@@ -64,7 +65,7 @@ class AIContentGenerator:
             result_text = ""
             if self.active_provider == "gemini":
                 response = self.gemini_client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model=self.gemini_model,
                     contents=prompt
                 )
                 result_text = response.text.strip()
@@ -106,7 +107,4 @@ class AIContentGenerator:
         except Exception as e:
             import logging
             logging.error(f"Lỗi khi sinh nội dung AI ({self.active_provider}): {e}")
-            return {
-                "caption": f"Hot: {video_title}",
-                "hashtags": "#xuhuong #viral"
-            }
+            raise Exception(f"Lỗi API ({self.active_provider}): {str(e)}")
