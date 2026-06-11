@@ -170,11 +170,6 @@ class ADBAutomator:
                 if match:
                     width = int(match.group(1))
                     height = int(match.group(2))
-                    # Ghi log nếu bạn có dùng thư viện logging
-                    if 'logger' in globals():
-                        logger.info(f"[ADB] Kích thước màn hình: {width}x{height}")
-                    else:
-                        print(f"[ADB] Kích thước màn hình: {width}x{height}")
             except Exception as e:
                 print(f"Lỗi khi lấy kích thước màn hình: {e}")
         

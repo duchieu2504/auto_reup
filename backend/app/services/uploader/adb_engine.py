@@ -237,7 +237,7 @@ class ADBUploader(BaseUploaderEngine):
             logger.info("[ADB] Không tìm thấy tab Video, tiếp tục lấy file đầu tiên...")
             
         # 4. Chọn video đầu tiên
-        automator.click_percentage(0.25, 0.3)
+        automator.click_percentage(0.25, 0.25)
         self._smart_sleep(2)
         
         # 4. Bấm Tiếp / Next
@@ -305,7 +305,7 @@ class ADBUploader(BaseUploaderEngine):
         # Process đã lên Foreground, nhưng UI bên trong có thể chưa load xong
         # Chờ thêm 8s rồi xác nhận giao diện thật sự đã hiển thị
         logger.info("[ADB] TikTok đã lên Foreground, đang chờ giao diện tải xong...")
-        self._smart_sleep(30)
+        self._smart_sleep(5)
         
         # Xác nhận giao diện trang chủ đã render (có thanh menu dưới cùng)
         ui_ready = False
@@ -379,6 +379,7 @@ class ADBUploader(BaseUploaderEngine):
         # 1. Bấm nút + (Tạo mới) ở giữa cạnh dưới
         logger.info("[ADB] Bấm nút dừng video...")
         automator.click_percentage(0.5, 0.5)
+        self._smart_sleep(1)
 
 
 
@@ -389,7 +390,7 @@ class ADBUploader(BaseUploaderEngine):
         self._smart_sleep(3)
         
         # Dự phòng bằng XML (nếu vẫn ở trang chủ, nghĩa là cách 1 bấm xịt)
-        if automator.find_element(texts=["Trang chủ", "Home"], wait=1):
+        if automator.find_element(texts=["Trang chủ", "Home"]):
             logger.info("[ADB] Cách 1 bấm xịt, dừng video và dùng XML để tìm nút Tạo mới...")
             # Dừng video (tránh ảnh động/live làm mù XML)
             automator._run_adb(["shell", "input", "tap", str(int(w/2)), str(int(h/2))])
@@ -452,7 +453,7 @@ class ADBUploader(BaseUploaderEngine):
             logger.info("[ADB] Không tìm thấy tab Video, tiếp tục lấy file đầu tiên...")
             
         # 4. Chọn video đầu tiên
-        automator.click_percentage(0.25, 0.3)
+        automator.click_percentage(0.25, 0.25)
         self._smart_sleep(2)
         
         # 4. Bấm Tiếp / Next (Màn hình chọn video)
@@ -487,7 +488,8 @@ class ADBUploader(BaseUploaderEngine):
         # logger.info("[ADB] Gửi lệnh Back để đóng toàn bộ Popup và thoát focus...")
         # self._run_adb_cmd(["shell", "input", "keyevent", "4"])
         # time.sleep(2)
-        
+        automator.click_percentage(0.5, 0.75)
+        self._smart_sleep(3)
         # 8. Bấm Đăng / Post
         automator.click_element(texts=["Đăng", "Post"], wait=5)
         
@@ -509,7 +511,7 @@ class ADBUploader(BaseUploaderEngine):
         self._smart_sleep(1.5)
         
         # Bước 2: Tìm nút "Đã follow" hoặc "Bạn bè" làm điểm neo (Anchor)
-        anchor_coords = automator.find_element(texts=["Đã follow", "Following", "Bạn bè", "Friends"], wait=1)
+        anchor_coords = automator.find_element(texts=["Đã follow", "Following", "Bạn bè", "Friends"])
         if anchor_coords:
             x_anchor, y_anchor = anchor_coords
             logger.info(f"[ADB] Đã tìm thấy điểm neo tab hiện tại ở ({x_anchor}, {y_anchor}). Thực hiện vuốt sang trái...")
