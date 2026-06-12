@@ -5,6 +5,7 @@ import subprocess
 import time
 import random
 import re
+import re
 from datetime import datetime
 from typing import Dict, Any
 from .base_engine import BaseUploaderEngine
@@ -134,6 +135,7 @@ class ADBUploader(BaseUploaderEngine):
 
         # 1. Dọn dẹp các video reup cũ trên điện thoại để tránh đầy bộ nhớ và chọn nhầm
         self._run_adb_cmd(["shell", "rm", "-f", "/sdcard/DCIM/Camera/Camerep_*.mp4"])
+        self._run_adb_cmd(["shell", "rm", "-f", "/sdcard/DCIM/Camera/Camerep_*.mp4"])
         
         # 1.5 Cập nhật Metadata Creation Time của Video thành hiện tại để đảm bảo Tiktok xếp nó lên đầu tiên
         logger.info("[ADB] Cập nhật Metadata Creation Time cho video...")
@@ -153,6 +155,7 @@ class ADBUploader(BaseUploaderEngine):
             
         # 2. Push video sang bộ nhớ điện thoại (Thư mục Camera để Tiktok dễ nhận diện nhất)
         self._run_adb_cmd(["shell", "mkdir", "-p", "/sdcard/DCIM/Camera"])
+        remote_path = f"/sdcard/DCIM/Camera/Camerep_{int(time.time())}.mp4"
         remote_path = f"/sdcard/DCIM/Camera/Camerep_{int(time.time())}.mp4"
         logger.info(f"[ADB] Pushing video to {remote_path}...")
         self._run_adb_cmd(["push", video_path, remote_path], timeout=120)
@@ -386,7 +389,64 @@ class ADBUploader(BaseUploaderEngine):
         logger.info("[ADB] Bấm nút + (Tạo mới) ở giữa cạnh dưới màn hình...")
         # Cách 1 (23.1): Tính tọa độ động (Height - 80px)
         w, h = automator.get_screen_size()
-        automator._run_adb(["shell", "input", "tap", str(int(w/2)), str(h - 80)])
+        segment = int(w / 5)
+        clicked = False
+        
+        # Lấy XML một lần để tối ưu tốc độ
+        root = automator.dump_ui()
+        if root is not None:
+            # 1. Thử tìm nút + bằng mô tả trực tiếp
+            create_node = None
+            for node in root.iter('node'):
+                desc = node.get('content-desc', '').lower()
+                if desc in ["tạo", "create", "post", "camera"]:
+                    create_node = node
+                    break
+            
+            if create_node and create_node.get('bounds') != '[0,0][0,0]':
+                coords = automator._get_center_from_bounds(create_node.get('bounds'))
+                if coords:
+                    logger.info(f"[ADB] Đã tìm thấy nút + bằng mô tả XML tại {coords}.")
+                    automator._run_adb(["shell", "input", "tap", str(coords[0]), str(coords[1])])
+                    clicked = True
+            
+            # 2. Nếu không tìm thấy mô tả, tìm các nút neo xung quanh (Hộp thư, Cửa hàng...)
+            if not clicked:
+                anchor_coords = None
+                shift = 0
+                for node in root.iter('node'):
+                    text = node.get('text', '').lower()
+                    bounds = node.get('bounds', '')
+                    if not bounds or bounds == '[0,0][0,0]':
+                        continue
+                    
+                    if text in ["Hộp thư", "inbox", "tin nhắn", "message", "消息"]:
+                        anchor_coords = automator._get_center_from_bounds(bounds)
+                        shift = -segment
+                        logger.info(f"[ADB] Tìm thấy nút Hộp thư, dịch trái {segment}px")
+                        break
+                    elif text in ["Cửa hàng", "shop",]:
+                        anchor_coords = automator._get_center_from_bounds(bounds)
+                        shift = segment
+                        logger.info(f"[ADB] Tìm thấy nút Cửa hàng, dịch phải {segment}px")
+                        break
+                    elif text in ["hồ sơ", "profile", "tôi", "me", "我"]:
+                        anchor_coords = automator._get_center_from_bounds(bounds)
+                        shift = -(segment * 2)
+                        logger.info(f"[ADB] Tìm thấy nút Hồ sơ, dịch trái {segment * 2}px")
+                        break
+                    elif text in ["trang chủ", "home", "首页"]:
+                        anchor_coords = automator._get_center_from_bounds(bounds)
+                        shift = segment * 2
+                        logger.info(f"[ADB] Tìm thấy nút Trang chủ, dịch phải {segment * 2}px")
+                        break
+                
+                if anchor_coords:
+                    target_x = int(anchor_coords[0] + shift)
+                    target_y = anchor_coords[1]
+                    automator._run_adb(["shell", "input", "tap", str(target_x), str(target_y)])
+                    clicked = True
+
         self._smart_sleep(3)
         
         # Dự phòng bằng XML (nếu vẫn ở trang chủ, nghĩa là cách 1 bấm xịt)
@@ -399,6 +459,10 @@ class ADBUploader(BaseUploaderEngine):
             self._smart_sleep(2)
 
         automator.handle_permission_popups()
+        
+        # Thêm độ dừng để camera có thể load mở lên được
+        logger.info("[ADB] Chờ camera load...")
+        self._smart_sleep(8)
             
         # 2. Bấm nút Tải lên (Upload)
         logger.info("[ADB] Bấm nút Tải lên (Upload)...")
@@ -410,16 +474,23 @@ class ADBUploader(BaseUploaderEngine):
         ):
             logger.info("[ADB] Không tìm thấy nút Tải lên bằng chữ hoặc mô tả, dùng thuật toán dò mìn...")
             
-            # Nút Thư viện nằm ở hàng dưới CÙNG (cùng hàng với chữ ĐĂNG/TẠO/LIVE)
-            # KHÔNG phải cùng hàng với nút Quay (hình tròn trắng to)
-            # => Dùng tọa độ Y = (h - 80px) / h thay vì get_dynamic_y()
+            # Lấy tọa độ nút Quay/Đăng (Nút trắng to nhất) bằng OpenCV hoặc XML
+            x_record, y_record = automator.get_dynamic_pos()
+            logger.info(f"[ADB] Tọa độ tâm nút Quay (trắng to nhất): X={x_record:.3f}, Y={y_record:.3f}")
+            
+            # Tìm Y của thanh dưới cùng (nút Đăng/Tạo)
             w_scr, h_scr = automator.get_screen_size()
-            y_bottom_bar = (h_scr - 80) / h_scr  # Y tại thanh điều hướng dưới cùng
-            logger.info(f"[ADB] Tọa độ Y thanh dưới cùng: {y_bottom_bar:.3f} (= {h_scr - 80}px / {h_scr}px)")
+            bottom_btn = automator.find_element(texts=["Đăng", "Tạo", "Live", "Trực tiếp", "Post", "Create", "Story"])
+            if bottom_btn:
+                y_bottom_bar = bottom_btn[1] / h_scr
+                logger.info(f"[ADB] Đã tìm thấy nút Đăng/Tạo bằng XML tại Y={y_bottom_bar:.3f}")
+            else:
+                y_bottom_bar = (h_scr - 80) / h_scr
+                logger.info(f"[ADB] Không thấy nút Đăng/Tạo qua XML, dùng mặc định Y={y_bottom_bar:.3f}")
             
             found_gallery = False
             
-            # Ưu tiên dò mìn bên TRÁI trước (2%, 4%, 6%)
+            # Ưu tiên dò mìn bên TRÁI trước (2%, 4%, 6%) (Cùng hàng với nút Đăng/Tạo - thanh dưới cùng)
             for pct in [0.02, 0.04, 0.06]:
                 logger.info(f"[ADB] Đang dò nút Thư viện ở mép TRÁI (X={pct*100}%, Y={y_bottom_bar:.2f})...")
                 automator.click_percentage(pct, y_bottom_bar)
@@ -431,18 +502,18 @@ class ADBUploader(BaseUploaderEngine):
                 else:
                     logger.info(f"[ADB] Bấm mép TRÁI X = {pct*100}% không thành công, thử nhích thêm...")
             
-            # Nếu bên trái xịt, chuyển sang dò bên PHẢI (Fallback cho một số dòng máy đặc biệt)
+            # Nếu bên trái xịt, chuyển sang dò bên PHẢI bằng cách dịch phải chiều rộng / 4 từ nút Quay
             if not found_gallery:
-                logger.info("[ADB] Bấm bên trái không ra Thư viện. Hủy thao tác và thử bấm bên PHẢI...")
+                logger.info("[ADB] Bấm bên trái không ra Thư viện. Hủy thao tác và thử bấm bên PHẢI (Cùng hàng nút Quay)...")
                 self._run_adb_cmd(["shell", "input", "keyevent", "4"]) # Bấm Back để đóng panel vừa mở nhầm
                 self._smart_sleep(2)
-                for pct in [0.85, 0.90, 0.95]:
-                    logger.info(f"[ADB] Đang dò nút Thư viện ở mép PHẢI (X={pct*100}%, Y={y_bottom_bar:.2f})...")
-                    automator.click_percentage(pct, y_bottom_bar)
-                    self._smart_sleep(2)
-                    if automator.find_element(texts=["Video", "Videos", "视频"]):
-                        logger.info(f"[ADB] Đã vào được Thư viện thành công tại mép PHẢI (X = {pct*100}%)")
-                        break
+                
+                right_x = x_record + 0.25
+                logger.info(f"[ADB] Đang dò nút Thư viện ở mép PHẢI (X={right_x*100:.1f}%, Y={y_record:.2f})...")
+                automator.click_percentage(right_x, y_record)
+                self._smart_sleep(2)
+                if automator.find_element(texts=["Video", "Videos", "视频"]):
+                    logger.info(f"[ADB] Đã vào được Thư viện thành công tại mép PHẢI (X = {right_x*100:.1f}%)")
             
         automator.handle_permission_popups()
             
@@ -503,7 +574,7 @@ class ADBUploader(BaseUploaderEngine):
         automator.click_element(texts=["Trang chủ", "Home"], wait=2)
         self._smart_sleep(1)
         
-        # Yêu cầu 23.3: Chuyển sang tab Đề xuất (For You) bằng cơ chế XML + Vuốt động
+        # Yêu cầu 23.3: Chuyển sang tab Đề xuất (For You) để tăng độ trust
         logger.info("[ADB] Chuyển sang tab Đề xuất (For You) để tránh kẹt ở tab Bạn bè...")
         # Bước 1: Bấm dừng video để ổn định XML
         w, h = automator.get_screen_size()
@@ -526,10 +597,13 @@ class ADBUploader(BaseUploaderEngine):
         self._smart_sleep(2)
         # Bấm Play lại video
         automator._run_adb(["shell", "input", "tap", str(int(w/2)), str(int(h/2))])
-        self._smart_sleep(1)
+        self._smart_sleep(2)
         
-        # Gọi lại hàm lướt video an toàn
-        _swipe_to_safe_home()
+        # 10. Lướt video vài lần để tăng trust, bất chấp quảng cáo hay Live
+        logger.info("[ADB] Lướt video ngẫu nhiên để tăng trust (bất chấp Live/QC)...")
+        for _ in range(3):
+            automator._run_adb(["shell", "input", "swipe", str(int(w/2)), str(int(h*0.8)), str(int(w/2)), str(int(h*0.2)), "300"])
+            self._smart_sleep(3.5)
         
         # Gửi máy về màn hình chính của Android
         logger.info("[ADB] Trở về màn hình chính Android...")

@@ -129,3 +129,17 @@ Khi kích hoạt vào lịch bài đăng hiện toast báo lỗi" Lỗi khi tả
 - [ ] **3. Khung Viền & Đếm Ngược (Dynamic Overlay):** Chèn các thông báo kích Sale (vd: "Flash Sale 1K giỏ hàng") và đồng hồ đếm ngược kích thích hiệu ứng tâm lý FOMO.
 - [ ] **4. Bot Chim Mồi (Auto Chatbot):** Bot tự động thả comment dạo theo kịch bản để tạo luồng tranh luận giả, làm nhộn nhịp không khí phòng Live.
 - [ ] **5. Minigame Tương Tác (Vinh danh Real-time):** Quét API comment TikTok, khi có người thả từ khóa, FFmpeg sẽ lập tức đóng mác (drawtext) tên họ lên video để tri ân ngay trên Live reup.
+##23. Fix lỗi đăng bài qua ADB
+- [ ]. Với 1 số dòng máy có kích thước khác nhau như snap 88, thì với logic bấm dấu "+"ở trang chủ tiktok 
+        dòng 313 và 314 trong file @adb_engine.py:
+            logger.info("[ADB] Bấm nút + (Tạo mới) ở giữa cạnh dưới màn hình...")
+            automator.click_percentage(0.5, 0.92)
+  thì lại bị bấm trượt ra ngoài. cần có cách bấm dựa vào tọa độ UI thực tế. 
+  + Đề xuất hướng giải quyết  sau khi bấm lướt 1-2 video để tăng độ trust thì có thể bấm dừng tài khoản để quét XML tìm phần tử đó.
+- [ ]. Về tìm thư viện ảnh - video, đa số sẽ không tìm được bằng cơ chế 1 là dùng XML, thay vào đó dùng cơ chế 2 luôn bằng cách
+    + Tìm nút bên trái trước (vì đa số máy đều hiện bên trái). tìm nút "Đăng", có thể sử dụng screenshort tìm  vị trí nút đăng, nút đăng thường ở giữa màn hình giống nút chụp (quay, to trắng nhất), 
+    + sau đó dịch hết cỡ sang trái, cách trái khoảng 5% màn hình. thử lại bằng cách đối chiếu với  ảnh @tiktok snap 88.jpg
+- []. Sau khi đăng video, quay về trang chủ để lướt 1-2 video tăng độ trust,chưa hoạt động vì không  thể tìm được nút" Dành cho bạn" hoặc "Đề xuất"
+    + Hướng giải quyết, tìm nút "Đã follow" trước, sau đó tìm nút" Đề xuất"hoặc "Dành cho bạn", các mục đề xuất này nằm trên cùng màn hình và bị ẩn hoặc mờ thiếu chữ vì nó quá dài.
+    docker-compose up -d
+

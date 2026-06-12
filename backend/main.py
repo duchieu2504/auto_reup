@@ -50,6 +50,16 @@ def init_db():
                         conn.commit()
             except Exception as e:
                 print(f"Error updating live_stream_jobs schema: {e}")
+                
+            # Xử lý các tiến trình bị kẹt do restart
+            try:
+                if 'upload_schedules' in inspector.get_table_names():
+                    with engine.connect() as conn:
+                        conn.execute(text("UPDATE upload_schedules SET status = 'failed', error_message = 'Tiến trình bị hủy do hệ thống (Celery/Backend) khởi động lại đột ngột.' WHERE status = 'uploading';"))
+                        conn.commit()
+                        print("Reset stuck uploading schedules to failed.")
+            except Exception as e:
+                print(f"Error resetting uploading schedules: {e}")
 
             print("Database connected and initialized successfully.")
             break

@@ -153,28 +153,21 @@ class ADBAutomator:
         """Lấy kích thước màn hình để bấm theo tọa độ phần trăm nếu cần"""
         # Sử dụng hàm _run_adb có sẵn của class để nhất quán cấu trúc
         output = self._run_adb(["shell", "wm", "size"])
-        
-        # Giữ giá trị mặc định của code cũ (1080, 1920) thay vì (720, 1280) 
-        # để tránh gây lỗi ở các hàm khác đang kỳ vọng tỉ lệ này
+        # Cải tiến từ PR #2: Đọc Override size trước nếu có, vì đây là độ phân giải thực tế đang hiển thị
         width, height = 1080, 1920 
         
         if output:
             try:
-                # Ưu tiên tìm "Override size" trước vì đây là độ phân giải đang hiển thị thật
                 if "Override size:" in output:
                     match = re.search(r"Override size: (\d+)x(\d+)", output)
                 else:
-                    # Nếu không có Override thì lấy "Physical size"
                     match = re.search(r"Physical size: (\d+)x(\d+)", output)
                     
                 if match:
                     width = int(match.group(1))
                     height = int(match.group(2))
             except Exception as e:
-                print(f"Lỗi khi lấy kích thước màn hình: {e}")
-        
-        # Cập nhật lại cache để sửa lỗi rò rỉ bộ nhớ đa luồng (Worker Pool)
-        self.screen_size = (width, height)
+                logger.error(f"Lỗi khi lấy kích thước màn hình: {e}")
         
         return width, height
 
@@ -188,15 +181,15 @@ class ADBAutomator:
         self._run_adb(["shell", "input", "tap", str(x), str(y)])
         time.sleep(1)
 
-    def get_dynamic_y(self) -> float:
-        """Tính toán tọa độ Y chính xác bằng OpenCV hoặc cào XML tìm cụm nút Quay phim."""
+    def get_dynamic_pos(self) -> tuple:
+        """Tính toán tọa độ X, Y chính xác bằng OpenCV hoặc cào XML tìm cụm nút Quay phim."""
         # 1. Thử dùng OpenCV (Template Matching hoặc Image Processing) trước nếu có cài cv2
         try:
             import cv2
             import numpy as np
             import tempfile
             
-            logger.info("[ADBAutomator] Đang sử dụng OpenCV để tìm tọa độ Y của nút Đăng/Quay...")
+            logger.info("[ADBAutomator] Đang sử dụng OpenCV để tìm tọa độ Y của nút Quay (Record)...")
             img_path = os.path.join(tempfile.gettempdir(), "screencap_dynamic.png")
             self._run_adb(["shell", "screencap", "-p", "/sdcard/screencap_dynamic.png"])
             self._run_adb(["pull", "/sdcard/screencap_dynamic.png", img_path])
@@ -221,12 +214,12 @@ class ADBAutomator:
                     cx, cy, r = best_circle
                     
                     real_y = int(h/2) + cy
-                    logger.info(f"[ADBAutomator] OpenCV tìm thấy nút Quay tại Y={real_y} (Tỷ lệ: {real_y/h:.3f})")
-                    return real_y / h
+                    logger.info(f"[ADBAutomator] OpenCV tìm thấy nút Quay tại X={cx}, Y={real_y} (Tỷ lệ: {cx/w:.3f}, {real_y/h:.3f})")
+                    return cx / w, real_y / h
         except ImportError:
             logger.warning("[ADBAutomator] Chưa cài đặt opencv-python, chuyển sang dùng XML (Fallback)...")
         except Exception as e:
-            logger.warning(f"[ADBAutomator] Lỗi khi dùng OpenCV tìm nút Đăng: {e}. Chuyển sang XML...")
+            logger.warning(f"[ADBAutomator] Lỗi khi dùng OpenCV tìm nút Quay: {e}. Chuyển sang XML...")
 
         # 2. Fallback: Dùng XML
         try:
@@ -245,6 +238,7 @@ class ADBAutomator:
                 w, h = self.screen_size if hasattr(self, 'screen_size') else self.get_screen_size()
                 x_center = w / 2
                 
+                x_candidates = []
                 y_candidates = []
                 for node in tree.iter():
                     bounds_str = node.get("bounds")
@@ -258,12 +252,14 @@ class ADBAutomator:
                     
                     # Nút quay phim thường cắt ngang qua trục dọc giữa màn hình, to trên 80px, nằm ở nửa dưới
                     if left < x_center < right and top > h / 2 and width > 80 and height > 80:
+                        x_candidates.append((left + right) / 2)
                         y_candidates.append((top + bottom) / 2)
                 
-                if y_candidates:
+                if y_candidates and x_candidates:
+                    median_x = statistics.median(x_candidates)
                     median_y = statistics.median(y_candidates)
-                    logger.info(f"[ADBAutomator] Đã tìm thấy cụm nút Camera tại Y={median_y} (Tỷ lệ: {median_y/h:.3f})")
-                    return median_y / h
+                    logger.info(f"[ADBAutomator] Đã tìm thấy cụm nút Camera tại X={median_x}, Y={median_y} (Tỷ lệ: {median_x/w:.3f}, {median_y/h:.3f})")
+                    return median_x / w, median_y / h
         except Exception as e:
             logger.warning(f"[ADBAutomator] Lỗi khi tính Dynamic Y tự động, sử dụng fallback. Lỗi: {e}")
             
@@ -271,19 +267,26 @@ class ADBAutomator:
         self.screen_size = (w, h)
         ratio = h / w
         if ratio > 2.0:
-            return 0.80 # Màn hình dài
-        return 0.85 # Màn hình chuẩn
+            return 0.5, 0.80 # Màn hình dài
+        return 0.5, 0.85 # Màn hình chuẩn
 
     def click_dynamic_bottom_right(self):
         """Bấm vào nút Upload mặc định (Thường ở bên Phải)"""
-        y = self.get_dynamic_y()
-        self.click_percentage(0.85, y)
+        x, y = self.get_dynamic_pos()
+        self.click_percentage(x + 0.25, y)
         time.sleep(2)
         
     def click_dynamic_bottom_left(self):
-        """Bấm vào nút Upload (Nếu bị đẩy sang bên Trái trên một số dòng máy)"""
-        y = self.get_dynamic_y()
-        self.click_percentage(0.15, y)
+        """Bấm vào nút Upload (Bên Trái - Cùng hàng với các nút chữ như Đăng/Tạo/Live)"""
+        w_scr, h_scr = self.screen_size if hasattr(self, 'screen_size') else self.get_screen_size()
+        bottom_btn = self.find_element(texts=["Đăng", "Tạo", "Live", "Trực tiếp", "Post", "Create", "Story", "发布", "拍摄", "相册"])
+        if bottom_btn:
+            y_bottom_bar = bottom_btn[1] / h_scr
+            logger.info(f"[ADBAutomator] Lấy Y của nút Đăng/Tạo (Bottom Bar) = {y_bottom_bar:.3f}")
+        else:
+            y_bottom_bar = (h_scr - 80) / h_scr
+            
+        self.click_percentage(0.15, y_bottom_bar)
         time.sleep(2)
         
 
