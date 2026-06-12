@@ -151,7 +151,6 @@ class ADBAutomator:
 
     def get_screen_size(self):
         """Lấy kích thước màn hình để bấm theo tọa độ phần trăm nếu cần"""
-        # Sử dụng hàm _run_adb có sẵn của class để nhất quán cấu trúc
         output = self._run_adb(["shell", "wm", "size"])
         # Cải tiến từ PR #2: Đọc Override size trước nếu có, vì đây là độ phân giải thực tế đang hiển thị
         width, height = 1080, 1920 

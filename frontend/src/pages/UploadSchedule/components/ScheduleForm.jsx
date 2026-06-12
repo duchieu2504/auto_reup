@@ -51,7 +51,7 @@ export const ScheduleForm = ({ hook }) => {
                 {Object.keys(groupedVideos).length === 0 && (
                   <div className="col-span-2 text-center py-10 text-text-tertiary">
                     <ImageIcon size={32} className="mx-auto mb-2 opacity-20" />
-                    <p className="text-sm">Chưa có video nào hoàn tất render.</p>
+                    <p className="text-sm">Chưa có video nào khả dụng (Đã tải về/Đã render).</p>
                   </div>
                 )}
               </div>

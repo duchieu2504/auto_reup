@@ -49,7 +49,7 @@ export const useScheduleData = () => {
       setSchedules(schedRes);
       
       const availableVideos = vidRes.filter(v => 
-        v.status === 'processed' || v.status === 'downloaded' || v.status === 'completed'
+        v.raw_video_path || v.final_video_path
       );
       setVideos(availableVideos);
       setAccounts(accRes);

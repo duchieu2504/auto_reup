@@ -1,10 +1,8 @@
-from app.services.uploader import adb_automator
 import logging
 import os
 import subprocess
 import time
 import random
-import re
 import re
 from datetime import datetime
 from typing import Dict, Any
@@ -135,7 +133,6 @@ class ADBUploader(BaseUploaderEngine):
 
         # 1. Dọn dẹp các video reup cũ trên điện thoại để tránh đầy bộ nhớ và chọn nhầm
         self._run_adb_cmd(["shell", "rm", "-f", "/sdcard/DCIM/Camera/Camerep_*.mp4"])
-        self._run_adb_cmd(["shell", "rm", "-f", "/sdcard/DCIM/Camera/Camerep_*.mp4"])
         
         # 1.5 Cập nhật Metadata Creation Time của Video thành hiện tại để đảm bảo Tiktok xếp nó lên đầu tiên
         logger.info("[ADB] Cập nhật Metadata Creation Time cho video...")
@@ -155,7 +152,6 @@ class ADBUploader(BaseUploaderEngine):
             
         # 2. Push video sang bộ nhớ điện thoại (Thư mục Camera để Tiktok dễ nhận diện nhất)
         self._run_adb_cmd(["shell", "mkdir", "-p", "/sdcard/DCIM/Camera"])
-        remote_path = f"/sdcard/DCIM/Camera/Camerep_{int(time.time())}.mp4"
         remote_path = f"/sdcard/DCIM/Camera/Camerep_{int(time.time())}.mp4"
         logger.info(f"[ADB] Pushing video to {remote_path}...")
         self._run_adb_cmd(["push", video_path, remote_path], timeout=120)
@@ -189,7 +185,7 @@ class ADBUploader(BaseUploaderEngine):
             self._run_adb_cmd(["shell", "am", "force-stop", "com.ss.android.ugc.trill"])
             self._run_adb_cmd(["shell", "am", "force-stop", "com.ss.android.ugc.aweme"])
 
-    def _upload_douyin(self, remote_video_path: str, text: str, automator: ADBAutomator) -> str:
+    def _upload_douyin(self, remote_video_path: str, post_caption: str, automator: ADBAutomator) -> str:
         logger.info("[ADB] Khởi động Douyin App...")
         # Ép buộc đóng app cũ để xóa cache thư viện
         self._run_adb_cmd(["shell", "am", "force-stop", "com.ss.android.ugc.aweme"])
@@ -240,7 +236,7 @@ class ADBUploader(BaseUploaderEngine):
             logger.info("[ADB] Không tìm thấy tab Video, tiếp tục lấy file đầu tiên...")
             
         # 4. Chọn video đầu tiên
-        automator.click_percentage(0.25, 0.25)
+        automator.click_percentage(0.25, 0.3)
         self._smart_sleep(2)
         
         # 4. Bấm Tiếp / Next
@@ -251,15 +247,22 @@ class ADBUploader(BaseUploaderEngine):
         
         # 7. Gõ caption
         logger.info("[ADB] Nhập caption qua ADBKeyboard...")
-        # Đảm bảo có khoảng trắng ở cuối để Douyin tự bắt định dạng Hashtag
-        if not text.endswith(" "):
-            text += " "
+        if not post_caption.endswith(" "):
+            post_caption += " "
             
-        if not automator.click_element(texts_contains=["添加描述", "分享你的"], wait=2):
+        if not automator.click_element(
+            texts_contains=["添加描述", "分享你的"], 
+            classes=["android.widget.EditText"],
+            wait=2
+        ):
             automator.click_percentage(0.3, 0.2)
-        self._smart_sleep(1)
-        self._run_adb_cmd(["shell", "am", "broadcast", "-a", "ADB_INPUT_TEXT", "--es", "msg", f"'{text}'"])
-        self._smart_sleep(3) # Chờ 3s để Douyin xử lý chuỗi và render hashtag (nếu có)
+        self._smart_sleep(1.5)
+        
+        # Escape dấu nháy đơn và gộp lệnh thành 1 chuỗi để buộc ADB dùng shell protocol
+        safe_caption = post_caption.replace("'", "'\\''")
+        shell_cmd = f"am broadcast -a ADB_INPUT_TEXT --es msg '{safe_caption}'"
+        self._run_adb_cmd(["shell", shell_cmd])
+        self._smart_sleep(3)
         
         # Bấm Nút Back (Trở về) của Android để đảm bảo mọi Popup, bảng gợi ý hashtag và Bàn phím đều bị thu gọn
         logger.info("[ADB] Gửi lệnh Back để đóng toàn bộ Popup và thoát focus...")
@@ -285,7 +288,7 @@ class ADBUploader(BaseUploaderEngine):
                 return "com.zhiliaoapp.musically" # TikTok Global
         return "com.zhiliaoapp.musically" # Default fallback
         
-    def _upload_tiktok_mobile(self, remote_video_path: str, text: str, automator: ADBAutomator) -> str:
+    def _upload_tiktok_mobile(self, remote_video_path: str, post_caption: str, automator: ADBAutomator) -> str:
         logger.info("[ADB] Khởi động Tiktok Mobile App...")
         
         # Tự động dò tìm Package name
@@ -350,12 +353,11 @@ class ADBUploader(BaseUploaderEngine):
                         height = int(match.group(2))
                         logger.info(f"[ADB] Kích thước màn hình: {width}x{height}")
                 except Exception as e:
-                    print(f"Lỗi khi lấy kích thước màn hình: {e}")
+                    logger.error(f"Lỗi khi lấy kích thước màn hình: {e}")
 
             # Tiếp tục tính toán tọa độ
             start_x, start_y = int(width * 0.5), int(height * 0.8)
             end_x, end_y = int(width * 0.5), int(height * 0.2)
-            
             
             # Lướt 1-2 video ban đầu
             for _ in range(swipes):
@@ -379,15 +381,12 @@ class ADBUploader(BaseUploaderEngine):
 
         _swipe_to_safe_home()
         
-        # 1. Bấm nút + (Tạo mới) ở giữa cạnh dưới
+        # 1. Bấm nút dừng video (tránh video chuyển động chèn mất nút +)
         logger.info("[ADB] Bấm nút dừng video...")
         automator.click_percentage(0.5, 0.5)
-        self._smart_sleep(1)
+        self._smart_sleep(1.5)
 
-
-
-        logger.info("[ADB] Bấm nút + (Tạo mới) ở giữa cạnh dưới màn hình...")
-        # Cách 1 (23.1): Tính tọa độ động (Height - 80px)
+        logger.info("[ADB] Bấm nút + (Tạo mới) ở giữa cạnh dưới màn hình (Dùng XML để định vị các nút xung quanh)...")
         w, h = automator.get_screen_size()
         segment = int(w / 5)
         clicked = False
@@ -415,27 +414,27 @@ class ADBUploader(BaseUploaderEngine):
                 anchor_coords = None
                 shift = 0
                 for node in root.iter('node'):
-                    text = node.get('text', '').lower()
+                    node_text = node.get('text', '').lower()
                     bounds = node.get('bounds', '')
                     if not bounds or bounds == '[0,0][0,0]':
                         continue
                     
-                    if text in ["Hộp thư", "inbox", "tin nhắn", "message", "消息"]:
+                    if node_text in ["Hộp thư", "inbox", "tin nhắn", "message", "消息"]:
                         anchor_coords = automator._get_center_from_bounds(bounds)
                         shift = -segment
                         logger.info(f"[ADB] Tìm thấy nút Hộp thư, dịch trái {segment}px")
                         break
-                    elif text in ["Cửa hàng", "shop",]:
+                    elif node_text in ["Cửa hàng", "shop",]:
                         anchor_coords = automator._get_center_from_bounds(bounds)
                         shift = segment
                         logger.info(f"[ADB] Tìm thấy nút Cửa hàng, dịch phải {segment}px")
                         break
-                    elif text in ["hồ sơ", "profile", "tôi", "me", "我"]:
+                    elif node_text in ["hồ sơ", "profile", "tôi", "me", "我"]:
                         anchor_coords = automator._get_center_from_bounds(bounds)
                         shift = -(segment * 2)
                         logger.info(f"[ADB] Tìm thấy nút Hồ sơ, dịch trái {segment * 2}px")
                         break
-                    elif text in ["trang chủ", "home", "首页"]:
+                    elif node_text in ["trang chủ", "home", "首页"]:
                         anchor_coords = automator._get_center_from_bounds(bounds)
                         shift = segment * 2
                         logger.info(f"[ADB] Tìm thấy nút Trang chủ, dịch phải {segment * 2}px")
@@ -449,15 +448,12 @@ class ADBUploader(BaseUploaderEngine):
 
         self._smart_sleep(3)
         
-        # Dự phòng bằng XML (nếu vẫn ở trang chủ, nghĩa là cách 1 bấm xịt)
-        if automator.find_element(texts=["Trang chủ", "Home"]):
-            logger.info("[ADB] Cách 1 bấm xịt, dừng video và dùng XML để tìm nút Tạo mới...")
-            # Dừng video (tránh ảnh động/live làm mù XML)
-            automator._run_adb(["shell", "input", "tap", str(int(w/2)), str(int(h/2))])
-            self._smart_sleep(1.5)
-            automator.click_element(content_descs=["Tạo", "Create", "Post", "Camera"], wait=3)
-            self._smart_sleep(2)
-
+        # Cách 2 (Dự phòng): Tính tọa độ động (Height - 80px)
+        if not clicked:
+            logger.info("[ADB] Cách 1 (XML) không tìm thấy tọa độ nút +, dùng cách 2: tính tọa độ động...")
+            automator._run_adb(["shell", "input", "tap", str(int(w/2)), str(h - 80)])
+            self._smart_sleep(3)
+            
         automator.handle_permission_popups()
         
         # Thêm độ dừng để camera có thể load mở lên được
@@ -523,8 +519,20 @@ class ADBUploader(BaseUploaderEngine):
         else:
             logger.info("[ADB] Không tìm thấy tab Video, tiếp tục lấy file đầu tiên...")
             
-        # 4. Chọn video đầu tiên
-        automator.click_percentage(0.25, 0.25)
+        # 4. Chọn video đầu tiên (video mới nhất vừa tải vào máy)
+        logger.info("[ADB] Tìm điểm neo 'Tất cả' hoặc 'Gần đây' để chọn video đầu tiên...")
+        anchor = automator.find_element(texts_contains=["Tất cả", "All", "Gần đây", "Recent"])
+        if anchor:
+            ax, ay = anchor
+            w, h = automator.get_screen_size()
+            target_x = int(w * 0.22) # Cột đầu tiên (khoảng 22% chiều rộng)
+            target_y = ay + int(h * 0.12) # Dịch xuống dưới chữ "Tất cả" khoảng 12% màn hình để trúng tâm thumbnail
+            logger.info(f"[ADB] Đã tìm thấy điểm neo tại Y={ay}. Bấm video đầu tiên tại ({target_x}, {target_y})")
+            automator._run_adb(["shell", "input", "tap", str(target_x), str(target_y)])
+        else:
+            logger.info("[ADB] Không tìm thấy điểm neo, dùng vị trí dự phòng (0.25, 0.3)...")
+            automator.click_percentage(0.25, 0.3)
+            
         self._smart_sleep(2)
         
         # 4. Bấm Tiếp / Next (Màn hình chọn video)
@@ -541,26 +549,41 @@ class ADBUploader(BaseUploaderEngine):
         
         # 7. Gõ caption
         logger.info("[ADB] Nhập caption qua ADBKeyboard...")
-        import base64
-        # Đảm bảo có khoảng trắng ở cuối để Tiktok tự bắt định dạng Hashtag
-        if not text.endswith(" "):
-            text += " "
+        if not post_caption.endswith(" "):
+            post_caption += " "
             
-        if not automator.click_element(texts_contains=["Mô tả", "Thêm mô tả", "Add description", "Describe your post"], wait=2):
+        if not automator.click_element(
+            texts_contains=[
+                "Mô tả", "Thêm mô tả", "Add description", "Describe your post",
+                "nói gì về video", "Viết", "nội dung", "Write"
+            ],
+            classes=["android.widget.EditText"],
+            wait=2
+        ):
             automator.click_percentage(0.3, 0.2)
-        self._smart_sleep(1)
+        self._smart_sleep(1.5)
         
-        # Mã hóa Base64 để tránh lỗi ký tự đặc biệt (dấu nháy, khoảng trắng)
-        b64_text = base64.b64encode(text.encode('utf-8')).decode('utf-8')
-        self._run_adb_cmd(["shell", "am", "broadcast", "-a", "ADB_INPUT_B64", "--es", "msg", b64_text])
-        self._smart_sleep(3) # Chờ 3s để Tiktok xử lý chuỗi và render hashtag (nếu có)
-        
-        # Bấm Nút Back (Trở về) của Android để đảm bảo mọi Popup, bảng gợi ý hashtag và Bàn phím đều bị thu gọn
-        # logger.info("[ADB] Gửi lệnh Back để đóng toàn bộ Popup và thoát focus...")
-        # self._run_adb_cmd(["shell", "input", "keyevent", "4"])
-        # time.sleep(2)
-        automator.click_percentage(0.5, 0.75)
+        # Escape dấu nháy đơn và gộp lệnh thành 1 chuỗi để buộc ADB dùng shell protocol
+        safe_caption = post_caption.replace("'", "'\\''")
+        shell_cmd = f"am broadcast -a ADB_INPUT_TEXT --es msg '{safe_caption}'"
+        self._run_adb_cmd(["shell", shell_cmd])
         self._smart_sleep(3)
+        
+        # Lời khuyên của user: Thay vì bấm mù vào 1 vị trí cố định, hãy tìm element "Đăng" hoặc "Chia sẻ với",
+        # sau đó bấm dịch xuống dưới 1 đoạn để thoát focus, hệ thống sẽ chắc chắn hơn.
+        logger.info("[ADB] Tìm điểm neo để thu gọn bàn phím và bảng hashtag...")
+        anchor = automator.find_element(texts=["Đăng", "Post"], texts_contains=["Chia sẻ với", "Share to", "Tự động chia sẻ", "Share"])
+        
+        if anchor:
+            ax, ay = anchor
+            logger.info(f"[ADB] Đã tìm thấy điểm neo tại ({ax}, {ay}). Chạm dịch xuống (Y+80) để thoát focus an toàn...")
+            automator._run_adb(["shell", "input", "tap", str(ax), str(ay + 80)])
+        else:
+            logger.info("[ADB] Không thấy điểm neo, dùng vị trí dự phòng (0.5, 0.15)...")
+            automator.click_percentage(0.5, 0.15)
+            
+        self._smart_sleep(2)
+        
         # 8. Bấm Đăng / Post
         automator.click_element(texts=["Đăng", "Post"], wait=5)
         
@@ -581,18 +604,20 @@ class ADBUploader(BaseUploaderEngine):
         automator._run_adb(["shell", "input", "tap", str(int(w/2)), str(int(h/2))])
         self._smart_sleep(1.5)
         
-        # Bước 2: Tìm nút "Đã follow" hoặc "Bạn bè" làm điểm neo (Anchor)
-        anchor_coords = automator.find_element(texts=["Đã follow", "Following", "Bạn bè", "Friends"])
-        if anchor_coords:
-            x_anchor, y_anchor = anchor_coords
-            logger.info(f"[ADB] Đã tìm thấy điểm neo tab hiện tại ở ({x_anchor}, {y_anchor}). Thực hiện vuốt sang trái...")
-            # Vuốt từ (x_anchor + 200) sang (x_anchor - 300) để kéo tab "Dành cho bạn" ra
-            start_x = min(x_anchor + 200, w - 10)
-            end_x = max(x_anchor - 300, 10)
-            automator._run_adb(["shell", "input", "swipe", str(start_x), str(int(h/2)), str(end_x), str(int(h/2)), "300"])
+        # Bước 2: Tìm "Đã follow" làm neo, sau đó ưu tiên tìm "Đề xuất" / "Dành cho bạn"
+        for_you_coords = automator.find_element(texts=["Đề xuất", "Dành cho bạn", "For You"])
+        if for_you_coords:
+            logger.info(f"[ADB] Đã tìm thấy tab 'Đề xuất/Dành cho bạn' tại {for_you_coords}, tiến hành click...")
+            automator._run_adb(["shell", "input", "tap", str(for_you_coords[0]), str(for_you_coords[1])])
         else:
-            logger.info("[ADB] Không tìm thấy điểm neo, dùng Fallback vuốt tương đối giữa màn hình...")
-            automator._run_adb(["shell", "input", "swipe", str(int(w*0.8)), str(int(h*0.5)), str(int(w*0.2)), str(int(h*0.5)), "300"])
+            anchor_coords = automator.find_element(texts=["Đã follow", "Following", "Bạn bè", "Friends"])
+            if anchor_coords:
+                x_anchor, y_anchor = anchor_coords
+                logger.info(f"[ADB] Dùng điểm neo 'Đã follow' tại ({x_anchor}, {y_anchor}). Click sang bên phải 250px...")
+                automator._run_adb(["shell", "input", "tap", str(x_anchor + 250), str(y_anchor)])
+            else:
+                logger.info("[ADB] Không tìm thấy điểm neo, dùng Fallback vuốt tương đối giữa màn hình...")
+                automator._run_adb(["shell", "input", "swipe", str(int(w*0.8)), str(int(h*0.5)), str(int(w*0.2)), str(int(h*0.5)), "300"])
         
         self._smart_sleep(2)
         # Bấm Play lại video
