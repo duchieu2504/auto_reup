@@ -23,7 +23,7 @@ export const useScheduleData = () => {
   const [selectedAuthor, setSelectedAuthor] = useState(null);
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   const [caption, setCaption] = useState("");
-  const [hashtags, setHashtags] = useState("");
+  const [hashtags, setHashtags] = useState("#xuhuong #trending");
   const [scheduleMode, setScheduleMode] = useState("now");
   const [scheduledTime, setScheduledTime] = useState("");
   const [engineType, setEngineType] = useState("playwright");
@@ -49,7 +49,7 @@ export const useScheduleData = () => {
       setSchedules(schedRes);
       
       const availableVideos = vidRes.filter(v => 
-        v.status === 'processed' || v.status === 'downloaded' || v.status === 'completed'
+        v.raw_video_path || v.final_video_path
       );
       setVideos(availableVideos);
       setAccounts(accRes);
@@ -198,7 +198,7 @@ export const useScheduleData = () => {
       setSelectedAuthor(null);
       setSelectedAccounts([]);
       setCaption("");
-      setHashtags("");
+      setHashtags("#xuhuong #trending");
       setScheduledTime("");
       fetchData();
     } catch (error) {

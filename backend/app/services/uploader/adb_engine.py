@@ -185,7 +185,7 @@ class ADBUploader(BaseUploaderEngine):
             self._run_adb_cmd(["shell", "am", "force-stop", "com.ss.android.ugc.trill"])
             self._run_adb_cmd(["shell", "am", "force-stop", "com.ss.android.ugc.aweme"])
 
-    def _upload_douyin(self, remote_video_path: str, text: str, automator: ADBAutomator) -> str:
+    def _upload_douyin(self, remote_video_path: str, post_caption: str, automator: ADBAutomator) -> str:
         logger.info("[ADB] Khởi động Douyin App...")
         # Ép buộc đóng app cũ để xóa cache thư viện
         self._run_adb_cmd(["shell", "am", "force-stop", "com.ss.android.ugc.aweme"])
@@ -247,15 +247,22 @@ class ADBUploader(BaseUploaderEngine):
         
         # 7. Gõ caption
         logger.info("[ADB] Nhập caption qua ADBKeyboard...")
-        # Đảm bảo có khoảng trắng ở cuối để Douyin tự bắt định dạng Hashtag
-        if not text.endswith(" "):
-            text += " "
+        if not post_caption.endswith(" "):
+            post_caption += " "
             
-        if not automator.click_element(texts_contains=["添加描述", "分享你的"], wait=2):
+        if not automator.click_element(
+            texts_contains=["添加描述", "分享你的"], 
+            classes=["android.widget.EditText"],
+            wait=2
+        ):
             automator.click_percentage(0.3, 0.2)
-        self._smart_sleep(1)
-        self._run_adb_cmd(["shell", "am", "broadcast", "-a", "ADB_INPUT_TEXT", "--es", "msg", f"'{text}'"])
-        self._smart_sleep(3) # Chờ 3s để Douyin xử lý chuỗi và render hashtag (nếu có)
+        self._smart_sleep(1.5)
+        
+        # Escape dấu nháy đơn và gộp lệnh thành 1 chuỗi để buộc ADB dùng shell protocol
+        safe_caption = post_caption.replace("'", "'\\''")
+        shell_cmd = f"am broadcast -a ADB_INPUT_TEXT --es msg '{safe_caption}'"
+        self._run_adb_cmd(["shell", shell_cmd])
+        self._smart_sleep(3)
         
         # Bấm Nút Back (Trở về) của Android để đảm bảo mọi Popup, bảng gợi ý hashtag và Bàn phím đều bị thu gọn
         logger.info("[ADB] Gửi lệnh Back để đóng toàn bộ Popup và thoát focus...")
@@ -281,7 +288,7 @@ class ADBUploader(BaseUploaderEngine):
                 return "com.zhiliaoapp.musically" # TikTok Global
         return "com.zhiliaoapp.musically" # Default fallback
         
-    def _upload_tiktok_mobile(self, remote_video_path: str, text: str, automator: ADBAutomator) -> str:
+    def _upload_tiktok_mobile(self, remote_video_path: str, post_caption: str, automator: ADBAutomator) -> str:
         logger.info("[ADB] Khởi động Tiktok Mobile App...")
         
         # Tự động dò tìm Package name
@@ -304,7 +311,7 @@ class ADBUploader(BaseUploaderEngine):
         # Process đã lên Foreground, nhưng UI bên trong có thể chưa load xong
         # Chờ thêm 8s rồi xác nhận giao diện thật sự đã hiển thị
         logger.info("[ADB] TikTok đã lên Foreground, đang chờ giao diện tải xong...")
-        self._smart_sleep(30)
+        self._smart_sleep(5)
         
         # Xác nhận giao diện trang chủ đã render (có thanh menu dưới cùng)
         ui_ready = False
@@ -407,27 +414,27 @@ class ADBUploader(BaseUploaderEngine):
                 anchor_coords = None
                 shift = 0
                 for node in root.iter('node'):
-                    text = node.get('text', '').lower()
+                    node_text = node.get('text', '').lower()
                     bounds = node.get('bounds', '')
                     if not bounds or bounds == '[0,0][0,0]':
                         continue
                     
-                    if text in ["Hộp thư", "inbox", "tin nhắn", "message", "消息"]:
+                    if node_text in ["Hộp thư", "inbox", "tin nhắn", "message", "消息"]:
                         anchor_coords = automator._get_center_from_bounds(bounds)
                         shift = -segment
                         logger.info(f"[ADB] Tìm thấy nút Hộp thư, dịch trái {segment}px")
                         break
-                    elif text in ["Cửa hàng", "shop",]:
+                    elif node_text in ["Cửa hàng", "shop",]:
                         anchor_coords = automator._get_center_from_bounds(bounds)
                         shift = segment
                         logger.info(f"[ADB] Tìm thấy nút Cửa hàng, dịch phải {segment}px")
                         break
-                    elif text in ["hồ sơ", "profile", "tôi", "me", "我"]:
+                    elif node_text in ["hồ sơ", "profile", "tôi", "me", "我"]:
                         anchor_coords = automator._get_center_from_bounds(bounds)
                         shift = -(segment * 2)
                         logger.info(f"[ADB] Tìm thấy nút Hồ sơ, dịch trái {segment * 2}px")
                         break
-                    elif text in ["trang chủ", "home", "首页"]:
+                    elif node_text in ["trang chủ", "home", "首页"]:
                         anchor_coords = automator._get_center_from_bounds(bounds)
                         shift = segment * 2
                         logger.info(f"[ADB] Tìm thấy nút Trang chủ, dịch phải {segment * 2}px")
@@ -542,19 +549,25 @@ class ADBUploader(BaseUploaderEngine):
         
         # 7. Gõ caption
         logger.info("[ADB] Nhập caption qua ADBKeyboard...")
-        import base64
-        # Đảm bảo có khoảng trắng ở cuối để Tiktok tự bắt định dạng Hashtag
-        if not text.endswith(" "):
-            text += " "
+        if not post_caption.endswith(" "):
+            post_caption += " "
             
-        if not automator.click_element(texts_contains=["Mô tả", "Thêm mô tả", "Add description", "Describe your post"], wait=2):
+        if not automator.click_element(
+            texts_contains=[
+                "Mô tả", "Thêm mô tả", "Add description", "Describe your post",
+                "nói gì về video", "Viết", "nội dung", "Write"
+            ],
+            classes=["android.widget.EditText"],
+            wait=2
+        ):
             automator.click_percentage(0.3, 0.2)
-        self._smart_sleep(1)
+        self._smart_sleep(1.5)
         
-        # Mã hóa Base64 để tránh lỗi ký tự đặc biệt (dấu nháy, khoảng trắng)
-        b64_text = base64.b64encode(text.encode('utf-8')).decode('utf-8')
-        self._run_adb_cmd(["shell", "am", "broadcast", "-a", "ADB_INPUT_B64", "--es", "msg", b64_text])
-        self._smart_sleep(3) # Chờ 3s để Tiktok xử lý chuỗi và render hashtag (nếu có)
+        # Escape dấu nháy đơn và gộp lệnh thành 1 chuỗi để buộc ADB dùng shell protocol
+        safe_caption = post_caption.replace("'", "'\\''")
+        shell_cmd = f"am broadcast -a ADB_INPUT_TEXT --es msg '{safe_caption}'"
+        self._run_adb_cmd(["shell", shell_cmd])
+        self._smart_sleep(3)
         
         # Lời khuyên của user: Thay vì bấm mù vào 1 vị trí cố định, hãy tìm element "Đăng" hoặc "Chia sẻ với",
         # sau đó bấm dịch xuống dưới 1 đoạn để thoát focus, hệ thống sẽ chắc chắn hơn.

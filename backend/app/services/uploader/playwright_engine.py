@@ -56,6 +56,11 @@ class PlaywrightUploader(BaseUploaderEngine):
         post_url = ""
         full_caption = f"{caption}\n\n{hashtags}"
 
+        # Load environment variables from .env to ensure we get the latest GPM_API_URL
+        from dotenv import load_dotenv
+        ENV_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/.env"))
+        load_dotenv(ENV_PATH, override=True)
+
         with sync_playwright() as p:
             is_gpm = self.account_data.get("connection_type") == "gpm_login"
             gpm_api_url = os.getenv("GPM_API_URL", "").rstrip('/')
@@ -66,12 +71,38 @@ class PlaywrightUploader(BaseUploaderEngine):
                     raise Exception("Thiếu GPM API URL hoặc Profile ID để khởi chạy GPM Login.")
                 import requests
                 logger.info(f"[Playwright] Khởi động GPM Profile {gpm_profile_id}")
-                start_res = requests.get(f"{gpm_api_url}/api/v2/profile/start?profileId={gpm_profile_id}")
-                start_data = start_res.json()
-                if not start_data.get("success"):
-                    raise Exception(f"Không thể mở GPM Profile: {start_data}")
                 
-                ws_endpoint = start_data.get("data", {}).get("ws_endpoint")
+                ws_endpoint = None
+                # Try GPM API v1 first (newer GPMLogin Global versions)
+                try:
+                    url_v1 = f"{gpm_api_url}/api/v1/profiles/start/{gpm_profile_id}"
+                    start_res = requests.get(url_v1, timeout=15)
+                    start_data = start_res.json()
+                    if start_data.get("success") and start_data.get("data"):
+                        ws_endpoint = start_data["data"].get("websocket_debugging_url") or start_data["data"].get("ws_endpoint")
+                except Exception as e:
+                    logger.warning(f"[Playwright] Thử GPM API v1 thất bại: {e}")
+                
+                # Fallback to GPM API v2 (older GPM versions)
+                if not ws_endpoint:
+                    try:
+                        url_v2 = f"{gpm_api_url}/api/v2/profile/start?profileId={gpm_profile_id}"
+                        start_res = requests.get(url_v2, timeout=15)
+                        start_data = start_res.json()
+                        if start_data.get("success") and start_data.get("data"):
+                            ws_endpoint = start_data["data"].get("ws_endpoint") or start_data["data"].get("websocket_debugging_url")
+                    except Exception as e:
+                        logger.warning(f"[Playwright] Thử GPM API v2 thất bại: {e}")
+                
+                if not ws_endpoint:
+                    raise Exception(f"Không thể mở GPM Profile qua cả API v1 và v2 cho Profile ID: {gpm_profile_id}")
+                
+                from urllib.parse import urlparse
+                parsed_api = urlparse(gpm_api_url)
+                api_host = parsed_api.hostname
+                if api_host:
+                    ws_endpoint = ws_endpoint.replace("127.0.0.1", api_host).replace("localhost", api_host)
+                
                 browser = p.chromium.connect_over_cdp(ws_endpoint)
                 if browser.contexts and browser.contexts[0].pages:
                     page = browser.contexts[0].pages[0]
@@ -125,10 +156,27 @@ class PlaywrightUploader(BaseUploaderEngine):
                 raise e
             finally:
                 if is_gpm:
-                    browser.disconnect()
+                    browser.close()
                     import requests
                     logger.info(f"[Playwright] Đóng GPM Profile {gpm_profile_id}")
-                    requests.get(f"{gpm_api_url}/api/v2/profile/stop?profileId={gpm_profile_id}")
+                    
+                    # Try closing with API v1 first
+                    closed = False
+                    try:
+                        url_v1 = f"{gpm_api_url}/api/v1/profiles/close/{gpm_profile_id}"
+                        res = requests.get(url_v1, timeout=10)
+                        if res.json().get("success"):
+                            closed = True
+                    except Exception:
+                        pass
+                        
+                    # Fallback to API v2 stop
+                    if not closed:
+                        try:
+                            url_v2 = f"{gpm_api_url}/api/v2/profile/stop?profileId={gpm_profile_id}"
+                            requests.get(url_v2, timeout=10)
+                        except Exception:
+                            pass
                 else:
                     browser.close()
                 

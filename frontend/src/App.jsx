@@ -36,7 +36,7 @@ const MainLayout = () => {
   if (location.pathname === '/live') title = "Live Restream";
 
   return (
-    <div className="flex h-screen overflow-hidden bg-bg-primary text-text-primary">
+    <div className="flex h-screen overflow-hidden bg-bg-primary/40 text-text-primary backdrop-blur-[2px]">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header title={title} />
