@@ -166,7 +166,7 @@ export const ScheduleForm = ({ hook }) => {
             {(() => {
               const filteredAccounts = accounts.filter(acc => {
                 const type = acc.connection_type || 'web_playwright';
-                if (engineType === 'playwright') return type === 'web_playwright';
+                if (engineType === 'playwright') return type === 'web_playwright' || type === 'gpm_login';
                 if (engineType === 'adb') return type === 'adb_device';
                 return false;
               });
@@ -212,6 +212,9 @@ export const ScheduleForm = ({ hook }) => {
                             </div>
                           )}
                           <div className="text-[9px] px-1.5 py-0.5 rounded bg-bg-primary border border-border-subtle text-text-secondary uppercase tracking-wider shrink-0">{acc.platform}</div>
+                          {acc.connection_type === 'gpm_login' && (
+                            <div className="text-[9px] px-1.5 py-0.5 rounded bg-green-500/20 border border-green-500/30 text-green-400 font-medium shrink-0">GPM</div>
+                          )}
                         </div>
                         <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'border-brand-primary' : 'border-border-subtle'}`}>
                           {isSelected && <div className="w-2 h-2 bg-brand-primary rounded-full" />}

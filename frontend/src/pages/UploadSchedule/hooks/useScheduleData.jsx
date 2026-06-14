@@ -23,7 +23,7 @@ export const useScheduleData = () => {
   const [selectedAuthor, setSelectedAuthor] = useState(null);
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   const [caption, setCaption] = useState("");
-  const [hashtags, setHashtags] = useState("");
+  const [hashtags, setHashtags] = useState("#xuhuong #trending");
   const [scheduleMode, setScheduleMode] = useState("now");
   const [scheduledTime, setScheduledTime] = useState("");
   const [engineType, setEngineType] = useState("playwright");
@@ -198,7 +198,7 @@ export const useScheduleData = () => {
       setSelectedAuthor(null);
       setSelectedAccounts([]);
       setCaption("");
-      setHashtags("");
+      setHashtags("#xuhuong #trending");
       setScheduledTime("");
       fetchData();
     } catch (error) {
