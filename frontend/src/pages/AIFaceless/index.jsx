@@ -49,8 +49,7 @@ const AIFaceless = () => {
                   scenes: scenes,
                   account_id: 1, // Fake for now
                   bgm_path: renderConfig.bgm_path,
-                  media_source: config.mediaSource,
-                  pexels_key: config.pexelsKey
+                  media_source: config.mediaSource
                 };
                 
                 try {

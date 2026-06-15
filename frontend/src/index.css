@@ -77,6 +77,11 @@
   }
 }
 
+:root {
+  --bg-image: url('./assets/bg.jpg');
+  --bg-opacity: 0.8;
+}
+
 @layer base {
   body {
     background-color: var(--color-bg-primary);
@@ -95,12 +100,13 @@
     right: 0;
     bottom: 0;
     z-index: -1;
-    background-image: url('./assets/bg.jpg');
+    background-image: var(--bg-image);
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    opacity: 0.8;
+    opacity: var(--bg-opacity);
     pointer-events: none;
+    transition: background-image 0.5s ease-in-out, opacity 0.5s ease-in-out;
   }
 
   h1,

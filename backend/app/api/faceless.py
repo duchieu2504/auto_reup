@@ -20,7 +20,6 @@ class RenderVideoRequest(BaseModel):
     tts_voice: str = "edge_hoaimy"
     bgm_path: Optional[str] = None
     media_source: str = "pexels"
-    pexels_key: Optional[str] = None
 
 @router.post("/generate-script")
 async def generate_script(req: GenerateScriptRequest):

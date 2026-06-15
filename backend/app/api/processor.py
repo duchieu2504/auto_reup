@@ -71,6 +71,30 @@ async def upload_logo(file: UploadFile = File(...)):
     return {"status": "success", "path": filepath, "url": f"/api/files/watermarks/{filename}"}
 
 
+@router.post("/upload-video")
+async def upload_video(file: UploadFile = File(...)):
+    # Validate extension
+    ext = file.filename.split(".")[-1].lower()
+    if ext not in ["mp4", "mkv", "webm", "avi", "mov", "flv"]:
+        raise HTTPException(status_code=400, detail="Chỉ hỗ trợ file video (mp4, mkv, webm, avi, mov, flv).")
+
+    # Save file
+    os.makedirs(os.path.join(DATA_DIR, "raw_videos"), exist_ok=True)
+    filename = f"upload_{uuid.uuid4().hex[:8]}_{file.filename}"
+    filepath = os.path.join(DATA_DIR, "raw_videos", filename)
+
+    try:
+        with open(filepath, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except Exception as e:
+        logger.error(f"Lỗi lưu file video upload: {e}")
+        raise HTTPException(status_code=500, detail=f"Không thể lưu file video: {str(e)}")
+
+    relative_path = f"data/raw_videos/{filename}"
+    return {"status": "success", "path": relative_path, "filename": file.filename}
+
+
+
 @router.post("/start")
 async def start_processor(request: ProcessRequest):
     redis_client = get_async_redis()
