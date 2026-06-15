@@ -19,32 +19,71 @@ import hashlib
 from fastapi.responses import FileResponse
 import imageio_ffmpeg
 
-@router.get("/thumbnail")
-def get_thumbnail(path: str, time: int = 3):
-    if not path or not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="File not found")
+def pre_generate_thumbnail(path: str, time: int = 3):
+    if not path:
+        return
+    clean_path = path
+    if path.startswith("deleted:"):
+        clean_path = path.replace("deleted:", "", 1)
+        
+    if not os.path.exists(clean_path):
+        return
         
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../data"))
     temp_dir = os.path.join(base_dir, "temp")
     os.makedirs(temp_dir, exist_ok=True)
     
+    file_hash = hashlib.md5(f"{clean_path}_{time}".encode()).hexdigest()
+    thumb_path = os.path.join(temp_dir, f"thumb_{file_hash}.jpg")
+    
+    if not os.path.exists(thumb_path):
+        try:
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            hours = time // 3600
+            minutes = (time % 3600) // 60
+            seconds = time % 60
+            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            subprocess.run([
+                ffmpeg_exe, '-y', '-i', clean_path, '-ss', time_str, '-vframes', '1', thumb_path
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            print(f"Error pre-generating thumbnail: {e}")
+
+@router.get("/thumbnail")
+def get_thumbnail(path: str, time: int = 3):
+    if not path:
+        raise HTTPException(status_code=400, detail="Path is empty")
+        
+    clean_path = path
+    if path.startswith("deleted:"):
+        clean_path = path.replace("deleted:", "", 1)
+        
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../data"))
+    temp_dir = os.path.join(base_dir, "temp")
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    file_hash = hashlib.md5(f"{clean_path}_{time}".encode()).hexdigest()
+    thumb_path = os.path.join(temp_dir, f"thumb_{file_hash}.jpg")
+    
+    if os.path.exists(thumb_path):
+        return FileResponse(thumb_path, media_type="image/jpeg")
+        
+    if not os.path.exists(clean_path):
+        raise HTTPException(status_code=404, detail="File video gốc không tồn tại để sinh thumbnail")
+        
     # Format time to HH:MM:SS
     hours = time // 3600
     minutes = (time % 3600) // 60
     seconds = time % 60
     time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     
-    file_hash = hashlib.md5(f"{path}_{time}".encode()).hexdigest()
-    thumb_path = os.path.join(temp_dir, f"thumb_{file_hash}.jpg")
-    
-    if not os.path.exists(thumb_path):
-        try:
-            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-            subprocess.run([
-                ffmpeg_exe, '-y', '-i', path, '-ss', time_str, '-vframes', '1', thumb_path
-            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+    try:
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        subprocess.run([
+            ffmpeg_exe, '-y', '-i', clean_path, '-ss', time_str, '-vframes', '1', thumb_path
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
             
     return FileResponse(thumb_path, media_type="image/jpeg")
 
@@ -172,6 +211,47 @@ def backup_data():
         filename=backup_filename,
         media_type='application/zip'
     )
+
+
+@router.post("/{video_id}/delete-files")
+def delete_video_files(video_id: int, db: Session = Depends(get_db)):
+    record = db.query(VideoHistory).filter(VideoHistory.id == video_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Không tìm thấy lịch sử video")
+        
+    # 1. Sinh thumbnail sẵn trước khi xóa
+    if record.raw_video_path:
+        pre_generate_thumbnail(record.raw_video_path)
+    if record.final_video_path:
+        pre_generate_thumbnail(record.final_video_path)
+        
+    # 2. Xóa các file video vật lý
+    deleted_files = []
+    
+    # Xử lý raw_video_path
+    if record.raw_video_path and not record.raw_video_path.startswith("deleted:"):
+        path = record.raw_video_path
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+                deleted_files.append(path)
+            except Exception as e:
+                print(f"Error deleting raw file: {e}")
+        record.raw_video_path = f"deleted:{path}"
+        
+    # Xử lý final_video_path
+    if record.final_video_path and not record.final_video_path.startswith("deleted:"):
+        path = record.final_video_path
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+                deleted_files.append(path)
+            except Exception as e:
+                print(f"Error deleting final file: {e}")
+        record.final_video_path = f"deleted:{path}"
+        
+    db.commit()
+    return {"status": "success", "deleted_files": deleted_files}
 
 
 @router.get("/{video_id}", response_model=VideoHistoryResponse)

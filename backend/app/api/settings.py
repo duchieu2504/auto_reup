@@ -1,8 +1,9 @@
 import os
 import requests
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, UploadFile, File
 from pydantic import BaseModel
 from dotenv import load_dotenv, set_key
+from app.core.config import DATA_DIR
 from app.core.security import encrypt_data, decrypt_data
 
 router = APIRouter()
@@ -17,6 +18,7 @@ class KeysUpdate(BaseModel):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     xai_api_key: str = ""
+    pexels_api_key: str = ""
     active_ai_provider: str = "gemini"
     active_tts_provider: str = "edge"
     ai_concurrency_limit: int = 1
@@ -28,6 +30,8 @@ class KeysUpdate(BaseModel):
     use_gpu_acceleration: bool = False
     enable_health_check: bool = False
     health_check_interval_hours: int = 4
+    theme_bg_type: str = "default"
+    theme_bg_custom_path: str = ""
 
 @router.get("/fonts")
 async def get_available_fonts():
@@ -111,6 +115,7 @@ async def get_keys():
         "openai_api_key": decrypt_data(os.getenv("OPENAI_API_KEY", "")),
         "anthropic_api_key": decrypt_data(os.getenv("ANTHROPIC_API_KEY", "")),
         "xai_api_key": decrypt_data(os.getenv("XAI_API_KEY", "")),
+        "pexels_api_key": decrypt_data(os.getenv("PEXELS_API_KEY", "")),
         "active_ai_provider": os.getenv("ACTIVE_AI_PROVIDER", "gemini"),
         "active_tts_provider": os.getenv("ACTIVE_TTS_PROVIDER", "edge"),
         "ai_concurrency_limit": int(os.getenv("AI_CONCURRENCY_LIMIT", 1)),
@@ -121,7 +126,9 @@ async def get_keys():
         "use_groq": os.getenv("USE_GROQ", "False").lower() == "true",
         "use_gpu_acceleration": os.getenv("USE_GPU_ACCELERATION", "False").lower() == "true",
         "enable_health_check": os.getenv("ENABLE_HEALTH_CHECK", "False").lower() == "true",
-        "health_check_interval_hours": int(os.getenv("HEALTH_CHECK_INTERVAL_HOURS", 4))
+        "health_check_interval_hours": int(os.getenv("HEALTH_CHECK_INTERVAL_HOURS", 4)),
+        "theme_bg_type": os.getenv("THEME_BG_TYPE", "default"),
+        "theme_bg_custom_path": os.getenv("THEME_BG_CUSTOM_PATH", "")
     }
 
 @router.post("/keys")
@@ -138,6 +145,7 @@ async def update_keys(data: KeysUpdate):
     set_key(ENV_PATH, "OPENAI_API_KEY", encrypt_data(data.openai_api_key))
     set_key(ENV_PATH, "ANTHROPIC_API_KEY", encrypt_data(data.anthropic_api_key))
     set_key(ENV_PATH, "XAI_API_KEY", encrypt_data(data.xai_api_key))
+    set_key(ENV_PATH, "PEXELS_API_KEY", encrypt_data(data.pexels_api_key))
     set_key(ENV_PATH, "ACTIVE_AI_PROVIDER", data.active_ai_provider)
     set_key(ENV_PATH, "ACTIVE_TTS_PROVIDER", data.active_tts_provider)
     set_key(ENV_PATH, "AI_CONCURRENCY_LIMIT", str(data.ai_concurrency_limit))
@@ -149,6 +157,8 @@ async def update_keys(data: KeysUpdate):
     set_key(ENV_PATH, "USE_GPU_ACCELERATION", str(data.use_gpu_acceleration))
     set_key(ENV_PATH, "ENABLE_HEALTH_CHECK", str(data.enable_health_check))
     set_key(ENV_PATH, "HEALTH_CHECK_INTERVAL_HOURS", str(data.health_check_interval_hours))
+    set_key(ENV_PATH, "THEME_BG_TYPE", data.theme_bg_type)
+    set_key(ENV_PATH, "THEME_BG_CUSTOM_PATH", data.theme_bg_custom_path)
     
     # Save cookie to file in Netscape format for yt-dlp (Lưu ý: yt-dlp cần file raw text)
     cookie_path = os.path.join(os.path.dirname(ENV_PATH), "douyin_cookie.txt")
@@ -165,7 +175,7 @@ async def update_keys(data: KeysUpdate):
             f.write("\n".join(lines))
             
     return {"status": "success", "message": "Cập nhật cấu hình thành công"}
-
+ 
 @router.post("/validate")
 async def validate_keys(data: KeysUpdate):
     results = {
@@ -176,6 +186,7 @@ async def validate_keys(data: KeysUpdate):
         "anthropic_api_key": "unknown",
         "xai_api_key": "unknown",
         "groq_api_key": "unknown",
+        "pexels_api_key": "unknown",
         "douyin_cookie": "unknown",
         "gpm_api_url": "unknown"
     }
@@ -269,6 +280,19 @@ async def validate_keys(data: KeysUpdate):
         except Exception as e:
             print("Groq Test Error:", e)
             results["groq_api_key"] = "invalid"
+
+    # Test Pexels API Key
+    if data.pexels_api_key and data.pexels_api_key.strip():
+        try:
+            headers = {"Authorization": data.pexels_api_key}
+            resp = requests.get("https://api.pexels.com/v1/collections", headers=headers, timeout=5)
+            if resp.status_code == 200:
+                results["pexels_api_key"] = "valid"
+            else:
+                results["pexels_api_key"] = "invalid"
+        except Exception as e:
+            print("Pexels Test Error:", e)
+            results["pexels_api_key"] = "error"
             
     # 6. Test Douyin Cookie
     if data.douyin_cookie and data.douyin_cookie.strip():
@@ -362,4 +386,16 @@ async def trigger_health_check_now():
         return {"status": "success", "message": "Đã đưa lệnh kiểm tra sức khỏe tài khoản vào hàng đợi (Celery Queue)."}
     except Exception as e:
         return {"status": "error", "message": f"Lỗi kích hoạt task: {str(e)}"}
+
+@router.post("/upload-background")
+async def upload_background(file: UploadFile = File(...)):
+    import shutil
+    try:
+        bg_path = os.path.join(DATA_DIR, "custom_bg.jpg")
+        os.makedirs(os.path.dirname(bg_path), exist_ok=True)
+        with open(bg_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        return {"status": "success", "url": "/api/files/custom_bg.jpg"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 

@@ -4,13 +4,12 @@ const PromptForm = ({ onScriptGenerated }) => {
   const [prompt, setPrompt] = useState("");
   const [videoStyle, setVideoStyle] = useState("Tự do");
   const [mediaSource, setMediaSource] = useState("pexels");
-  const [pexelsKey, setPexelsKey] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
 
   const handleGenerate = async () => {
     if (!prompt) return;
     setIsGenerating(true);
-    
+
     try {
       const res = await fetch("http://localhost:8000/api/faceless/generate-script", {
         method: "POST",
@@ -19,7 +18,7 @@ const PromptForm = ({ onScriptGenerated }) => {
       });
       const data = await res.json();
       if (data.status === "success") {
-        onScriptGenerated(data.scenes, { pexelsKey, mediaSource });
+        onScriptGenerated(data.scenes, { mediaSource });
       } else {
         alert("Lỗi: " + data.detail);
       }
@@ -33,7 +32,7 @@ const PromptForm = ({ onScriptGenerated }) => {
   return (
     <div className="bg-bg-secondary rounded-2xl p-6 border border-border-subtle">
       <h2 className="text-lg font-bold text-text-primary mb-4">1. Lên Ý Tưởng</h2>
-      
+
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-text-secondary mb-2">Chủ đề (Prompt)</label>
@@ -67,25 +66,15 @@ const PromptForm = ({ onScriptGenerated }) => {
               onClick={() => setMediaSource("pexels")}
               className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${mediaSource === "pexels" ? "bg-brand-primary text-white shadow-md" : "text-text-secondary hover:text-text-primary"}`}
             >
-              Pexels Video (Miễn phí)
+              Pexels
             </button>
             <button
               onClick={() => setMediaSource("dalle")}
               className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${mediaSource === "dalle" ? "bg-brand-primary text-white shadow-md" : "text-text-secondary hover:text-text-primary"}`}
             >
-              DALL-E 3 Ảnh (Tốn API)
+              DALL-E 3
             </button>
           </div>
-          
-          {mediaSource === "pexels" && (
-            <input
-              type="password"
-              className="w-full bg-bg-tertiary border border-border-subtle rounded-xl py-2 px-3 text-sm text-text-primary focus:outline-none focus:border-brand-primary"
-              placeholder="Nhập Pexels API Key..."
-              value={pexelsKey}
-              onChange={(e) => setPexelsKey(e.target.value)}
-            />
-          )}
         </div>
 
         <button

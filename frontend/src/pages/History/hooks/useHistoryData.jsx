@@ -355,6 +355,32 @@ export const useHistoryData = () => {
     setPreviewType(type);
   };
 
+  const handleDeleteFiles = async (id) => {
+    toast((t) => (
+      <div className="flex flex-col gap-4 p-1">
+        <p className="text-sm font-medium">Bạn có chắc chắn muốn xóa file video vật lý để tiết kiệm dung lượng? Lịch sử và thumbnail vẫn được giữ lại.</p>
+        <div className="flex justify-end gap-2 mt-2">
+          <button className="px-3 py-1.5 bg-bg-secondary border border-border-subtle text-text-primary hover:bg-glass-hover rounded-lg text-xs transition-colors" onClick={() => toast.dismiss(t.id)}>Hủy</button>
+          <button className="px-3 py-1.5 bg-red-500 text-white hover:bg-red-600 rounded-lg text-xs transition-colors" onClick={async () => {
+            toast.dismiss(t.id);
+            const toastId = toast.loading("Đang xóa file video...");
+            try {
+              const res = await fetch(`${API_BASE}/history/${id}/delete-files`, { method: 'POST' });
+              if (res.ok) {
+                toast.success("Đã xóa file video vật lý, giữ lại thumbnail & DB.", { id: toastId });
+                fetchHistory();
+              } else {
+                toast.error("Lỗi khi xóa file.", { id: toastId });
+              }
+            } catch (err) {
+              toast.error("Lỗi kết nối server.", { id: toastId });
+            }
+          }}>Xác nhận</button>
+        </div>
+      </div>
+    ), { duration: Infinity });
+  };
+
   return {
     historyData, loading, selectedIds, searchQuery, filterSource, filterDate, filterStatus,
     setSearchQuery, setFilterSource, setFilterDate, setFilterStatus,
@@ -366,6 +392,7 @@ export const useHistoryData = () => {
     handleSyncData, handleBulkDelete, handleSelectAll, handleSelect,
     handleResumeProcessing, handleGroqFallback, handleBulkProcess,
     submitProcessing, handlePauseProcessing, handlePreview,
+    handleDeleteFiles,
     fetchHistory
   };
 };

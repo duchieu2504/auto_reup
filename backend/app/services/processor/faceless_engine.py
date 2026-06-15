@@ -24,6 +24,8 @@ class FacelessEngine:
         
         self.gemini_key = decrypt_data(os.getenv("GEMINI_API_KEY", ""))
         self.gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+        self.pexels_key = decrypt_data(os.getenv("PEXELS_API_KEY", ""))
+        self.openai_key = decrypt_data(os.getenv("OPENAI_API_KEY", ""))
         
     def generate_script(self, prompt: str, style: str) -> List[Dict[str, Any]]:
         """
@@ -118,6 +120,38 @@ class FacelessEngine:
         else:
             raise Exception(f"Không thể tải file video từ Pexels: HTTP {r.status_code}")
 
+    def _generate_dalle_image(self, keyword: str, text: str, api_key: str, output_path: str) -> str:
+        """Sinh ảnh bằng DALL-E 3"""
+        if not api_key:
+            raise Exception("Thiếu OpenAI API Key để sinh ảnh DALL-E 3. Vui lòng cấu hình trong Cài đặt.")
+            
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+        
+        # Tạo prompt tối ưu cho DALL-E 3 dựa trên keyword và text kịch bản
+        prompt = f"A portrait orientation (9:16) high-quality cinematic photo representing: '{text}'. Key visual elements: {keyword}. Photorealistic, vibrant colors, epic composition, no text, no watermark."
+        
+        try:
+            response = client.images.generate(
+                model="dall-e-3",
+                prompt=prompt,
+                size="1024x1792", # Dọc 9:16
+                quality="standard",
+                n=1,
+            )
+            image_url = response.data[0].url
+            # Tải ảnh
+            r = requests.get(image_url)
+            if r.status_code == 200:
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                with open(output_path, 'wb') as f:
+                    f.write(r.content)
+                return output_path
+            else:
+                raise Exception(f"Không thể tải ảnh từ OpenAI: HTTP {r.status_code}")
+        except Exception as e:
+            raise Exception(f"Lỗi gọi OpenAI DALL-E API: {e}")
+
     def render_video(self, task, data: Dict[str, Any]):
         """
         Thực thi toàn bộ luồng Render (chạy trong Celery)
@@ -127,7 +161,9 @@ class FacelessEngine:
         scenes = data.get("scenes", [])
         total_scenes = len(scenes)
         
-        pexels_key = data.get("pexels_key")
+        media_source = data.get("media_source", "pexels")
+        pexels_key = self.pexels_key
+        openai_key = self.openai_key
         session_id = str(uuid.uuid4())[:8]
         # 2. Tạo thư mục làm việc tạm thời
         work_dir = os.path.join(DATA_DIR, "faceless", session_id)
@@ -156,19 +192,13 @@ class FacelessEngine:
             text = scene.get("text", "")
             if not text: continue
             
-            # Bước 1: Gọi Pexels API tải video
-            if task: task.update_state(state='PROGRESS', meta={'progress': 10 + int((i/total_scenes)*15), 'message': f'Đang tải cảnh {i+1}: {keyword}'})
-            
             raw_video = f"{work_dir}/raw_scene_{i}.mp4"
             cut_video = f"{work_dir}/scene_{i}.mp4"
             audio_path = f"{work_dir}/scene_{i}.mp3"
             
             try:
-                # Tải video từ Pexels
-                self._download_pexels_video(keyword, pexels_key, raw_video)
-                
-                # Bước 2: Sinh Audio (TTS)
-                if task: task.update_state(state='PROGRESS', meta={'progress': 25 + int((i/total_scenes)*15), 'message': f'Đang thu âm cảnh {i+1}'})
+                # Bước 1: Sinh Audio (TTS) trước để có thời lượng audio_dur
+                if task: task.update_state(state='PROGRESS', meta={'progress': 20 + int((i/total_scenes)*20), 'message': f'Đang thu âm cảnh {i+1}'})
                 voice = data.get("tts_voice", "edge_hoaimy")
                 
                 # Edge TTS mapping
@@ -176,19 +206,44 @@ class FacelessEngine:
                 if "namminh" in voice.lower(): voice_id = "vi-VN-NamMinhNeural"
                 asyncio.run(tts_gen._generate_edge_audio(text, voice_id, audio_path))
                 
-                # Tính độ dài audio để cắt video
+                # Tính độ dài audio để cắt/loop video
                 audio_dur = get_video_duration(audio_path)
                 if audio_dur < 1.0: audio_dur = 2.0 # Đảm bảo tối thiểu 2 giây
                 
-                # Cắt video cho khớp độ dài Audio (bỏ qua âm thanh gốc)
-                cmd_cut = [
-                    "ffmpeg", "-y", "-i", raw_video, 
-                    "-t", str(audio_dur), 
-                    "-an", # Xóa audio gốc của stock
-                    "-c:v", "libx264", "-crf", "23", "-preset", "fast",
-                    cut_video
-                ]
-                subprocess.run(cmd_cut, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                # Bước 2: Tải video Pexels hoặc Sinh ảnh DALL-E
+                if media_source == "dalle":
+                    raw_image = f"{work_dir}/raw_scene_{i}.png"
+                    if task: task.update_state(state='PROGRESS', meta={'progress': 10 + int((i/total_scenes)*10), 'message': f'Đang vẽ ảnh DALL-E 3 cảnh {i+1}: {keyword}'})
+                    
+                    # Gọi DALL-E sinh ảnh
+                    self._generate_dalle_image(keyword, text, openai_key, raw_image)
+                    
+                    # Convert ảnh tĩnh sang video loop bằng FFMpeg
+                    if task: task.update_state(state='PROGRESS', meta={'progress': 15 + int((i/total_scenes)*10), 'message': f'Đang dựng video cảnh {i+1}'})
+                    cmd_image_to_video = [
+                        "ffmpeg", "-y", "-loop", "1", "-i", raw_image,
+                        "-t", str(audio_dur),
+                        "-pix_fmt", "yuv420p",
+                        "-vf", "scale=1080:1920",
+                        "-c:v", "libx264", "-crf", "23", "-preset", "fast",
+                        cut_video
+                    ]
+                    subprocess.run(cmd_image_to_video, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    # Tải video từ Pexels
+                    if task: task.update_state(state='PROGRESS', meta={'progress': 10 + int((i/total_scenes)*10), 'message': f'Đang tải cảnh {i+1} từ Pexels: {keyword}'})
+                    self._download_pexels_video(keyword, pexels_key, raw_video)
+                    
+                    # Cắt video cho khớp độ dài Audio (bỏ qua âm thanh gốc)
+                    if task: task.update_state(state='PROGRESS', meta={'progress': 15 + int((i/total_scenes)*10), 'message': f'Đang dựng video cảnh {i+1}'})
+                    cmd_cut = [
+                        "ffmpeg", "-y", "-i", raw_video, 
+                        "-t", str(audio_dur), 
+                        "-an", # Xóa audio gốc của stock
+                        "-c:v", "libx264", "-crf", "23", "-preset", "fast",
+                        cut_video
+                    ]
+                    subprocess.run(cmd_cut, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 
                 # Thêm vào file concat
                 valid_scenes.append((cut_video, audio_path, text, audio_dur))

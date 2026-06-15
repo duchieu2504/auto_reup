@@ -18,6 +18,11 @@ class GpmWarmupEngine(BaseWarmupEngine):
     def warmup(self):
         from playwright.sync_api import sync_playwright
         
+        # Load environment variables from .env to ensure we get the latest GPM_API_URL
+        from dotenv import load_dotenv
+        ENV_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/.env"))
+        load_dotenv(ENV_PATH, override=True)
+
         # 1. Start GPM Profile
         gpm_api_url = os.getenv("GPM_API_URL", "").rstrip('/')
         profile_id = self.account_data.get("device_id")
@@ -26,15 +31,37 @@ class GpmWarmupEngine(BaseWarmupEngine):
             raise Exception("GPM API URL hoặc Profile ID không hợp lệ.")
             
         logger.info(f"[Warmup-GPM] Đang khởi động GPM Profile: {profile_id}")
-        start_res = requests.get(f"{gpm_api_url}/api/v2/profile/start?profileId={profile_id}")
-        start_data = start_res.json()
         
-        if not start_data.get("success"):
-            raise Exception(f"Không thể mở GPM Profile: {start_data}")
+        ws_endpoint = None
+        # Try GPM API v1 first (newer GPMLogin Global versions)
+        try:
+            url_v1 = f"{gpm_api_url}/api/v1/profiles/start/{profile_id}"
+            start_res = requests.get(url_v1, timeout=15)
+            start_data = start_res.json()
+            if start_data.get("success") and start_data.get("data"):
+                ws_endpoint = start_data["data"].get("websocket_debugging_url") or start_data["data"].get("ws_endpoint")
+        except Exception as e:
+            logger.warning(f"[Warmup-GPM] Thử GPM API v1 thất bại: {e}")
             
-        ws_endpoint = start_data.get("data", {}).get("ws_endpoint")
+        # Fallback to GPM API v2 (older GPM versions)
         if not ws_endpoint:
-            raise Exception("Không tìm thấy WebSocket Endpoint từ GPM")
+            try:
+                url_v2 = f"{gpm_api_url}/api/v2/profile/start?profileId={profile_id}"
+                start_res = requests.get(url_v2, timeout=15)
+                start_data = start_res.json()
+                if start_data.get("success") and start_data.get("data"):
+                    ws_endpoint = start_data["data"].get("ws_endpoint") or start_data["data"].get("websocket_debugging_url")
+            except Exception as e:
+                logger.warning(f"[Warmup-GPM] Thử GPM API v2 thất bại: {e}")
+                
+        if not ws_endpoint:
+            raise Exception(f"Không thể mở GPM Profile qua cả API v1 và v2 cho Profile ID: {profile_id}")
+            
+        from urllib.parse import urlparse
+        parsed_api = urlparse(gpm_api_url)
+        api_host = parsed_api.hostname
+        if api_host:
+            ws_endpoint = ws_endpoint.replace("127.0.0.1", api_host).replace("localhost", api_host)
             
         logger.info(f"[Warmup-GPM] Kết nối qua CDP: {ws_endpoint}")
         
@@ -57,7 +84,24 @@ class GpmWarmupEngine(BaseWarmupEngine):
                 browser.disconnect()
                 # Stop profile after warmup
                 logger.info(f"[Warmup-GPM] Đóng GPM Profile: {profile_id}")
-                requests.get(f"{gpm_api_url}/api/v2/profile/stop?profileId={profile_id}")
+                
+                # Try closing with API v1 first
+                closed = False
+                try:
+                    url_v1 = f"{gpm_api_url}/api/v1/profiles/close/{profile_id}"
+                    res = requests.get(url_v1, timeout=10)
+                    if res.json().get("success"):
+                        closed = True
+                except Exception:
+                    pass
+                    
+                # Fallback to API v2 stop
+                if not closed:
+                    try:
+                        url_v2 = f"{gpm_api_url}/api/v2/profile/stop?profileId={profile_id}"
+                        requests.get(url_v2, timeout=10)
+                    except Exception:
+                        pass
 
     def _warmup_tiktok(self, page):
         logger.info("[Warmup-GPM] Mở tiktok.com/foryou")

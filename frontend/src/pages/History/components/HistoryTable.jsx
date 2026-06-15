@@ -18,8 +18,7 @@ export const HistoryTable = ({ hook }) => {
     historyData, loading, selectedIds, searchQuery, filterSource, filterDate, filterStatus,
     setSearchQuery, setFilterSource, setFilterDate, setFilterStatus,
     handleSyncData, handleBulkDelete, handleSelectAll, handleSelect,
-    handleResumeProcessing, handleBulkProcess, handlePauseProcessing, handlePreview,
-    setProcessingItems, setShowConfigModal
+    handlePreview, handleDeleteFiles
   } = hook;
 
   const filteredData = historyData.filter(item => 
@@ -113,13 +112,6 @@ export const HistoryTable = ({ hook }) => {
         {selectedIds.length > 0 && (
           <div className="flex items-center gap-2">
             <button 
-              className="flex items-center gap-2 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white px-4 py-2 rounded-lg transition-colors font-medium"
-              onClick={handleBulkProcess}
-            >
-              <PlayCircle size={18} />
-              Xử lý {selectedIds.length} mục
-            </button>
-            <button 
               className="flex items-center gap-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white px-4 py-2 rounded-lg transition-colors font-medium"
               onClick={handleBulkDelete}
             >
@@ -176,23 +168,35 @@ export const HistoryTable = ({ hook }) => {
                     <td className="p-4 text-center text-text-secondary text-sm">{(currentPage - 1) * itemsPerPage + index + 1}</td>
                     <td className="p-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-16 shrink-0 rounded-lg overflow-hidden bg-black/50 border border-white/5 relative group/vid">
-                          <video 
-                            src={`http://localhost:8000/api/files/${(item.final_video_path || item.raw_video_path || '').replace(/^[/]?data[/]/, '')}#t=2.0`}
-                            className="w-full h-full object-cover opacity-90 group-hover/vid:opacity-100 transition-opacity"
-                            muted loop playsInline preload="none"
-                            onMouseEnter={(e) => { e.target.play().catch(()=>{}); }}
-                            onMouseLeave={(e) => { e.target.pause(); e.target.currentTime = 0; }}
-                          />
+                        <div className="w-12 h-16 shrink-0 rounded-lg overflow-hidden bg-black/50 border border-white/5 relative group/vid flex items-center justify-center">
+                          {(item.final_video_path?.startsWith('deleted:') || item.raw_video_path?.startsWith('deleted:')) ? (
+                            <img 
+                              src={`http://localhost:8000/api/history/thumbnail?path=${encodeURIComponent(item.final_video_path || item.raw_video_path)}`}
+                              className="w-full h-full object-cover opacity-90"
+                              alt="thumbnail"
+                            />
+                          ) : (
+                            <video 
+                              src={`http://localhost:8000/api/files/${(item.final_video_path || item.raw_video_path || '').replace(/^[/]?data[/]/, '')}#t=2.0`}
+                              className="w-full h-full object-cover opacity-90 group-hover/vid:opacity-100 transition-opacity"
+                              muted loop playsInline preload="none"
+                              onMouseEnter={(e) => { e.target.play().catch(()=>{}); }}
+                              onMouseLeave={(e) => { e.target.pause(); e.target.currentTime = 0; }}
+                            />
+                          )}
                         </div>
                         <div className="flex flex-col gap-1 text-sm">
                           <span className="font-medium text-text-primary truncate max-w-[200px] cursor-help font-mono bg-white/5 px-2 py-1 rounded text-xs" title={item.original_name}>
                             {truncateFilename(item.original_name)}
                           </span>
                           <div className="flex gap-2 mt-1">
-                             <button onClick={() => handlePreview(item.raw_video_path, 'video')} className="text-xs px-2 py-1 bg-brand-primary/10 text-brand-primary rounded hover:bg-brand-primary hover:text-white transition-colors">Video Gốc</button>
+                             {item.raw_video_path && !item.raw_video_path.startsWith('deleted:') && (
+                               <button onClick={() => handlePreview(item.raw_video_path, 'video')} className="text-xs px-2 py-1 bg-brand-primary/10 text-brand-primary rounded hover:bg-brand-primary hover:text-white transition-colors">Video Gốc</button>
+                             )}
                              {item.audio_tts_path && <button onClick={() => handlePreview(item.audio_tts_path, 'audio')} className="text-xs px-2 py-1 bg-purple-500/10 text-purple-500 rounded hover:bg-purple-500 hover:text-white transition-colors">Audio</button>}
-                             {item.final_video_path && <button onClick={() => handlePreview(item.final_video_path, 'video')} className="text-xs px-2 py-1 bg-green-500/10 text-green-500 rounded hover:bg-green-500 hover:text-white transition-colors">Video Cuối</button>}
+                             {item.final_video_path && !item.final_video_path.startsWith('deleted:') && (
+                               <button onClick={() => handlePreview(item.final_video_path, 'video')} className="text-xs px-2 py-1 bg-green-500/10 text-green-500 rounded hover:bg-green-500 hover:text-white transition-colors">Video Cuối</button>
+                             )}
                           </div>
                         </div>
                       </div>
@@ -326,42 +330,6 @@ export const HistoryTable = ({ hook }) => {
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
-                        {(item.status === 'paused' || item.status === 'failed') && (
-                          <button 
-                            className="p-2 rounded-lg text-text-secondary hover:text-green-500 hover:bg-green-500/10 transition-colors group relative" 
-                            onClick={() => handleResumeProcessing(item)}
-                          >
-                            <PlayCircle size={18} />
-                            <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-bg-secondary border border-border-subtle text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
-                              Chạy tiếp tiến trình
-                            </span>
-                          </button>
-                        )}
-                        {item.status === 'pending' && (
-                          <button 
-                            className="p-2 rounded-lg text-text-secondary hover:text-brand-primary hover:bg-brand-primary/10 transition-colors group relative" 
-                            onClick={() => {
-                              setProcessingItems([item.raw_video_path]);
-                              setShowConfigModal(true);
-                            }}
-                          >
-                            <PlayCircle size={18} />
-                            <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-bg-secondary border border-border-subtle text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
-                              Cấu hình & Xử lý
-                            </span>
-                          </button>
-                        )}
-                        {(item.status === 'transcribing' || item.status === 'translating' || item.status === 'generating_tts' || item.status === 'rendering') && (
-                          <button 
-                            className="p-2 rounded-lg text-text-secondary hover:text-yellow-500 hover:bg-yellow-500/10 transition-colors group relative" 
-                            onClick={() => handlePauseProcessing(item)}
-                          >
-                            <PauseCircle size={18} />
-                            <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-bg-secondary border border-border-subtle text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
-                              Tạm dừng (Pause)
-                            </span>
-                          </button>
-                        )}
                         {(item.status === 'completed' || item.status === 'uploaded') && (
                           <a 
                             className="p-2 rounded-lg text-text-secondary hover:text-brand-primary hover:bg-brand-primary/10 transition-colors group relative inline-flex" 
@@ -372,6 +340,19 @@ export const HistoryTable = ({ hook }) => {
                               Chỉnh sửa / Edit
                             </span>
                           </a>
+                        )}
+                        {/* Nút xóa file video, chỉ hiển thị nếu file chưa bị xóa hoàn toàn */}
+                        {((item.raw_video_path && !item.raw_video_path.startsWith('deleted:')) || 
+                          (item.final_video_path && !item.final_video_path.startsWith('deleted:'))) && (
+                          <button 
+                            className="p-2 rounded-lg text-text-secondary hover:text-red-500 hover:bg-red-500/10 transition-colors group relative inline-flex cursor-pointer" 
+                            onClick={() => handleDeleteFiles(item.id)}
+                          >
+                            <Trash2 size={18} />
+                            <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-bg-secondary border border-border-subtle text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                              Xóa file video
+                            </span>
+                          </button>
                         )}
                       </div>
                     </td>

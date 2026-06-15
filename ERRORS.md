@@ -112,3 +112,20 @@
 - **Prevention**: Luôn dùng API thực tế với chữ ký _bogus để xác thực Cookie thay vì chỉ check HTTP 200.
 - **Status**: Fixed
 ---
+
+
+## [2026-06-15 11:26] - NameError: name 'DATA_DIR' is not defined (Runtime Error)
+
+- **Type**: Runtime Error
+- **Severity**: High
+- **File**: ackend/app/api/settings.py:388
+- **Agent**: fox
+- **Root Cause**: Bổ sung endpoint /upload-background sử dụng biến DATA_DIR nhưng quên import từ pp.core.config.
+- **Error Message**:
+  `	ext
+  NameError: name 'DATA_DIR' is not defined
+  `
+- **Fix Applied**: Thêm dòng import rom app.core.config import DATA_DIR ở đầu file ackend/app/api/settings.py.
+- **Prevention**: Luôn chạy biên dịch kiểm thử code python (py_compile hoặc static analyzer) sau mỗi lần cập nhật file.
+- **Status**: Fixed
+---
