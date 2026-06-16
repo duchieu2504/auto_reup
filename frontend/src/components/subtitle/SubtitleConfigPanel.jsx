@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Type, ShieldAlert, Sliders } from 'lucide-react';
+import { Type, ShieldAlert, Sliders, Plus, Trash2 } from 'lucide-react';
 
 export const SubtitleConfigPanel = ({ config }) => {
   const [availableFonts, setAvailableFonts] = useState([]);
@@ -78,14 +78,135 @@ export const SubtitleConfigPanel = ({ config }) => {
         </div>
       </div>
 
+      {/* Logo Masking Panel */}
+      <div className="bg-bg-secondary/40 rounded-2xl border border-white/5 p-5 w-full relative overflow-hidden">
+        <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
+          <label className="text-sm font-bold text-text-primary flex items-center gap-2 font-display">
+            <Sliders size={18} className="text-neon-pink" />
+            Che Logo Video Gốc
+          </label>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 cursor-pointer bg-bg-primary/40 px-3 py-1.5 rounded-xl border border-white/5 hover:border-white/10 transition-colors">
+              <input
+                type="checkbox"
+                checked={config.maskEnabled}
+                onChange={(e) => config.setMaskEnabled(e.target.checked)}
+                className="w-4 h-4 accent-neon-pink cursor-pointer rounded"
+              />
+              <span className="text-xs font-bold text-text-secondary select-none">Bật Che Logo</span>
+            </label>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              type="button"
+              onClick={config.addMask}
+              className="flex items-center gap-1 text-xs bg-neon-pink/15 text-neon-pink border border-neon-pink/20 px-3 py-1.5 rounded-lg hover:bg-neon-pink hover:text-white font-bold transition-all duration-300 cursor-pointer shadow-sm"
+            >
+              <Plus size={14} />
+              Thêm Ô Che
+            </motion.button>
+          </div>
+        </div>
+
+        <div className={`transition-opacity duration-300 ${config.maskEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+          {/* List of current masks */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {(config.masks || []).length === 0 ? (
+              <span className="text-xs text-text-secondary italic">Chưa có ô che nào. Nhấp "Thêm Ô Che" để bắt đầu.</span>
+            ) : (
+              (config.masks || []).map((mask, idx) => {
+                const isActive = mask.id === config.activeMaskId;
+                return (
+                  <div
+                    key={mask.id}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-neon-pink/10 border-neon-pink text-neon-pink shadow-sm'
+                        : 'bg-bg-primary/40 border-white/5 text-text-secondary hover:border-white/10'
+                    }`}
+                    onClick={() => config.setActiveMaskId(mask.id)}
+                  >
+                    <span>Ô #{idx + 1} ({mask.type === 'color' ? 'Màu' : mask.type === 'blur' ? 'Mờ' : 'Nhiễu'})</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        config.removeMask(mask.id);
+                      }}
+                      className="text-text-secondary hover:text-neon-pink p-0.5 rounded transition-colors"
+                      title="Xóa ô này"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Configuration form for the active mask */}
+          {config.masks && config.masks.length > 0 && (() => {
+            const activeMask = config.masks.find(m => m.id === config.activeMaskId) || config.masks[0];
+            if (!activeMask) return null;
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end bg-bg-primary/20 border border-white/5 rounded-xl p-4">
+                <div className="flex flex-col gap-1.5 sm:col-span-1">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">
+                    Cấu hình Ô Che #{config.masks.findIndex(m => m.id === activeMask.id) + 1}
+                  </label>
+                  <select
+                    value={activeMask.type}
+                    onChange={(e) => config.updateMask(activeMask.id, { type: e.target.value })}
+                    className="w-full bg-bg-primary border border-border-subtle text-text-primary text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-neon-purple cursor-pointer"
+                  >
+                    <option value="color">Che màu (Solid Box)</option>
+                    <option value="blur">Làm mờ (Blur)</option>
+                    <option value="noise">Làm nhiễu (Noise)</option>
+                  </select>
+                </div>
+
+                {activeMask.type === 'color' && (
+                  <div className="flex items-center justify-between bg-bg-primary/60 border border-border-subtle rounded-xl p-2 h-[38px]">
+                    <label className="text-xs font-bold text-text-secondary uppercase tracking-wider pl-1">Màu Sắc Ô Che</label>
+                    <input 
+                      type="color" 
+                      value={activeMask.color || '#000000'} 
+                      onChange={(e) => config.updateMask(activeMask.id, { color: e.target.value })} 
+                      className="w-7 h-7 p-0 border-0 rounded-lg cursor-pointer bg-transparent"
+                    />
+                  </div>
+                )}
+                
+                <div className="flex flex-col gap-1.5 bg-bg-primary/30 border border-border-subtle rounded-xl p-2.5 h-[38px] justify-center sm:col-span-1">
+                  <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">
+                    Kéo thả & co giãn ô trên Preview
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+
       {/* Subtitle Customization Panel */}
       <div className="bg-bg-secondary/40 rounded-2xl border border-white/5 p-5 w-full relative overflow-hidden">
-        <h3 className="text-sm font-bold text-text-primary mb-4 flex items-center gap-2 font-display">
-          <Type size={18} className="text-neon-purple" />
-          Tùy chỉnh Phụ Đề
-        </h3>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <h3 className="text-sm font-bold text-text-primary flex items-center gap-2 font-display">
+            <Type size={18} className="text-neon-purple" />
+            Tùy chỉnh Phụ Đề
+          </h3>
+          <label className="flex items-center gap-2 cursor-pointer bg-bg-primary/40 px-3 py-1.5 rounded-xl border border-white/5 hover:border-white/10 transition-colors">
+            <input
+              type="checkbox"
+              checked={config.enableSubtitles}
+              onChange={(e) => config.setEnableSubtitles(e.target.checked)}
+              className="w-4 h-4 accent-neon-pink cursor-pointer rounded"
+            />
+            <span className="text-xs font-bold text-text-secondary select-none">Bật Phụ Đề / Dịch Thuật</span>
+          </label>
+        </div>
         
-        <div className="flex flex-col gap-5">
+        <div className={`flex flex-col gap-5 transition-opacity duration-300 ${config.enableSubtitles ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Font chữ</label>

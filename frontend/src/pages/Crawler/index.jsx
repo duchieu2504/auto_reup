@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Download, PlayCircle, Terminal, Cpu } from 'lucide-react';
 import { useCrawler } from '../../context/CrawlerContext';
+import Discovery from '../Discovery';
 
 const Phase1Crawler = () => {
   const { urls, setUrls, isCrawling, logs, progress, startCrawling } = useCrawler();
@@ -36,12 +37,13 @@ const Phase1Crawler = () => {
   };
 
   return (
-    <motion.div
-      variants={pageVariants}
-      initial="hidden"
-      animate="show"
-      className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:items-stretch"
-    >
+    <div className="space-y-8">
+      <motion.div
+        variants={pageVariants}
+        initial="hidden"
+        animate="show"
+        className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:items-stretch"
+      >
       {/* Input Form Panel */}
       <div className="lg:col-span-2 glass-panel p-6 rounded-2xl border border-white/5 relative overflow-hidden flex flex-col justify-between gap-6">
         <div className="absolute top-0 left-0 w-24 h-24 bg-neon-purple/5 blur-2xl rounded-full pointer-events-none" />
@@ -145,7 +147,18 @@ const Phase1Crawler = () => {
         </div>
       </div>
     </motion.div>
-  );
+
+    {/* Trang Khám phá gộp vào bên dưới */}
+    <div className="pt-6 border-t border-white/5">
+      <Discovery 
+        onSelectUser={(url) => {
+          setUrls(url);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }} 
+      />
+    </div>
+  </div>
+);
 };
 
 export default Phase1Crawler;

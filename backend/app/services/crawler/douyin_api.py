@@ -10,8 +10,7 @@ from .abogus import ABogus
 from .cookie_fetcher import fetch_fresh_cookies
 
 _USER_AGENT_POOL = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 ]
 
 class DouyinAPIClient:
@@ -232,56 +231,89 @@ class DouyinAPIClient:
             "raw": raw
         }
 
-    def search_aweme(self, keyword: str, offset: int = 0, count: int = 10) -> dict:
+    def search_aweme(self, keyword: str, offset: int = 0, count: int = 10, auto_retry: bool = True) -> dict:
         """Tìm kiếm video theo từ khóa"""
-        params = self._default_query()
-        params.update({
-            "keyword": keyword,
-            "search_channel": "aweme_video_web",
-            "sort_type": 0,
-            "publish_time": 0,
-            "search_source": "normal_search",
-            "query_correct_type": "1",
-            "is_filter_search": 0,
-            "offset": offset,
-            "count": count,
-        })
+        old_referer = self.headers.get("Referer", "https://www.douyin.com/")
+        import urllib.parse
+        encoded_kw = urllib.parse.quote(keyword)
+        self.headers["Referer"] = f"https://www.douyin.com/search/{encoded_kw}"
         
-        raw = self.request_json("/aweme/v1/web/general/search/single/", params)
-        if not raw:
-            return {"items": [], "has_more": False, "max_cursor": 0}
+        try:
+            params = self._default_query()
+            params.update({
+                "keyword": keyword,
+                "search_channel": "aweme_video_web",
+                "sort_type": 0,
+                "publish_time": 0,
+                "search_source": "normal_search",
+                "query_correct_type": "1",
+                "is_filter_search": 0,
+                "offset": offset,
+                "count": count,
+            })
             
-        data_list = raw.get("data", []) if isinstance(raw.get("data"), list) else []
-        items = []
-        for entry in data_list:
-            if isinstance(entry, dict) and "aweme_info" in entry:
-                items.append(entry["aweme_info"])
+            raw = self.request_json("/aweme/v1/web/general/search/single/", params)
+            if not raw:
+                if auto_retry:
+                    from app.core.logger import get_logger
+                    logger = get_logger(__name__)
+                    logger.info("Không có phản hồi từ API tìm kiếm Douyin, tiến hành refresh cookie...")
+                    if self.refresh_cookies():
+                        params["msToken"] = self.cookies.get("msToken", "")
+                        self.headers["Referer"] = old_referer
+                        return self.search_aweme(keyword, offset, count, auto_retry=False)
+                self.headers["Referer"] = old_referer
+                return {"items": [], "has_more": False, "max_cursor": 0}
                 
-        has_more = bool(raw.get("has_more", 0))
-        next_offset = int(raw.get("cursor") or raw.get("offset") or 0)
-        status_code = int(raw.get("status_code") or 0)
-        
-        # Kiểm tra nếu bị chặn do thiếu cookie signature
-        if status_code != 0 or not items:
-            error_msg = "Không tìm thấy kết quả hoặc API bị chặn."
-            if "search_nil_info" in raw:
-                nil_type = raw["search_nil_info"].get("search_nil_type")
-                if nil_type == "antispam_check":
-                    error_msg = "Tìm kiếm bị Douyin chặn (Anti-Spam). Yêu cầu cập nhật Cookie chứa '__ac_signature' từ trình duyệt!"
-                elif nil_type == "verify_check":
-                    error_msg = "Tài khoản/IP yêu cầu xác minh Captcha. Vui lòng mở lại trình duyệt Douyin, tìm kiếm và giải Captcha rồi copy lại Cookie mới."
-            elif "search_nil_type" in raw:
-                nil_type = raw.get("search_nil_type")
-                if nil_type == "antispam_check":
-                    error_msg = "Tìm kiếm bị Douyin chặn (Anti-Spam). Yêu cầu cập nhật Cookie chứa '__ac_signature' từ trình duyệt!"
-                elif nil_type == "verify_check":
-                    error_msg = "Tài khoản/IP yêu cầu xác minh Captcha. Vui lòng mở lại trình duyệt Douyin, tìm kiếm và giải Captcha rồi copy lại Cookie mới."
-            raise Exception(error_msg)
+            data_list = raw.get("data", []) if isinstance(raw.get("data"), list) else []
+            items = []
+            for entry in data_list:
+                if isinstance(entry, dict) and "aweme_info" in entry:
+                    items.append(entry["aweme_info"])
+                    
+            has_more = bool(raw.get("has_more", 0))
+            next_offset = int(raw.get("cursor") or raw.get("offset") or 0)
+            status_code = int(raw.get("status_code") or 0)
+            
+            # Kiểm tra nếu bị chặn do thiếu cookie signature hoặc chưa đăng nhập
+            if status_code != 0 or not items:
+                status_msg = raw.get("status_msg", "")
+                if status_code == 2483 or "登录" in status_msg:
+                    error_msg = "Tìm kiếm Hot Trend yêu cầu tài khoản Douyin đã đăng nhập. Vui lòng vào trang Cấu hình để cập nhật Cookie chứa 'sessionid' thủ công!"
+                    raise Exception(error_msg)
 
-        return {
-            "items": items,
-            "has_more": has_more,
-            "max_cursor": next_offset,
-            "status_code": status_code,
-            "raw": raw,
-        }
+                if auto_retry:
+                    from app.core.logger import get_logger
+                    logger = get_logger(__name__)
+                    logger.info("Tìm kiếm Douyin bị chặn hoặc không có kết quả, tiến hành lấy cookie mới...")
+                    if self.refresh_cookies():
+                        params["msToken"] = self.cookies.get("msToken", "")
+                        self.headers["Referer"] = old_referer
+                        return self.search_aweme(keyword, offset, count, auto_retry=False)
+                
+                error_msg = "Không tìm thấy kết quả hoặc API bị chặn."
+                if "search_nil_info" in raw:
+                    nil_type = raw["search_nil_info"].get("search_nil_type")
+                    if nil_type == "antispam_check":
+                        error_msg = "Tìm kiếm bị Douyin chặn (Anti-Spam). Yêu cầu cập nhật Cookie chứa '__ac_signature' từ trình duyệt!"
+                    elif nil_type == "verify_check":
+                        error_msg = "Tài khoản/IP yêu cầu xác minh Captcha. Vui lòng mở lại trình duyệt Douyin, tìm kiếm và giải Captcha rồi copy lại Cookie mới."
+                elif "search_nil_type" in raw:
+                    nil_type = raw.get("search_nil_type")
+                    if nil_type == "antispam_check":
+                        error_msg = "Tìm kiếm bị Douyin chặn (Anti-Spam). Yêu cầu cập nhật Cookie chứa '__ac_signature' từ trình duyệt!"
+                    elif nil_type == "verify_check":
+                        error_msg = "Tài khoản/IP yêu cầu xác minh Captcha. Vui lòng mở lại trình duyệt Douyin, tìm kiếm và giải Captcha rồi copy lại Cookie mới."
+                raise Exception(error_msg)
+
+            self.headers["Referer"] = old_referer
+            return {
+                "items": items,
+                "has_more": has_more,
+                "max_cursor": next_offset,
+                "status_code": status_code,
+                "raw": raw,
+            }
+        except Exception as e:
+            self.headers["Referer"] = old_referer
+            raise e

@@ -51,6 +51,19 @@ def init_db():
             except Exception as e:
                 print(f"Error updating live_stream_jobs schema: {e}")
                 
+            # Check and add original_caption and original_hashtags to video_history
+            try:
+                if 'video_history' in inspector.get_table_names():
+                    video_history_cols = [col['name'] for col in inspector.get_columns('video_history')]
+                    with engine.connect() as conn:
+                        if 'original_caption' not in video_history_cols:
+                            conn.execute(text("ALTER TABLE video_history ADD COLUMN original_caption TEXT;"))
+                        if 'original_hashtags' not in video_history_cols:
+                            conn.execute(text("ALTER TABLE video_history ADD COLUMN original_hashtags TEXT;"))
+                        conn.commit()
+            except Exception as e:
+                print(f"Error updating video_history schema: {e}")
+                
             # Xử lý các tiến trình bị kẹt do restart
             try:
                 if 'upload_schedules' in inspector.get_table_names():

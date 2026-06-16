@@ -1,6 +1,88 @@
 import React from 'react';
 
 export const InteractiveVideoPreview = ({ config, children }) => {
+  const handleBoxMouseDown = (e, mask) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (config.setActiveMaskId) {
+      config.setActiveMaskId(mask.id);
+    }
+    
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startMaskX = mask.x;
+    const startMaskY = mask.y;
+    
+    // Get container size
+    const container = e.currentTarget.parentElement;
+    const rect = container.getBoundingClientRect();
+    
+    const handleMouseMove = (moveEvent) => {
+      const deltaX = ((moveEvent.clientX - startX) / rect.width) * 100;
+      const deltaY = ((moveEvent.clientY - startY) / rect.height) * 100;
+      
+      const newX = Math.max(0, Math.min(100 - mask.width, startMaskX + deltaX));
+      const newY = Math.max(0, Math.min(100 - mask.height, startMaskY + deltaY));
+      
+      if (config.updateMask) {
+        config.updateMask(mask.id, {
+          x: Math.round(newX),
+          y: Math.round(newY)
+        });
+      }
+    };
+    
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleResizeMouseDown = (e, mask) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (config.setActiveMaskId) {
+      config.setActiveMaskId(mask.id);
+    }
+    
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startWidth = mask.width;
+    const startHeight = mask.height;
+    
+    // Get container size
+    const container = e.currentTarget.parentElement.parentElement;
+    const rect = container.getBoundingClientRect();
+    
+    const handleMouseMove = (moveEvent) => {
+      const deltaWidth = ((moveEvent.clientX - startX) / rect.width) * 100;
+      const deltaHeight = ((moveEvent.clientY - startY) / rect.height) * 100;
+      
+      const newWidth = Math.max(5, Math.min(100 - mask.x, startWidth + deltaWidth));
+      const newHeight = Math.max(5, Math.min(100 - mask.y, startHeight + deltaHeight));
+      
+      if (config.updateMask) {
+        config.updateMask(mask.id, {
+          width: Math.round(newWidth),
+          height: Math.round(newHeight)
+        });
+      }
+    };
+    
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   // `children` can be the <video> or <img> tag passed from the parent.
   return (
     <div 
@@ -20,30 +102,79 @@ export const InteractiveVideoPreview = ({ config, children }) => {
       </div>
       
       {/* Overlay Subtitle */}
-      <div 
-        className={`absolute w-full flex justify-center transition-opacity z-10 pointer-events-auto ${config.isDragging ? 'opacity-50' : 'hover:opacity-90'}`}
-        style={{ bottom: config.subtitleMarginV + '%', cursor: 'move' }}
-        onMouseDown={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          config.setIsDragging(true);
-        }}
-      >
-        <div
-          className="text-center rounded-lg pointer-events-none"
-          style={{
-            color: config.subtitleTextColor,
-            backgroundColor: config.subtitleBgColor + Math.round((config.subtitleBgOpacity / 100) * 255).toString(16).padStart(2, '0').toUpperCase(),
-            fontSize: config.subtitleFontSize + 'px',
-            padding: `${config.subtitleBgPadding * 3}px ${config.subtitleBgPadding * 5}px`,
-            fontWeight: 'bold',
-            textShadow: '0px 1px 2px rgba(0,0,0,0.5)',
-            userSelect: 'none'
+      {config.enableSubtitles && (
+        <div 
+          className={`absolute w-full flex justify-center transition-opacity z-10 pointer-events-auto ${config.isDragging ? 'opacity-50' : 'hover:opacity-90'}`}
+          style={{ bottom: config.subtitleMarginV + '%', cursor: 'move' }}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            config.setIsDragging(true);
           }}
         >
-          Đây là phụ đề mẫu tự động sinh...
+          <div
+            className="text-center rounded-lg pointer-events-none"
+            style={{
+              color: config.subtitleTextColor,
+              backgroundColor: config.subtitleBgColor + Math.round((config.subtitleBgOpacity / 100) * 255).toString(16).padStart(2, '0').toUpperCase(),
+              fontSize: config.subtitleFontSize + 'px',
+              padding: `${config.subtitleBgPadding * 3}px ${config.subtitleBgPadding * 5}px`,
+              fontWeight: 'bold',
+              textShadow: '0px 1px 2px rgba(0,0,0,0.5)',
+              userSelect: 'none'
+            }}
+          >
+            Đây là phụ đề mẫu tự động sinh...
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Overlay Logo Masks */}
+      {config.maskEnabled && (config.masks || []).map((mask, index) => {
+        const isActive = mask.id === config.activeMaskId;
+        return (
+          <div
+            key={mask.id}
+            style={{
+              left: `${mask.x}%`,
+              top: `${mask.y}%`,
+              width: `${mask.width}%`,
+              height: `${mask.height}%`,
+              position: 'absolute',
+              border: isActive ? '2px dashed #EC4899' : '2px dashed rgba(236, 72, 153, 0.4)',
+              backgroundColor: mask.type === 'color' 
+                ? mask.color 
+                : 'rgba(236, 72, 153, 0.15)',
+              backdropFilter: mask.type === 'blur' ? 'blur(8px)' : 'none',
+              cursor: 'move',
+              zIndex: isActive ? 35 : 30,
+              boxSizing: 'border-box'
+            }}
+            onMouseDown={(e) => handleBoxMouseDown(e, mask)}
+          >
+            <div className={`absolute top-1 left-1 bg-black/70 text-white text-[9px] px-1 rounded pointer-events-none select-none font-mono ${isActive ? 'ring-1 ring-[#EC4899]' : ''}`}>
+              #{index + 1} {mask.type === 'color' ? 'Màu' : mask.type === 'blur' ? 'Mờ' : 'Nhiễu'} ({Math.round(mask.width)}x{Math.round(mask.height)})
+            </div>
+            
+            {isActive && (
+              <div
+                style={{
+                  width: '12px',
+                  height: '12px',
+                  backgroundColor: '#EC4899',
+                  position: 'absolute',
+                  right: '-6px',
+                  bottom: '-6px',
+                  cursor: 'se-resize',
+                  borderRadius: '50%',
+                  zIndex: 36
+                }}
+                onMouseDown={(e) => handleResizeMouseDown(e, mask)}
+              />
+            )}
+          </div>
+        );
+      })}
 
       {/* Overlay Watermark Logo */}
       {config.watermarkType !== 'none' && (
@@ -93,9 +224,14 @@ export const InteractiveVideoPreview = ({ config, children }) => {
       )}
       
       <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded backdrop-blur-sm pointer-events-none z-10 space-y-1">
-        <div>Sub-Y: {Math.round(config.subtitleMarginV)}%</div>
+        {config.enableSubtitles && (
+          <div>Sub-Y: {Math.round(config.subtitleMarginV)}%</div>
+        )}
         {config.watermarkType !== 'none' && (
           <div>Logo: {Math.round(config.watermarkX)}% x {Math.round(config.watermarkY)}%</div>
+        )}
+        {config.maskEnabled && config.masks && config.masks.length > 0 && (
+          <div>Che: {config.masks.length} vùng</div>
         )}
       </div>
     </div>

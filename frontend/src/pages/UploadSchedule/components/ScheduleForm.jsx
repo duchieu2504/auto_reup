@@ -1,5 +1,5 @@
 import React from 'react';
-import { Send, Video, Users, Sparkles, RefreshCw, Cpu, MonitorPlay, Smartphone, Folder, ChevronLeft, CheckSquare, Image as ImageIcon, AlertTriangle, CalendarClock } from 'lucide-react';
+import { Send, Video, Users, Sparkles, RefreshCw, Cpu, MonitorPlay, Smartphone, Folder, ChevronLeft, CheckSquare, Image as ImageIcon, AlertTriangle, CalendarClock, Languages } from 'lucide-react';
 import { truncateFilename } from '../hooks/useScheduleData';
 
 export const ScheduleForm = ({ hook }) => {
@@ -7,8 +7,8 @@ export const ScheduleForm = ({ hook }) => {
     videos, accounts, selectedVideos, setSelectedAuthor, selectedAuthor,
     selectedAccounts, caption, setCaption, hashtags, setHashtags,
     scheduleMode, setScheduleMode, scheduledTime, setScheduledTime, engineType, setEngineType,
-    isGenerating, isSubmitting, groupedVideos, postedMap,
-    handleAccountToggle, handleVideoToggle, toggleAllAuthorVideos, generateAIContent, onSubmit
+    isGenerating, isTranslating, isSubmitting, groupedVideos, postedMap,
+    handleAccountToggle, handleVideoToggle, toggleAllAuthorVideos, generateAIContent, translateOriginalCaption, onSubmit
   } = hook;
 
   return (
@@ -232,14 +232,25 @@ export const ScheduleForm = ({ hook }) => {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="block text-sm font-medium text-text-secondary">Nội dung Caption</label>
-            <button 
-              type="button" 
-              onClick={generateAIContent}
-              disabled={isGenerating}
-              className="flex items-center gap-1 text-xs text-brand-primary hover:text-brand-secondary transition-colors font-medium bg-brand-primary/10 px-2 py-1 rounded-md"
-            >
-              <Sparkles size={14} /> {isGenerating ? "Đang viết..." : "Tự viết bằng AI"}
-            </button>
+            <div className="flex gap-2">
+              <button 
+                type="button" 
+                onClick={translateOriginalCaption}
+                disabled={isTranslating || isGenerating}
+                className="flex items-center gap-1 text-xs text-brand-secondary hover:text-brand-primary transition-colors font-medium bg-brand-secondary/10 px-2 py-1 rounded-md disabled:opacity-50"
+              >
+                <Languages size={14} className={isTranslating ? "animate-spin" : ""} /> 
+                {isTranslating ? "Đang dịch..." : "Dịch caption gốc"}
+              </button>
+              <button 
+                type="button" 
+                onClick={generateAIContent}
+                disabled={isGenerating || isTranslating}
+                className="flex items-center gap-1 text-xs text-brand-primary hover:text-brand-secondary transition-colors font-medium bg-brand-primary/10 px-2 py-1 rounded-md disabled:opacity-50"
+              >
+                <Sparkles size={14} /> {isGenerating ? "Đang viết..." : "Tự viết bằng AI"}
+              </button>
+            </div>
           </div>
           <textarea 
             value={caption}

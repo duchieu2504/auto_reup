@@ -29,6 +29,7 @@ export const useScheduleData = () => {
   const [engineType, setEngineType] = useState("playwright");
   
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -140,6 +141,52 @@ export const useScheduleData = () => {
       toast.error("Lỗi khi sinh nội dung AI. Vui lòng kiểm tra lại cấu hình API.", { id: loadingToast });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const translateOriginalCaption = async () => {
+    if (selectedVideos.length === 0) {
+      toast.error("Vui lòng chọn ít nhất 1 Video trước khi dịch Caption!");
+      return;
+    }
+    
+    const targetVideo = videos.find(v => v.id === selectedVideos[0]);
+    if (!targetVideo) {
+      toast.error("Không tìm thấy thông tin video!");
+      return;
+    }
+    
+    if (!targetVideo.original_caption) {
+      toast.error("Video này không có Caption gốc để dịch!");
+      return;
+    }
+    
+    setIsTranslating(true);
+    const loadingToast = toast.loading("Đang dịch caption gốc sang tiếng Việt...");
+    try {
+      const res = await fetch(`${API_BASE}/upload-schedules/translate-caption`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_history_id: parseInt(selectedVideos[0]) })
+      });
+      
+      const data = await res.json();
+      
+      if (res.ok && data) {
+        if (data.translated_caption) {
+          setCaption(data.translated_caption);
+          toast.success("Đã dịch xong caption!", { id: loadingToast });
+        } else {
+          toast.error("Không dịch được caption hoặc bản dịch trống.", { id: loadingToast });
+        }
+      } else {
+        throw new Error(data?.detail || "Lỗi dịch caption");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Lỗi khi dịch caption. Vui lòng kiểm tra lại cấu hình API.", { id: loadingToast });
+    } finally {
+      setIsTranslating(false);
     }
   };
 
@@ -308,8 +355,8 @@ export const useScheduleData = () => {
     selectedVideos, setSelectedVideos, selectedAuthor, setSelectedAuthor,
     selectedAccounts, setSelectedAccounts, caption, setCaption, hashtags, setHashtags,
     scheduleMode, setScheduleMode, scheduledTime, setScheduledTime, engineType, setEngineType,
-    isGenerating, isSubmitting, groupedVideos, postedMap,
-    handleAccountToggle, handleVideoToggle, toggleAllAuthorVideos, generateAIContent,
+    isGenerating, isTranslating, isSubmitting, groupedVideos, postedMap,
+    handleAccountToggle, handleVideoToggle, toggleAllAuthorVideos, generateAIContent, translateOriginalCaption,
     onSubmit, deleteSchedule, handleRetry, handlePause, handleResume, handleStop, fetchData
   };
 };

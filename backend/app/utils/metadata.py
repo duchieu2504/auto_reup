@@ -41,6 +41,8 @@ def save_video_metadata(video_record):
         "srt_origin_path": video_record.srt_origin_path,
         "srt_translated_path": video_record.srt_translated_path,
         "process_config": video_record.process_config if hasattr(video_record, 'process_config') else "{}",
+        "original_caption": getattr(video_record, 'original_caption', None),
+        "original_hashtags": getattr(video_record, 'original_hashtags', None),
         "created_at": iso_format(video_record.created_at),
         "updated_at": iso_format(video_record.updated_at),
         "uploaded_at": iso_format(video_record.uploaded_at),

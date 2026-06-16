@@ -20,7 +20,7 @@ class ProcessorPipeline:
         self.editor = VideoEditor()
         self.tts = TTSGenerator()
 
-    def process_video(self, video_path: str, log_callback, voice_mode: str = "edge_auto", bg_volume: int = 10, flip_video: bool = False, force_render: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False, subtitle_text_color: str = "#000000", subtitle_bg_color: str = "#FFFFFF", subtitle_font_size: int = 20, subtitle_margin_v: int = 40, subtitle_bg_padding: int = 2, subtitle_bg_opacity: int = 100, watermark_type: str = "none", watermark_text: str = None, watermark_image_path: str = None, watermark_x: float = 50.0, watermark_y: float = 50.0, watermark_size: float = 20.0, watermark_color: str = "#FFFFFF", watermark_opacity: float = 50.0, subtitle_font_family: str = "Liberation Sans"):
+    def process_video(self, video_path: str, log_callback, voice_mode: str = "edge_auto", bg_volume: int = 10, flip_video: bool = False, force_render: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False, subtitle_text_color: str = "#000000", subtitle_bg_color: str = "#FFFFFF", subtitle_font_size: int = 20, subtitle_margin_v: int = 40, subtitle_bg_padding: int = 2, subtitle_bg_opacity: int = 100, watermark_type: str = "none", watermark_text: str = None, watermark_image_path: str = None, watermark_x: float = 50.0, watermark_y: float = 50.0, watermark_size: float = 20.0, watermark_color: str = "#FFFFFF", watermark_opacity: float = 50.0, subtitle_font_family: str = "Liberation Sans", enable_subtitles: bool = True, mask_enabled: bool = False, mask_x: float = 10.0, mask_y: float = 10.0, mask_width: float = 20.0, mask_height: float = 15.0, mask_type: str = "color", mask_color: str = "#000000", masks: list = None):
         if not os.path.exists(video_path):
             log_callback(f"[!] Lỗi: Không tìm thấy file {video_path}\n")
             return
@@ -73,90 +73,97 @@ class ProcessorPipeline:
                 db.commit()
                 return
 
-            if os.path.exists(orig_srt) and os.path.getsize(orig_srt) > 0:
-                log_callback(f"[*] Bước 1: Tìm thấy phụ đề gốc đã tạo, bỏ qua Whisper...\n", progress=15.0)
-                record.srt_origin_path = orig_srt
-                db.commit()
-            else:
-                log_callback(f"[*] Bước 1: Nhận diện giọng nói (Whisper) cho video...\n", progress=5.0)
-                try:
-                    record.status = ProcessStatus.TRANSCRIBING
-                    db.commit()
-                    self.transcriber.transcribe(video_path, orig_srt)
+            need_subtitles_data = enable_subtitles or (voice_mode != "none")
+
+            if need_subtitles_data:
+                if os.path.exists(orig_srt) and os.path.getsize(orig_srt) > 0:
+                    log_callback(f"[*] Bước 1: Tìm thấy phụ đề gốc đã tạo, bỏ qua Whisper...\n", progress=15.0)
                     record.srt_origin_path = orig_srt
                     db.commit()
-                    log_callback(f"[*] Đã tạo phụ đề gốc thành công.\n", progress=15.0)
-                except GroqQuotaExceeded:
-                    log_callback(f"[!] Groq API đã hết hạn miễn phí. Tạm dừng tiến trình.\n")
-                    record.status = ProcessStatus.PAUSED
-                    record.error_message = "GROQ_LIMIT_EXCEEDED"
-                    db.commit()
-                    return
-                except Exception as e:
-                    log_callback(f"[!] Lỗi Whisper: {e}\n")
-                    # Fallback default error processing for other errors (in main except)
-                    raise e
+                else:
+                    log_callback(f"[*] Bước 1: Nhận diện giọng nói (Whisper) cho video...\n", progress=5.0)
+                    try:
+                        record.status = ProcessStatus.TRANSCRIBING
+                        db.commit()
+                        self.transcriber.transcribe(video_path, orig_srt)
+                        record.srt_origin_path = orig_srt
+                        db.commit()
+                        log_callback(f"[*] Đã tạo phụ đề gốc thành công.\n", progress=15.0)
+                    except GroqQuotaExceeded:
+                        log_callback(f"[!] Groq API đã hết hạn miễn phí. Tạm dừng tiến trình.\n")
+                        record.status = ProcessStatus.PAUSED
+                        record.error_message = "GROQ_LIMIT_EXCEEDED"
+                        db.commit()
+                        return
+                    except Exception as e:
+                        log_callback(f"[!] Lỗi Whisper: {e}\n")
+                        # Fallback default error processing for other errors (in main except)
+                        raise e
 
-            if sync_redis.get(f"pause_video_{base_name}") == "1":
-                log_callback(f"[*] Tiến trình đã được tạm dừng bởi người dùng.\n")
-                record.status = ProcessStatus.PAUSED
-                db.commit()
-                return
-
-            if os.path.exists(vi_srt) and os.path.getsize(vi_srt) > 0:
-                log_callback(f"[*] Bước 2: Tìm thấy phụ đề dịch sẵn, bỏ qua dịch thuật Gemini...\n", progress=25.0)
-                record.srt_translated_path = vi_srt
-                db.commit()
-            else:
-                log_callback(f"[*] Bước 2: Dịch thuật tiếng Trung -> Việt bằng Gemini...\n", progress=15.0)
-                try:
-                    record.status = ProcessStatus.TRANSLATING
-                    db.commit()
-                    extract_audio(video_path, audio_tmp)
-                
-                    self.translator.translate_srt(orig_srt, vi_srt, voice_mode, audio_tmp)
-                    record.srt_translated_path = vi_srt
-                    db.commit()
-                    log_callback(f"[*] Dịch thuật thành công.\n", progress=25.0)
-                
-                    if os.path.exists(audio_tmp):
-                        os.remove(audio_tmp)
-                except Exception as e:
-                    record.status = ProcessStatus.FAILED
-                    record.error_message = f"Dịch thuật: {str(e)}"
-                    db.commit()
-                    log_callback(f"[!] Lỗi Dịch thuật: {e}\n")
-                    return
-
-            tts_audio = os.path.join(audio_dir, f"{base_name}_tts.mp3") if voice_mode != "none" else None
-            if voice_mode != "none":
                 if sync_redis.get(f"pause_video_{base_name}") == "1":
                     log_callback(f"[*] Tiến trình đã được tạm dừng bởi người dùng.\n")
                     record.status = ProcessStatus.PAUSED
                     db.commit()
                     return
 
-                if tts_audio and os.path.exists(tts_audio) and os.path.getsize(tts_audio) > 0:
-                    log_callback(f"[*] Bước 3: Tìm thấy audio lồng tiếng AI sẵn, bỏ qua TTS...\n", progress=35.0)
-                    record.audio_tts_path = tts_audio
+                if os.path.exists(vi_srt) and os.path.getsize(vi_srt) > 0:
+                    log_callback(f"[*] Bước 2: Tìm thấy phụ đề dịch sẵn, bỏ qua dịch thuật Gemini...\n", progress=25.0)
+                    record.srt_translated_path = vi_srt
                     db.commit()
                 else:
-                    log_callback(f"[*] Bước 3: Tạo âm thanh lồng tiếng AI...\n", progress=25.0)
+                    log_callback(f"[*] Bước 2: Dịch thuật tiếng Trung -> Việt bằng Gemini...\n", progress=15.0)
                     try:
-                        record.status = ProcessStatus.GENERATING_TTS
+                        record.status = ProcessStatus.TRANSLATING
                         db.commit()
-                        self.tts.generate_tts_track(vi_srt, tts_audio, voice_mode, video_path, log_callback)
-                        record.audio_tts_path = tts_audio
+                        extract_audio(video_path, audio_tmp)
+                    
+                        self.translator.translate_srt(orig_srt, vi_srt, voice_mode, audio_tmp)
+                        record.srt_translated_path = vi_srt
                         db.commit()
-                        log_callback(f"[*] Sinh audio lồng tiếng thành công.\n", progress=35.0)
+                        log_callback(f"[*] Dịch thuật thành công.\n", progress=25.0)
+                    
+                        if os.path.exists(audio_tmp):
+                            os.remove(audio_tmp)
                     except Exception as e:
                         record.status = ProcessStatus.FAILED
-                        record.error_message = f"TTS: {str(e)}"
+                        record.error_message = f"Dịch thuật: {str(e)}"
                         db.commit()
-                        log_callback(f"[!] Lỗi TTS: {e}\n")
+                        log_callback(f"[!] Lỗi Dịch thuật: {e}\n")
                         return
+
+                tts_audio = os.path.join(audio_dir, f"{base_name}_tts.mp3") if voice_mode != "none" else None
+                if voice_mode != "none":
+                    if sync_redis.get(f"pause_video_{base_name}") == "1":
+                        log_callback(f"[*] Tiến trình đã được tạm dừng bởi người dùng.\n")
+                        record.status = ProcessStatus.PAUSED
+                        db.commit()
+                        return
+
+                    if tts_audio and os.path.exists(tts_audio) and os.path.getsize(tts_audio) > 0:
+                        log_callback(f"[*] Bước 3: Tìm thấy audio lồng tiếng AI sẵn, bỏ qua TTS...\n", progress=35.0)
+                        record.audio_tts_path = tts_audio
+                        db.commit()
+                    else:
+                        log_callback(f"[*] Bước 3: Tạo âm thanh lồng tiếng AI...\n", progress=25.0)
+                        try:
+                            record.status = ProcessStatus.GENERATING_TTS
+                            db.commit()
+                            self.tts.generate_tts_track(vi_srt, tts_audio, voice_mode, video_path, log_callback)
+                            record.audio_tts_path = tts_audio
+                            db.commit()
+                            log_callback(f"[*] Sinh audio lồng tiếng thành công.\n", progress=35.0)
+                        except Exception as e:
+                            record.status = ProcessStatus.FAILED
+                            record.error_message = f"TTS: {str(e)}"
+                            db.commit()
+                            log_callback(f"[!] Lỗi TTS: {e}\n")
+                            return
+                else:
+                    log_callback(f"[*] Bỏ qua bước lồng tiếng theo cấu hình.\n")
             else:
-                log_callback(f"[*] Bỏ qua bước lồng tiếng theo cấu hình.\n")
+                log_callback("[*] Bỏ qua các bước xử lý phụ đề, dịch thuật và lồng tiếng AI theo cấu hình.\n", progress=35.0)
+                vi_srt = None
+                tts_audio = None
 
             if sync_redis.get(f"pause_video_{base_name}") == "1":
                 log_callback(f"[*] Tiến trình đã được tạm dừng bởi người dùng.\n")
@@ -171,7 +178,7 @@ class ProcessorPipeline:
                 db.commit()
                 log_callback(f"[*] Video đã hoàn tất từ trước!\n[*] File đầu ra: {output_video}\n")
             else:
-                log_callback(f"[*] Bước 4: Đốt phụ đề và Render video...\n", progress=40.0)
+                log_callback(f"[*] Bước 4: Áp dụng hiệu ứng & Render video...\n", progress=40.0)
                 try:
                     record.status = ProcessStatus.RENDERING
                     db.commit()
@@ -193,6 +200,15 @@ class ProcessorPipeline:
                         watermark_color=watermark_color,
                         watermark_opacity=watermark_opacity,
                         subtitle_font_family=subtitle_font_family,
+                        enable_subtitles=enable_subtitles,
+                        mask_enabled=mask_enabled,
+                        mask_x=mask_x,
+                        mask_y=mask_y,
+                        mask_width=mask_width,
+                        mask_height=mask_height,
+                        mask_type=mask_type,
+                        mask_color=mask_color,
+                        masks=masks,
                         log_callback=log_callback
                     )
                     record.final_video_path = output_video

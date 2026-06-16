@@ -71,7 +71,16 @@ export const ProcessorProvider = ({ children }) => {
           watermark_y: options.subConfig?.watermarkY ?? 50.0,
           watermark_size: options.subConfig?.watermarkSize ?? 20.0,
           watermark_color: options.subConfig?.watermarkColor || '#FFFFFF',
-          watermark_opacity: options.subConfig?.watermarkOpacity ?? 50.0
+          watermark_opacity: options.subConfig?.watermarkOpacity ?? 50.0,
+          enable_subtitles: options.subConfig?.enableSubtitles ?? true,
+          mask_enabled: options.subConfig?.maskEnabled ?? false,
+          mask_x: options.subConfig?.maskX ?? 10.0,
+          mask_y: options.subConfig?.maskY ?? 10.0,
+          mask_width: options.subConfig?.maskWidth ?? 20.0,
+          mask_height: options.subConfig?.maskHeight ?? 15.0,
+          mask_type: options.subConfig?.maskType || 'color',
+          mask_color: options.subConfig?.maskColor || '#000000',
+          masks: options.subConfig?.masks || []
         })
       });
       

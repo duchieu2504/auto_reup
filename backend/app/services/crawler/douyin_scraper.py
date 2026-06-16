@@ -20,6 +20,20 @@ class DouyinScraper:
         os.makedirs(self.output_dir, exist_ok=True)
         logger.info("Khởi tạo DouyinScraper thành công.")
 
+    def split_caption_and_hashtags(self, desc: str) -> tuple:
+        """
+        Split original video description into clean caption and hashtags.
+        """
+        if not desc:
+            return "", ""
+        import re
+        tags = re.findall(r'#[^\s#]+', desc)
+        hashtags = " ".join(tags)
+        
+        clean_caption = re.sub(r'#[^\s#]+', '', desc)
+        clean_caption = re.sub(r'\s+', ' ', clean_caption).strip()
+        
+        return clean_caption, hashtags
 
     def scrape_profile_generator(self, profile_url: str):
         logger.info(f"Bắt đầu quét profile: {profile_url}")
@@ -98,8 +112,10 @@ class DouyinScraper:
                 yield f"[-] Bỏ qua video {video_id_match} - Đã tải trước đó.\n"
                 return
                 
+            desc = aweme.get("desc", "")
+            clean_caption, tags = self.split_caption_and_hashtags(desc)
             yield f"[+] Đang tải video: {video_id_match} từ {uploader}\n"
-            for dl_log in self._download_video_generator(client, video_urls, video_id_match, uploader):
+            for dl_log in self._download_video_generator(client, video_urls, video_id_match, uploader, clean_caption, tags):
                 yield dl_log
                 
             return
@@ -153,17 +169,19 @@ class DouyinScraper:
                     
                 # Reset counter nếu gặp video mới
                 consecutive_duplicates = 0
-                    
+                
+                desc = aweme.get("desc", "")
+                clean_caption, tags = self.split_caption_and_hashtags(desc)
                 logger.info(f"Đang tải video mới: {video_id} từ {uploader}")
                 yield f"[+] Đang tải video mới: {video_id}\n"
                 
-                for dl_log in self._download_video_generator(client, video_urls, video_id, uploader):
+                for dl_log in self._download_video_generator(client, video_urls, video_id, uploader, clean_caption, tags):
                     yield dl_log
                     
             cursor = data.get("max_cursor", 0)
             has_more = data.get("has_more", False)
 
-    def _download_video_generator(self, client, video_urls: list, video_id: str, uploader: str):
+    def _download_video_generator(self, client, video_urls: list, video_id: str, uploader: str, original_caption: str = "", original_hashtags: str = ""):
         import httpx
         user_folder = "".join(c for c in uploader if c.isalnum() or c in (' ', '_', '-')).strip()
         if not user_folder:
@@ -225,7 +243,9 @@ class DouyinScraper:
                                 original_name=f"{video_id}.mp4",
                                 source=f"Douyin - {uploader}",
                                 raw_video_path=output_file,
-                                status=ProcessStatus.PENDING
+                                status=ProcessStatus.PENDING,
+                                original_caption=original_caption,
+                                original_hashtags=original_hashtags
                             )
                             db.add(record)
                             db.commit()

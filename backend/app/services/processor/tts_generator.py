@@ -6,6 +6,7 @@ from pydub import AudioSegment
 import edge_tts
 import requests
 import json
+import unicodedata
 from app.core.security import decrypt_data
 from dotenv import load_dotenv
 import imageio_ffmpeg
@@ -53,7 +54,7 @@ class TTSGenerator:
         else:
             raise Exception(f"Lỗi FPT API: {response.text}")
 
-    async def _generate_edge_audio(self, text: str, voice: str, output_path: str, rate: str = "+0%"):
+    async def _generate_edge_audio(self, text: str, voice: str, output_path: str, rate: str = "+0%", log_callback=None):
         max_retries = 5
         for attempt in range(max_retries):
             try:
@@ -61,6 +62,8 @@ class TTSGenerator:
                 await communicate.save(output_path)
                 return
             except Exception as e:
+                if log_callback:
+                    log_callback(f"[*] Gặp sự cố kết nối với Microsoft TTS (Lần thử {attempt + 1}/{max_retries}): {e}. Đang thử lại...\n")
                 if attempt < max_retries - 1:
                     await asyncio.sleep(2 + attempt * 2) # Nghỉ 2s, 4s, 6s... tránh bị Microsoft block IP
                     continue
@@ -163,6 +166,9 @@ class TTSGenerator:
                 
             # Tạo chuỗi sạch để đọc TTS (loại bỏ ký tự đặc biệt làm hỏng SSML)
             tts_text = re.sub(r'[<>\*\[\]\~_\|\^\-\+]', ' ', text).strip()
+            
+            # Chuẩn hóa Unicode sang dạng NFC (Dựng Sẵn) để tránh lỗi máy chủ TTS không nhận dạng được ký tự tổ hợp
+            tts_text = unicodedata.normalize('NFC', tts_text)
                 
             # Kiểm tra nếu text chỉ toàn dấu câu thì bỏ qua (tránh lỗi No audio was received)
             if not re.search(r'[a-zA-Z0-9\u00C0-\u1EF9]', tts_text):
@@ -231,7 +237,7 @@ class TTSGenerator:
                 elif is_elevenlabs:
                     self._generate_elevenlabs_audio(tts_text, voice_to_use, clip_path)
                 else:
-                    asyncio.run(self._generate_edge_audio(tts_text, voice_to_use, clip_path, rate=rate))
+                    asyncio.run(self._generate_edge_audio(tts_text, voice_to_use, clip_path, rate=rate, log_callback=log_callback))
                     
                 import time
                 time.sleep(0.5) # Nghỉ 0.5s giữa các request để tránh bị Microsoft Rate Limit

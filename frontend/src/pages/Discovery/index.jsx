@@ -5,7 +5,7 @@ import { toast } from 'react-hot-toast';
 
 const API_BASE = "http://localhost:8000/api";
 
-const Discovery = () => {
+const Discovery = ({ onSelectUser }) => {
   const navigate = useNavigate();
   const [hotWords, setHotWords] = useState([]);
   const [loadingHot, setLoadingHot] = useState(true);
@@ -144,7 +144,14 @@ const Discovery = () => {
                       </div>
                     </div>
                     <button
-                      onClick={() => navigate('/crawler', { state: { presetUrl: `https://www.douyin.com/user/${user.sec_uid}` } })}
+                      onClick={() => {
+                        const url = `https://www.douyin.com/user/${user.sec_uid}`;
+                        if (onSelectUser) {
+                          onSelectUser(url);
+                        } else {
+                          navigate('/crawler', { state: { presetUrl: url } });
+                        }
+                      }}
                       className="shrink-0 p-2 text-brand-primary bg-brand-primary/10 rounded-lg hover:bg-brand-primary/20 transition-colors"
                       title="Quét kênh này"
                     >

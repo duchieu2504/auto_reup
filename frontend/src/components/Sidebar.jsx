@@ -30,9 +30,9 @@ const Sidebar = () => {
     {
       title: "Quản lý dữ liệu",
       items: [
-        { to: "/history", title: "Lịch sử", icon: History },
         { to: "/processor", title: "Xử Lý Video", icon: FileVideo },
         { to: "/upload-schedule", title: "Đăng Bài", icon: CalendarClock },
+        { to: "/history", title: "Lịch sử", icon: History },
       ]
     },
     {

@@ -1,11 +1,14 @@
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, List
+from app.core.logger import get_logger
 from ..services.crawler.douyin_api import DouyinAPIClient
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/discovery", tags=["Discovery"])
 
 @router.get("/hot-board")
-async def get_hot_board() -> Dict[str, Any]:
+def get_hot_board() -> Dict[str, Any]:
     """
     Lấy danh sách các từ khóa đang hot trend trên Douyin.
     """
@@ -17,10 +20,11 @@ async def get_hot_board() -> Dict[str, Any]:
             "data": data.get("items", [])
         }
     except Exception as e:
+        logger.error(f"Lỗi get_hot_board: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/search")
-async def search_aweme(keyword: str, count: int = 10, offset: int = 0) -> Dict[str, Any]:
+def search_aweme(keyword: str, count: int = 10, offset: int = 0) -> Dict[str, Any]:
     """
     Tìm kiếm video theo từ khóa và bóc tách danh sách các user viral từ những video đó.
     """
@@ -75,4 +79,5 @@ async def search_aweme(keyword: str, count: int = 10, offset: int = 0) -> Dict[s
             }
         }
     except Exception as e:
+        logger.error(f"Lỗi search_aweme: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
