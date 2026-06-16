@@ -1,14 +1,15 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileVideo, PlayCircle, Settings, Save, Trash2, Terminal, FolderOpen, Volume2, UploadCloud, RefreshCw, Folder, ChevronLeft, Edit } from 'lucide-react';
+import { FileVideo, PlayCircle, Settings, Save, Trash2, Terminal, FolderOpen, Volume2, UploadCloud, RefreshCw, Folder, ChevronLeft, Edit, XCircle } from 'lucide-react';
 import { useProcessor } from '../../context/ProcessorContext';
 import { toast } from 'react-hot-toast';
 import { useSubtitleState } from '../../hooks/useSubtitleState';
 import { SubtitleConfigPanel } from '../../components/subtitle/SubtitleConfigPanel';
 import { WatermarkConfigPanel } from '../../components/subtitle/WatermarkConfigPanel';
+import { InteractiveVideoPreview } from '../../components/subtitle/InteractiveVideoPreview';
 
 const Phase2Processor = () => {
-  const { videoPath, setVideoPath, isProcessing, logs, progress, startProcessing } = useProcessor();
+  const { videoPath, setVideoPath, isProcessing, logs, progress, startProcessing, stopProcessing } = useProcessor();
   const logContainerRef = useRef(null);
   
   const subtitleState = useSubtitleState();
@@ -28,6 +29,23 @@ const Phase2Processor = () => {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [selectedAuthor, setSelectedAuthor] = useState(null);
+
+  const previewVideoPath = useMemo(() => {
+    if (sourceType === 'crawler') {
+      if (selectedCrawlerPaths.length > 0) {
+        return selectedCrawlerPaths[0];
+      }
+    } else {
+      if (uploadedFiles.length > 0) {
+        return uploadedFiles[0].path;
+      }
+      const paths = videoPath.split('\n').map(p => p.trim()).filter(p => p);
+      if (paths.length > 0) {
+        return paths[0];
+      }
+    }
+    return null;
+  }, [sourceType, selectedCrawlerPaths, uploadedFiles, videoPath]);
 
   const filteredCrawlerVideos = crawlerVideos.filter(video => {
     const matchesSearch = video.original_name.toLowerCase().includes(crawlerSearch.toLowerCase());
@@ -258,6 +276,10 @@ const Phase2Processor = () => {
         watermarkSize: subtitleState.watermarkSize,
         watermarkColor: subtitleState.watermarkColor,
         watermarkOpacity: subtitleState.watermarkOpacity,
+
+        enableSubtitles: subtitleState.enableSubtitles,
+        maskEnabled: subtitleState.maskEnabled,
+        masks: subtitleState.masks,
       };
 
       const formData = new FormData();
@@ -320,6 +342,30 @@ const Phase2Processor = () => {
       subtitleState.setWatermarkSize(config.watermarkSize ?? 20);
       subtitleState.setWatermarkColor(config.watermarkColor ?? "#FFFFFF");
       subtitleState.setWatermarkOpacity(config.watermarkOpacity ?? 50);
+
+      subtitleState.setEnableSubtitles(config.enableSubtitles ?? true);
+      subtitleState.setMaskEnabled(config.maskEnabled ?? false);
+      if (Array.isArray(config.masks)) {
+        subtitleState.setMasks(config.masks);
+        if (config.masks.length > 0) {
+          subtitleState.setActiveMaskId(config.masks[0].id);
+        } else {
+          subtitleState.setActiveMaskId(null);
+        }
+      } else {
+        // Fallback for older profiles with single mask settings
+        const oldMask = {
+          id: 1,
+          x: config.maskX ?? 10,
+          y: config.maskY ?? 10,
+          width: config.maskWidth ?? 20,
+          height: config.maskHeight ?? 15,
+          type: config.maskType ?? "color",
+          color: config.maskColor ?? "#000000"
+        };
+        subtitleState.setMasks(config.maskEnabled ? [oldMask] : []);
+        subtitleState.setActiveMaskId(config.maskEnabled ? 1 : null);
+      }
 
       toast.success(`Đã áp dụng: ${profile.name}`);
     } catch (err) {
@@ -778,72 +824,115 @@ const Phase2Processor = () => {
                 )}
               </div>
               
-              <div className="pt-4 border-t border-border-subtle">
-                <motion.button 
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  type="submit" 
-                  className="flex items-center gap-2 bg-gradient-to-r from-neon-pink to-neon-purple hover:opacity-95 text-white px-7 py-3.5 rounded-xl font-semibold transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_4px_15px_rgba(236,72,153,0.3)] cursor-pointer" 
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? <PlayCircle size={18} className="animate-spin text-white" /> : <Settings size={18} />}
-                  <span>{isProcessing ? 'Đang Render...' : 'Bắt đầu Xử lý'}</span>
-                </motion.button>
+              <div className="pt-4 border-t border-border-subtle flex gap-3">
+                {isProcessing ? (
+                  <motion.button 
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    type="button" 
+                    onClick={stopProcessing}
+                    className="flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white px-7 py-3.5 rounded-xl font-semibold transition-all duration-300 active:scale-95 shadow-[0_4px_15px_rgba(239,68,68,0.3)] cursor-pointer w-full" 
+                  >
+                    <XCircle size={18} />
+                    <span>Hủy tiến trình xử lý</span>
+                  </motion.button>
+                ) : (
+                  <motion.button 
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    type="submit" 
+                    className="flex items-center gap-2 bg-gradient-to-r from-neon-pink to-neon-purple hover:opacity-95 text-white px-7 py-3.5 rounded-xl font-semibold transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_4px_15px_rgba(236,72,153,0.3)] cursor-pointer" 
+                    disabled={isProcessing}
+                  >
+                    <Settings size={18} />
+                    <span>Bắt đầu Xử lý</span>
+                  </motion.button>
+                )}
               </div>
             </form>
           </div>
         </div>
 
-        {/* CỘT PHẢI: Tiến trình & Console Log FFMPEG (Chiếm 40%) */}
+        {/* CỘT PHẢI: Xem trước Video & Phụ Đề (Chiếm 40%) */}
         <div className="lg:col-span-2 glass-panel p-6 rounded-2xl border border-white/5 relative overflow-hidden flex flex-col justify-between gap-6">
           <div className="flex flex-col gap-5 flex-1">
             <h3 className="text-xl font-bold tracking-tight font-display bg-gradient-to-r from-white to-text-secondary bg-clip-text text-transparent flex items-center gap-2">
-              <Terminal className="text-neon-cyan" size={20} />
-              Tiến Trình Render
+              <PlayCircle className="text-neon-pink" size={20} />
+              Xem Trước Video & Phụ Đề
             </h3>
             
-            {/* Progress Bar */}
-            <div className="bg-bg-secondary/40 p-4 rounded-xl border border-white/5 space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Trạng thái Render</span>
-                <span className="text-xs font-bold text-neon-cyan font-mono">{progress.toFixed(1)}%</span>
-              </div>
-              <div className="h-1.5 bg-bg-secondary border border-white/5 rounded-full overflow-hidden">
-                <motion.div 
-                  className="h-full bg-gradient-to-r from-neon-cyan to-neon-purple"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.3 }}
-                />
-              </div>
+            <div className="bg-bg-secondary/40 border border-border-subtle rounded-2xl p-4 flex-1 flex flex-col justify-center min-h-[300px]">
+              {previewVideoPath ? (
+                <InteractiveVideoPreview config={subtitleState}>
+                  <video 
+                    src={`http://localhost:8000/api/files/${previewVideoPath.replace(/^[/]?data[/]/, '').replace(/^\\data\\/, '').replace(/\\/g, '/')}`}
+                    controls
+                    className="w-full max-h-[500px] object-contain rounded-lg shadow-lg"
+                  />
+                </InteractiveVideoPreview>
+              ) : (
+                <div className="w-full aspect-video bg-bg-secondary/20 rounded-lg flex flex-col items-center justify-center text-text-secondary border border-dashed border-border-subtle p-6 select-none">
+                  <PlayCircle size={36} className="opacity-20 mb-2 text-neon-pink animate-pulse" />
+                  <p className="text-sm font-semibold">Chưa có video được chọn</p>
+                  <p className="text-xs text-text-tertiary mt-1">Chọn 1 video từ Crawler hoặc Upload để xem trước phụ đề</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* PHẦN DƯỚI: Tiến Trình Render & Terminal Console */}
+      <div className="glass-panel p-6 rounded-2xl border border-white/5 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-neon-cyan/5 blur-3xl rounded-full pointer-events-none" />
+        
+        <div className="flex flex-col gap-5">
+          <h3 className="text-xl font-bold tracking-tight font-display bg-gradient-to-r from-white to-text-secondary bg-clip-text text-transparent flex items-center gap-2">
+            <Terminal className="text-neon-cyan" size={20} />
+            Tiến Trình Render
+          </h3>
+          
+          {/* Progress Bar */}
+          <div className="bg-bg-secondary/40 p-4 rounded-xl border border-white/5 space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Trạng thái Render</span>
+              <span className="text-xs font-bold text-neon-cyan font-mono">{progress.toFixed(1)}%</span>
+            </div>
+            <div className="h-1.5 bg-bg-secondary border border-white/5 rounded-full overflow-hidden">
+              <motion.div 
+                className="h-full bg-gradient-to-r from-neon-cyan to-neon-purple"
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.3 }}
+              />
+            </div>
+          </div>
+          
+          {/* Terminal Window style */}
+          <div className="relative rounded-xl overflow-hidden border border-border-subtle shadow-2xl flex flex-col w-full">
+            <div className="bg-[#0b0f17] px-4 py-2.5 flex items-center gap-1.5 border-b border-border-subtle/50">
+              <span className="w-2.5 h-2.5 rounded-full bg-neon-pink/70"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/70"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-neon-green/70"></span>
+              <span className="text-[10px] text-text-secondary font-mono font-bold ml-2 tracking-wider">PROCESSOR_CONSOLE.SH</span>
             </div>
             
-            {/* Terminal Window style */}
-            <div className="relative rounded-xl overflow-hidden border border-border-subtle shadow-2xl flex flex-col w-full">
-              <div className="bg-[#0b0f17] px-4 py-2.5 flex items-center gap-1.5 border-b border-border-subtle/50">
-                <span className="w-2.5 h-2.5 rounded-full bg-neon-pink/70"></span>
-                <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/70"></span>
-                <span className="w-2.5 h-2.5 rounded-full bg-neon-green/70"></span>
-                <span className="text-[10px] text-text-secondary font-mono font-bold ml-2 tracking-wider">PROCESSOR_CONSOLE.SH</span>
-              </div>
-              
-              <div 
-                ref={logContainerRef}
-                className="bg-[#04060a] p-5 font-mono text-[12px] overflow-y-auto leading-relaxed shadow-inner text-neon-cyan/90 selection:bg-neon-pink/20 selection:text-white w-full h-[500px]"
-              >
-                {logs.length === 0 ? (
-                  <div className="text-text-secondary/50 italic flex items-center gap-2">
-                    <span className="text-neon-pink animate-pulse">&gt;</span> Hệ thống sẵn sàng...
+            <div 
+              ref={logContainerRef}
+              className="bg-[#04060a] p-5 font-mono text-[12px] overflow-y-auto leading-relaxed shadow-inner text-neon-cyan/90 selection:bg-neon-pink/20 selection:text-white w-full h-[300px]"
+            >
+              {logs.length === 0 ? (
+                <div className="text-text-secondary/50 italic flex items-center gap-2">
+                  <span className="text-neon-pink animate-pulse">&gt;</span> Hệ thống sẵn sàng...
+                </div>
+              ) : (
+                logs.map((log, index) => (
+                  <div key={index} className="whitespace-pre-wrap py-0.5 border-l-2 border-transparent hover:border-neon-pink/40 hover:bg-white/1 px-2 transition-colors">
+                    <span className="text-neon-pink/60 mr-2 select-none">[{index + 1}]</span>
+                    {log}
                   </div>
-                ) : (
-                  logs.map((log, index) => (
-                    <div key={index} className="whitespace-pre-wrap py-0.5 border-l-2 border-transparent hover:border-neon-pink/40 hover:bg-white/1 px-2 transition-colors">
-                      <span className="text-neon-pink/60 mr-2 select-none">[{index + 1}]</span>
-                      {log}
-                    </div>
-                  ))
-                )}
-              </div>
+                ))
+              )}
             </div>
           </div>
         </div>

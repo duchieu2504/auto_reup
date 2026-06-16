@@ -32,6 +32,63 @@ export const useSubtitleState = (initialConfig = {}) => {
   const [watermarkColor, setWatermarkColor] = useState(initialConfig.watermarkColor || '#FFFFFF');
   const [watermarkOpacity, setWatermarkOpacity] = useState(initialConfig.watermarkOpacity ?? 50);
   
+  // Subtitle toggles & Logo masking params
+  const [enableSubtitles, setEnableSubtitles] = useState(initialConfig.enableSubtitles ?? true);
+  const [maskEnabled, setMaskEnabled] = useState(initialConfig.maskEnabled ?? false);
+  const [masks, setMasks] = useState(() => {
+    if (initialConfig.masks) return initialConfig.masks;
+    if (initialConfig.maskEnabled) {
+      return [{
+        id: 1,
+        x: initialConfig.maskX ?? 10,
+        y: initialConfig.maskY ?? 10,
+        width: initialConfig.maskWidth ?? 20,
+        height: initialConfig.maskHeight ?? 15,
+        type: initialConfig.maskType || 'color',
+        color: initialConfig.maskColor || '#000000'
+      }];
+    }
+    return [];
+  });
+  const [activeMaskId, setActiveMaskId] = useState(() => {
+    if (initialConfig.masks && initialConfig.masks.length > 0) return initialConfig.masks[0].id;
+    if (initialConfig.maskEnabled) return 1;
+    return null;
+  });
+
+  const addMask = () => {
+    const newMask = {
+      id: Date.now(),
+      x: 10,
+      y: 10,
+      width: 20,
+      height: 15,
+      type: 'color',
+      color: '#000000'
+    };
+    setMasks(prev => [...prev, newMask]);
+    setActiveMaskId(newMask.id);
+    setMaskEnabled(true);
+  };
+
+  const removeMask = (id) => {
+    setMasks(prev => {
+      const filtered = prev.filter(m => m.id !== id);
+      if (filtered.length === 0) {
+        setMaskEnabled(false);
+      }
+      return filtered;
+    });
+    setActiveMaskId(prev => {
+      const remaining = masks.filter(m => m.id !== id);
+      return remaining.length > 0 ? remaining[0].id : null;
+    });
+  };
+
+  const updateMask = (id, updates) => {
+    setMasks(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+  };
+
   // Interactive preview state
   const [isDragging, setIsDragging] = useState(false);
   const [isDraggingWatermark, setIsDraggingWatermark] = useState(false);
@@ -68,12 +125,36 @@ export const useSubtitleState = (initialConfig = {}) => {
 
   const [loadedProfileConfig, setLoadedProfileConfig] = useState(null);
 
+  const subConfig = {
+    font: subtitleFont,
+    style: subtitleStyle,
+    textColor: subtitleTextColor,
+    bgColor: subtitleBgColor,
+    fontSize: subtitleFontSize,
+    marginV: subtitleMarginV,
+    bgPadding: subtitleBgPadding,
+    bgOpacity: subtitleBgOpacity,
+    watermarkType,
+    watermarkText,
+    watermarkImageFile,
+    watermarkImagePreview,
+    watermarkX,
+    watermarkY,
+    watermarkSize,
+    watermarkColor,
+    watermarkOpacity,
+    enableSubtitles,
+    maskEnabled,
+    masks
+  };
+
   const getCurrentConfigObj = () => ({
     voice, volume, flipVideo, optZoom, optColor, optNoise, optPitch,
     subtitleFont, subtitleStyle, subtitleTextColor, subtitleBgColor,
     subtitleFontSize, subtitleMarginV, subtitleBgPadding, subtitleBgOpacity,
     watermarkType, watermarkText, watermarkImagePreview,
-    watermarkX, watermarkY, watermarkSize, watermarkColor, watermarkOpacity
+    watermarkX, watermarkY, watermarkSize, watermarkColor, watermarkOpacity,
+    enableSubtitles, maskEnabled, masks
   });
 
   const normalizeConfig = (configObj) => {
@@ -101,7 +182,18 @@ export const useSubtitleState = (initialConfig = {}) => {
       watermarkY: String(configObj.watermarkY || ''),
       watermarkSize: String(configObj.watermarkSize || ''),
       watermarkColor: String(configObj.watermarkColor || ''),
-      watermarkOpacity: String(configObj.watermarkOpacity || '')
+      watermarkOpacity: String(configObj.watermarkOpacity || ''),
+      enableSubtitles: Boolean(configObj.enableSubtitles),
+      maskEnabled: Boolean(configObj.maskEnabled),
+      masks: Array.isArray(configObj.masks) ? configObj.masks.map(m => ({
+        id: m.id,
+        x: Number(m.x),
+        y: Number(m.y),
+        width: Number(m.width),
+        height: Number(m.height),
+        type: String(m.type),
+        color: String(m.color)
+      })) : []
     };
   };
 
@@ -118,7 +210,10 @@ export const useSubtitleState = (initialConfig = {}) => {
     // Watermark State values
     watermarkType, watermarkText, watermarkImageFile, watermarkImagePreview,
     watermarkX, watermarkY, watermarkSize, watermarkColor, watermarkOpacity,
+    // Logo mask & subtitle toggle states
+    enableSubtitles, maskEnabled, masks, activeMaskId,
     isDragging, isDraggingWatermark,
+    subConfig,
     
     // Dirty tracking
     loadedProfileConfig, isDirty,
@@ -130,6 +225,8 @@ export const useSubtitleState = (initialConfig = {}) => {
     setSubtitleFontSize, setSubtitleMarginV, setSubtitleBgPadding, setSubtitleBgOpacity,
     setWatermarkType, setWatermarkText, setWatermarkImageFile, setWatermarkImagePreview,
     setWatermarkX, setWatermarkY, setWatermarkSize, setWatermarkColor, setWatermarkOpacity,
+    setEnableSubtitles, setMaskEnabled, setMasks, setActiveMaskId,
+    addMask, removeMask, updateMask,
     setIsDragging, setIsDraggingWatermark,
     setLoadedProfileConfig,
 

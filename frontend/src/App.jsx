@@ -27,7 +27,7 @@ const MainLayout = () => {
   if (location.pathname === '/processor') title = "Xử lý Video";
   if (location.pathname === '/history') title = "Quản lý Lịch sử";
   if (location.pathname.startsWith('/edit')) title = "Edit Video";
-  if (location.pathname === '/discovery') title = "Khám phá Hot Trend";
+  if (location.pathname === '/discovery') title = "Đang theo dõi";
   if (location.pathname === '/settings') title = "Cấu Hình Hệ Thống";
   if (location.pathname === '/social-accounts') title = "Quản lý Tài Khoản MXH";
   if (location.pathname === '/upload-schedule') title = "Lịch Đăng Bài Tự Động";

@@ -40,6 +40,9 @@ class UploadScheduleResponse(BaseModel):
 class GenerateContentRequest(BaseModel):
     video_history_id: int
 
+class TranslateCaptionRequest(BaseModel):
+    video_history_id: int
+
 
 @router.get("/", response_model=List[UploadScheduleResponse])
 def get_schedules(db: Session = Depends(get_db)):
@@ -69,6 +72,25 @@ def generate_ai_content(req: GenerateContentRequest, db: Session = Depends(get_d
     try:
         content = ai_gen.generate_viral_content(video_title=video.original_name or "Video", translated_text=translated_text)
         return content
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/translate-caption")
+def translate_caption(req: TranslateCaptionRequest, db: Session = Depends(get_db)):
+    from app.services.uploader.ai_content import AIContentGenerator
+    
+    video = db.query(VideoHistory).filter(VideoHistory.id == req.video_history_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video không tồn tại")
+        
+    caption_to_translate = video.original_caption
+    if not caption_to_translate:
+        return {"translated_caption": ""}
+        
+    ai_gen = AIContentGenerator()
+    try:
+        translated = ai_gen.translate_to_vietnamese(caption_to_translate)
+        return {"translated_caption": translated}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

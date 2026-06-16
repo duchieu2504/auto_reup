@@ -43,6 +43,9 @@ class VideoHistory(Base):
     audio_tts_path = Column(String, nullable=True)
     final_video_path = Column(String, nullable=True)
     process_config = Column(Text, default="{}")
+    original_caption = Column(Text, nullable=True)
+    original_hashtags = Column(Text, nullable=True)
+    author_sec_uid = Column(String(255), nullable=True, index=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

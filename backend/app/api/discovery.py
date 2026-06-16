@@ -1,11 +1,37 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any, List
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.core.logger import get_logger
+from app.db.session import get_db
+from app.models.followed_account import FollowedAccount
+from app.models.history import VideoHistory
 from ..services.crawler.douyin_api import DouyinAPIClient
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/discovery", tags=["Discovery"])
 
+
+class FollowRequest(BaseModel):
+    url: str
+
+def serialize_followed_account(acc: FollowedAccount) -> dict:
+    return {
+        "id": acc.id,
+        "sec_uid": acc.sec_uid,
+        "nickname": acc.nickname,
+        "avatar": acc.avatar,
+        "follower_count": acc.follower_count,
+        "total_favorited": acc.total_favorited,
+        "video_count": acc.video_count,
+        "is_favorite": acc.is_favorite
+    }
+
+
 @router.get("/hot-board")
-async def get_hot_board() -> Dict[str, Any]:
+def get_hot_board() -> Dict[str, Any]:
     """
     Lấy danh sách các từ khóa đang hot trend trên Douyin.
     """
@@ -17,10 +43,12 @@ async def get_hot_board() -> Dict[str, Any]:
             "data": data.get("items", [])
         }
     except Exception as e:
+        logger.error(f"Lỗi get_hot_board: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/search")
-async def search_aweme(keyword: str, count: int = 10, offset: int = 0) -> Dict[str, Any]:
+def search_aweme(keyword: str, count: int = 10, offset: int = 0) -> Dict[str, Any]:
     """
     Tìm kiếm video theo từ khóa và bóc tách danh sách các user viral từ những video đó.
     """
@@ -75,4 +103,165 @@ async def search_aweme(keyword: str, count: int = 10, offset: int = 0) -> Dict[s
             }
         }
     except Exception as e:
+        logger.error(f"Lỗi search_aweme: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/followed")
+def get_followed_accounts(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """
+    Lấy danh sách các tài khoản Douyin đang theo dõi, kèm theo số video đã cào.
+    """
+    try:
+        accounts = db.query(FollowedAccount).all()
+        result = []
+        for acc in accounts:
+            crawled_count = db.query(VideoHistory).filter(VideoHistory.author_sec_uid == acc.sec_uid).count()
+            result.append({
+                "id": acc.id,
+                "sec_uid": acc.sec_uid,
+                "nickname": acc.nickname,
+                "avatar": acc.avatar,
+                "follower_count": acc.follower_count,
+                "total_favorited": acc.total_favorited,
+                "video_count": acc.video_count,
+                "is_favorite": acc.is_favorite,
+                "crawled_count": crawled_count,
+                "created_at": acc.created_at,
+                "updated_at": acc.updated_at
+            })
+        # Sort by favorite status (True first), then by followers count (descending)
+        result.sort(key=lambda x: (not x["is_favorite"], -x["follower_count"]))
+        return {"success": True, "data": result}
+    except Exception as e:
+        logger.error(f"Error getting followed accounts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/follow")
+def follow_account(req: FollowRequest, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """
+    Theo dõi một tài khoản Douyin mới bằng cách phân tích link profile.
+    """
+    url = req.url.strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="Vui lòng cung cấp link profile")
+        
+    client = DouyinAPIClient()
+    long_url = client.resolve_short_url(url) or url
+    sec_uid = client.extract_sec_uid(long_url)
+    
+    if not sec_uid:
+        raise HTTPException(status_code=400, detail="Không tìm thấy sec_uid từ link. Vui lòng kiểm tra lại link.")
+        
+    # Check if already followed
+    existing = db.query(FollowedAccount).filter(FollowedAccount.sec_uid == sec_uid).first()
+    if existing:
+        try:
+            profile_info = client.get_user_profile(sec_uid)
+            user_obj = profile_info.get("user", {})
+            if user_obj:
+                existing.nickname = user_obj.get("nickname")
+                existing.avatar = user_obj.get("avatar_thumb", {}).get("url_list", [""])[0] if user_obj.get("avatar_thumb") else ""
+                existing.follower_count = user_obj.get("follower_count", 0)
+                existing.total_favorited = user_obj.get("total_favorited", 0)
+                existing.video_count = user_obj.get("aweme_count", 0)
+                db.commit()
+        except Exception:
+            pass
+        return {"success": True, "message": "Đã theo dõi tài khoản này từ trước", "data": serialize_followed_account(existing)}
+        
+    try:
+        profile_info = client.get_user_profile(sec_uid)
+        user_obj = profile_info.get("user", {}) if isinstance(profile_info, dict) else {}
+        if not user_obj:
+            raise Exception("Cannot fetch profile info from Douyin API")
+            
+        acc = FollowedAccount(
+            sec_uid=sec_uid,
+            nickname=user_obj.get("nickname"),
+            avatar=user_obj.get("avatar_thumb", {}).get("url_list", [""])[0] if user_obj.get("avatar_thumb") else "",
+            follower_count=user_obj.get("follower_count", 0),
+            total_favorited=user_obj.get("total_favorited", 0),
+            video_count=user_obj.get("aweme_count", 0),
+            is_favorite=False
+        )
+        db.add(acc)
+        db.commit()
+        db.refresh(acc)
+        return {"success": True, "message": "Theo dõi tài khoản thành công", "data": serialize_followed_account(acc)}
+    except Exception as e:
+        logger.error(f"Error following account: {e}", exc_info=True)
+        # Fallback to creating a stub if Douyin API blocks request.
+        acc = FollowedAccount(
+            sec_uid=sec_uid,
+            nickname=f"Douyin_{sec_uid[:8]}",
+            avatar="",
+            follower_count=0,
+            total_favorited=0,
+            video_count=0,
+            is_favorite=False
+        )
+        db.add(acc)
+        db.commit()
+        db.refresh(acc)
+        return {"success": True, "message": "Đã thêm vào danh sách theo dõi (Chế độ dự phòng do API bị chặn. Hãy thử đồng bộ lại sau.)", "data": serialize_followed_account(acc)}
+
+
+@router.post("/unfollow/{sec_uid}")
+def unfollow_account(sec_uid: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """
+    Hủy theo dõi một tài khoản Douyin.
+    """
+    acc = db.query(FollowedAccount).filter(FollowedAccount.sec_uid == sec_uid).first()
+    if not acc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản để hủy theo dõi")
+        
+    db.delete(acc)
+    db.commit()
+    return {"success": True, "message": "Đã bỏ theo dõi tài khoản thành công"}
+
+
+@router.post("/toggle-favorite/{sec_uid}")
+def toggle_favorite(sec_uid: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """
+    Bật/tắt trạng thái yêu thích đặc biệt (trái tim).
+    """
+    acc = db.query(FollowedAccount).filter(FollowedAccount.sec_uid == sec_uid).first()
+    if not acc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
+        
+    acc.is_favorite = not acc.is_favorite
+    db.commit()
+    db.refresh(acc)
+    return {"success": True, "is_favorite": acc.is_favorite, "message": "Đã cập nhật trạng thái yêu thích"}
+
+
+@router.post("/sync/{sec_uid}")
+def sync_account(sec_uid: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """
+    Đồng bộ dữ liệu tài khoản Douyin từ máy chủ.
+    """
+    acc = db.query(FollowedAccount).filter(FollowedAccount.sec_uid == sec_uid).first()
+    if not acc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản trong danh sách")
+        
+    client = DouyinAPIClient()
+    try:
+        profile_info = client.get_user_profile(sec_uid)
+        user_obj = profile_info.get("user", {}) if isinstance(profile_info, dict) else {}
+        if not user_obj:
+            raise Exception("Cannot fetch user profile from Douyin")
+            
+        acc.nickname = user_obj.get("nickname")
+        acc.avatar = user_obj.get("avatar_thumb", {}).get("url_list", [""])[0] if user_obj.get("avatar_thumb") else ""
+        acc.follower_count = user_obj.get("follower_count", 0)
+        acc.total_favorited = user_obj.get("total_favorited", 0)
+        acc.video_count = user_obj.get("aweme_count", 0)
+        
+        db.commit()
+        db.refresh(acc)
+        return {"success": True, "message": "Đồng bộ thông số tài khoản thành công", "data": serialize_followed_account(acc)}
+    except Exception as e:
+        logger.error(f"Error syncing account {sec_uid}: {e}")
+        raise HTTPException(status_code=500, detail=f"Không thể đồng bộ: {str(e)}")

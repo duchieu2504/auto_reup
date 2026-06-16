@@ -20,6 +20,16 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+class VideoMask(BaseModel):
+    id: Optional[int] = None
+    x: float
+    y: float
+    width: float
+    height: float
+    type: str
+    color: str
+
+
 class ProcessRequest(BaseModel):
     video_paths: list[str]
     voice_mode: str = "edge_auto"
@@ -46,6 +56,15 @@ class ProcessRequest(BaseModel):
     watermark_size: float = 20.0
     watermark_color: str = "#FFFFFF"
     watermark_opacity: float = 50.0
+    enable_subtitles: bool = True
+    mask_enabled: bool = False
+    mask_x: float = 10.0
+    mask_y: float = 10.0
+    mask_width: float = 20.0
+    mask_height: float = 15.0
+    mask_type: str = "color"
+    mask_color: str = "#000000"
+    masks: list[VideoMask] = []
 
 
 @router.post("/upload-logo")
@@ -121,8 +140,14 @@ async def start_processor(request: ProcessRequest):
                 # Update DB to PENDING and save config
                 record = db.query(VideoHistory).filter(VideoHistory.raw_video_path.like(f"%{base_name}%")).first()
                 if record:
-                    record.status = ProcessStatus.PENDING
-                    config_data = {
+                    old_config = {}
+                    if record.process_config:
+                        try:
+                            old_config = json.loads(record.process_config)
+                        except Exception:
+                            pass
+
+                    new_config = {
                         "voice_mode": request.voice_mode,
                         "bg_volume": request.bg_volume,
                         "flip_video": request.flip_video,
@@ -137,8 +162,40 @@ async def start_processor(request: ProcessRequest):
                         "subtitle_font_size": request.subtitle_font_size,
                         "subtitle_margin_v": request.subtitle_margin_v,
                         "subtitle_bg_padding": request.subtitle_bg_padding,
+                        "enable_subtitles": request.enable_subtitles,
+                        "mask_enabled": request.mask_enabled,
+                        "mask_x": request.mask_x,
+                        "mask_y": request.mask_y,
+                        "mask_width": request.mask_width,
+                        "mask_height": request.mask_height,
+                        "mask_type": request.mask_type,
+                        "mask_color": request.mask_color,
+                        "masks": [m.dict() for m in request.masks],
                     }
-                    record.process_config = json.dumps(config_data)
+
+                    config_changed = (old_config != new_config)
+                    if config_changed:
+                        # Delete outdated processed video to force re-render
+                        out_video_path = os.path.join(DATA_DIR, "processed_videos", f"{base_name}_processed.mp4")
+                        if os.path.exists(out_video_path):
+                            try:
+                                os.remove(out_video_path)
+                                logger.info(f"Cấu hình thay đổi. Đã xóa video đã xử lý cũ: {out_video_path}")
+                            except Exception as e:
+                                logger.error(f"Lỗi khi xóa video cũ: {e}")
+
+                        # Delete outdated TTS audio if voice changed
+                        if old_config.get("voice_mode") != new_config.get("voice_mode"):
+                            out_tts_path = os.path.join(DATA_DIR, "audio", f"{base_name}_tts.mp3")
+                            if os.path.exists(out_tts_path):
+                                try:
+                                    os.remove(out_tts_path)
+                                    logger.info(f"Thay đổi giọng đọc. Đã xóa file TTS cũ: {out_tts_path}")
+                                except Exception as e:
+                                    logger.error(f"Lỗi khi xóa file TTS cũ: {e}")
+
+                    record.status = ProcessStatus.PENDING
+                    record.process_config = json.dumps(new_config)
             db.commit()
     except Exception as e:
         logger.error(f"Lỗi update DB khi start: {e}")
@@ -151,8 +208,19 @@ async def start_processor(request: ProcessRequest):
         request.subtitle_bg_opacity, request.watermark_type, request.watermark_text,
         request.watermark_image_path, request.watermark_x, request.watermark_y,
         request.watermark_size, request.watermark_color, request.watermark_opacity,
-        request.subtitle_font_family,
+        request.subtitle_font_family, request.enable_subtitles, request.mask_enabled,
+        request.mask_x, request.mask_y, request.mask_width, request.mask_height,
+        request.mask_type, request.mask_color,
+        [m.dict() for m in request.masks]
     )
+    
+    # Map task ID to base names of raw videos to control cancellation for all videos in this task
+    try:
+        base_names = [os.path.basename(vp).split('.')[0] for vp in cleaned_paths]
+        await redis_client.set(f"task_videos_{task.id}", json.dumps(base_names), ex=86400)
+    except Exception as e:
+        logger.error(f"Lỗi khi lưu task videos mapping vào Redis: {e}")
+
     return {"status": "started", "task_id": task.id, "video_count": len(cleaned_paths)}
 
 
@@ -239,3 +307,30 @@ async def stream_logs(task_id: str, request: Request):
             await asyncio.sleep(0.5)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/stop/{task_id}")
+async def stop_processor(task_id: str):
+    logger.info(f"Yêu cầu dừng task xử lý video: {task_id}")
+    from app.core.celery_app import celery_app
+    import json
+    try:
+        celery_app.control.revoke(task_id, terminate=True)
+        
+        # Gửi thông điệp hủy tới kênh log stream Redis để đóng kết nối và cập nhật UI phía Client
+        redis_client = get_async_redis()
+        channel = f"task_log_{task_id}"
+        await redis_client.rpush(channel, json.dumps({"log": "[System] Tiến trình xử lý video đã bị hủy bởi người dùng.\n[DONE]\n"}))
+        
+        # Đặt cờ pause cho toàn bộ video thuộc task_id để dừng nhanh
+        task_videos_data = await redis_client.get(f"task_videos_{task_id}")
+        if task_videos_data:
+            base_names = json.loads(task_videos_data)
+            for base_name in base_names:
+                await redis_client.set(f"pause_video_{base_name}", "1")
+                logger.info(f"Đã đặt cờ Pause cho video {base_name} qua dừng task {task_id}")
+                
+        return {"status": "stopped", "message": "Đã gửi lệnh hủy tiến trình xử lý."}
+    except Exception as e:
+        logger.error(f"Lỗi khi hủy tiến trình xử lý: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
