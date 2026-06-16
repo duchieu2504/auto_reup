@@ -44,7 +44,7 @@ class ProcessRequest(BaseModel):
     subtitle_font_family: str = "Liberation Sans"
     subtitle_text_color: str = "#000000"
     subtitle_bg_color: Optional[str] = "#FFFFFF"
-    subtitle_font_size: Optional[int] = 20
+    subtitle_font_size: Optional[int] = 8
     subtitle_margin_v: Optional[int] = 40
     subtitle_bg_padding: Optional[int] = 2
     subtitle_bg_opacity: Optional[int] = 100
