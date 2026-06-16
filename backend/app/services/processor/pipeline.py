@@ -153,10 +153,14 @@ class ProcessorPipeline:
                             db.commit()
                             log_callback(f"[*] Sinh audio lồng tiếng thành công.\n", progress=35.0)
                         except Exception as e:
-                            record.status = ProcessStatus.FAILED
+                            is_canceled = "bị hủy bởi người dùng" in str(e) or sync_redis.get(f"pause_video_{base_name}") == "1"
+                            record.status = ProcessStatus.PAUSED if is_canceled else ProcessStatus.FAILED
                             record.error_message = f"TTS: {str(e)}"
                             db.commit()
-                            log_callback(f"[!] Lỗi TTS: {e}\n")
+                            if is_canceled:
+                                log_callback(f"[*] Tiến trình đã được tạm dừng bởi người dùng.\n")
+                            else:
+                                log_callback(f"[!] Lỗi TTS: {e}\n")
                             return
                 else:
                     log_callback(f"[*] Bỏ qua bước lồng tiếng theo cấu hình.\n")
@@ -217,10 +221,14 @@ class ProcessorPipeline:
                     log_callback(f"[*] Render video thành công!\n[*] File đầu ra: {output_video}\n", progress=100.0)
                 
                 except Exception as e:
-                    record.status = ProcessStatus.FAILED
+                    is_canceled = "bị hủy bởi người dùng" in str(e) or sync_redis.get(f"pause_video_{base_name}") == "1"
+                    record.status = ProcessStatus.PAUSED if is_canceled else ProcessStatus.FAILED
                     record.error_message = f"Render: {str(e)}"
                     db.commit()
-                    log_callback(f"[!] Lỗi FFmpeg: {e}\n")
+                    if is_canceled:
+                        log_callback(f"[*] Tiến trình đã được tạm dừng bởi người dùng.\n")
+                    else:
+                        log_callback(f"[!] Lỗi FFmpeg: {e}\n")
                     return
         finally:
             db.close()

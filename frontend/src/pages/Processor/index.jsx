@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileVideo, PlayCircle, Settings, Save, Trash2, Terminal, FolderOpen, Volume2, UploadCloud, RefreshCw, Folder, ChevronLeft, Edit } from 'lucide-react';
+import { FileVideo, PlayCircle, Settings, Save, Trash2, Terminal, FolderOpen, Volume2, UploadCloud, RefreshCw, Folder, ChevronLeft, Edit, XCircle } from 'lucide-react';
 import { useProcessor } from '../../context/ProcessorContext';
 import { toast } from 'react-hot-toast';
 import { useSubtitleState } from '../../hooks/useSubtitleState';
@@ -9,7 +9,7 @@ import { WatermarkConfigPanel } from '../../components/subtitle/WatermarkConfigP
 import { InteractiveVideoPreview } from '../../components/subtitle/InteractiveVideoPreview';
 
 const Phase2Processor = () => {
-  const { videoPath, setVideoPath, isProcessing, logs, progress, startProcessing } = useProcessor();
+  const { videoPath, setVideoPath, isProcessing, logs, progress, startProcessing, stopProcessing } = useProcessor();
   const logContainerRef = useRef(null);
   
   const subtitleState = useSubtitleState();
@@ -824,17 +824,30 @@ const Phase2Processor = () => {
                 )}
               </div>
               
-              <div className="pt-4 border-t border-border-subtle">
-                <motion.button 
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  type="submit" 
-                  className="flex items-center gap-2 bg-gradient-to-r from-neon-pink to-neon-purple hover:opacity-95 text-white px-7 py-3.5 rounded-xl font-semibold transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_4px_15px_rgba(236,72,153,0.3)] cursor-pointer" 
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? <PlayCircle size={18} className="animate-spin text-white" /> : <Settings size={18} />}
-                  <span>{isProcessing ? 'Đang Render...' : 'Bắt đầu Xử lý'}</span>
-                </motion.button>
+              <div className="pt-4 border-t border-border-subtle flex gap-3">
+                {isProcessing ? (
+                  <motion.button 
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    type="button" 
+                    onClick={stopProcessing}
+                    className="flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white px-7 py-3.5 rounded-xl font-semibold transition-all duration-300 active:scale-95 shadow-[0_4px_15px_rgba(239,68,68,0.3)] cursor-pointer w-full" 
+                  >
+                    <XCircle size={18} />
+                    <span>Hủy tiến trình xử lý</span>
+                  </motion.button>
+                ) : (
+                  <motion.button 
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    type="submit" 
+                    className="flex items-center gap-2 bg-gradient-to-r from-neon-pink to-neon-purple hover:opacity-95 text-white px-7 py-3.5 rounded-xl font-semibold transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_4px_15px_rgba(236,72,153,0.3)] cursor-pointer" 
+                    disabled={isProcessing}
+                  >
+                    <Settings size={18} />
+                    <span>Bắt đầu Xử lý</span>
+                  </motion.button>
+                )}
               </div>
             </form>
           </div>

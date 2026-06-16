@@ -6,8 +6,37 @@ from .sync_manager import SyncManager
 from app.core.logger import get_logger
 from app.db.session import SessionLocal
 from app.models.history import VideoHistory, ProcessStatus
+from app.models.followed_account import FollowedAccount
 
 logger = get_logger(__name__)
+
+def save_or_update_followed_account(db, sec_uid: str, nickname: str, avatar: str = "", follower_count: int = 0, total_favorited: int = 0, video_count: int = 0):
+    try:
+        acc = db.query(FollowedAccount).filter(FollowedAccount.sec_uid == sec_uid).first()
+        if not acc:
+            acc = FollowedAccount(
+                sec_uid=sec_uid,
+                nickname=nickname,
+                avatar=avatar,
+                follower_count=follower_count,
+                total_favorited=total_favorited,
+                video_count=video_count
+            )
+            db.add(acc)
+        else:
+            acc.nickname = nickname
+            if avatar:
+                acc.avatar = avatar
+            if follower_count > 0:
+                acc.follower_count = follower_count
+            if total_favorited > 0:
+                acc.total_favorited = total_favorited
+            if video_count > 0:
+                acc.video_count = video_count
+        db.commit()
+    except Exception as e:
+        logger.error(f"Error saving followed account: {e}")
+        db.rollback()
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../"))
 DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "data", "raw_videos")
@@ -108,6 +137,23 @@ class DouyinScraper:
                 
             uploader = aweme.get("author", {}).get("nickname", "Unknown User")
             
+            author = aweme.get("author", {})
+            author_sec_uid = author.get("sec_uid")
+            if author_sec_uid:
+                db = SessionLocal()
+                try:
+                    save_or_update_followed_account(
+                        db,
+                        sec_uid=author_sec_uid,
+                        nickname=author.get("nickname"),
+                        avatar=author.get("avatar_thumb", {}).get("url_list", [""])[0] if author.get("avatar_thumb") else "",
+                        follower_count=author.get("follower_count", 0),
+                        total_favorited=author.get("total_favorited", 0),
+                        video_count=author.get("aweme_count", 0)
+                    )
+                finally:
+                    db.close()
+            
             if self.sync_manager.is_downloaded(video_id_match):
                 yield f"[-] Bỏ qua video {video_id_match} - Đã tải trước đó.\n"
                 return
@@ -115,7 +161,7 @@ class DouyinScraper:
             desc = aweme.get("desc", "")
             clean_caption, tags = self.split_caption_and_hashtags(desc)
             yield f"[+] Đang tải video: {video_id_match} từ {uploader}\n"
-            for dl_log in self._download_video_generator(client, video_urls, video_id_match, uploader, clean_caption, tags):
+            for dl_log in self._download_video_generator(client, video_urls, video_id_match, uploader, clean_caption, tags, author_sec_uid):
                 yield dl_log
                 
             return
@@ -127,6 +173,61 @@ class DouyinScraper:
             yield "[!] Không thể bóc tách mã người dùng (sec_uid) từ URL. Vui lòng kiểm tra lại link.\n"
             return
             
+        profile_data = {}
+        try:
+            profile_info = client.get_user_profile(sec_uid)
+            user_obj = profile_info.get("user", {}) if isinstance(profile_info, dict) else {}
+            if user_obj:
+                profile_data = {
+                    "nickname": user_obj.get("nickname"),
+                    "avatar": user_obj.get("avatar_thumb", {}).get("url_list", [""])[0] if user_obj.get("avatar_thumb") else "",
+                    "follower_count": user_obj.get("follower_count", 0),
+                    "total_favorited": user_obj.get("total_favorited", 0),
+                    "video_count": user_obj.get("aweme_count", 0)
+                }
+                db = SessionLocal()
+                try:
+                    save_or_update_followed_account(
+                        db,
+                        sec_uid=sec_uid,
+                        nickname=profile_data["nickname"],
+                        avatar=profile_data["avatar"],
+                        follower_count=profile_data["follower_count"],
+                        total_favorited=profile_data["total_favorited"],
+                        video_count=profile_data["video_count"]
+                    )
+                finally:
+                    db.close()
+        except Exception as e:
+            logger.error(f"Error fetching/saving followed account profile: {e}")
+            
+        # Fetch number of crawled videos from DB and total videos from latest profile data
+        db = SessionLocal()
+        crawled_count = 0
+        total_videos = 0
+        try:
+            crawled_count = db.query(VideoHistory).filter(VideoHistory.author_sec_uid == sec_uid).count()
+        except Exception as e:
+            logger.error(f"Error querying crawled video counts: {e}")
+        finally:
+            db.close()
+
+        if profile_data and "video_count" in profile_data:
+            total_videos = profile_data["video_count"]
+        else:
+            db = SessionLocal()
+            try:
+                acc = db.query(FollowedAccount).filter(FollowedAccount.sec_uid == sec_uid).first()
+                if acc:
+                    total_videos = acc.video_count or 0
+            except Exception as e:
+                logger.error(f"Error querying FollowedAccount: {e}")
+            finally:
+                db.close()
+
+        logger.info(f"Kênh {sec_uid} có tổng số video: {total_videos}, đã cào: {crawled_count}")
+        yield f"[*] Thông tin kênh - Tổng số video: {total_videos}, Đã cào: {crawled_count}\n"
+
         cursor = 0
         has_more = True
         total_fetched = 0
@@ -141,6 +242,26 @@ class DouyinScraper:
                     yield "[!] Không tìm thấy video nào. Có thể do tài khoản bị khóa riêng tư, hoặc thuật toán chống bot quá mạnh (Hệ thống Playwright đã thử vượt Captcha ngầm nhưng không thành công). Vui lòng cập nhật Cookie thủ công!\n"
                 break
                 
+            if aweme_list and not profile_data:
+                first_aweme = aweme_list[0]
+                author = first_aweme.get("author", {})
+                if author:
+                    db = SessionLocal()
+                    try:
+                        save_or_update_followed_account(
+                            db,
+                            sec_uid=sec_uid,
+                            nickname=author.get("nickname"),
+                            avatar=author.get("avatar_thumb", {}).get("url_list", [""])[0] if author.get("avatar_thumb") else "",
+                            follower_count=author.get("follower_count", 0),
+                            total_favorited=author.get("total_favorited", 0),
+                            video_count=author.get("aweme_count", 0)
+                        )
+                        profile_data = {"nickname": author.get("nickname")}
+                        total_videos = author.get("aweme_count", 0)
+                    finally:
+                        db.close()
+                
             for aweme in aweme_list:
                 video_id = aweme.get("aweme_id")
                 if not video_id: 
@@ -150,7 +271,7 @@ class DouyinScraper:
                     video_urls = aweme["video"]["play_addr"]["url_list"]
                     if not video_urls: continue
                 except (KeyError, IndexError, TypeError):
-                    # Bỏ qua các video dạng hình ảnh / dạng lỗi
+                    # Skip image-based videos / corrupted metadata
                     continue
                     
                 uploader = aweme.get("author", {}).get("nickname", "Unknown User")
@@ -162,12 +283,16 @@ class DouyinScraper:
                     yield f"[-] Bỏ qua video {video_id} - Đã tải trước đó.\n"
                     
                     if consecutive_duplicates >= 5:
-                        yield f"[!] Đã gặp 5 video cũ liên tiếp. Kích hoạt 'Tải Tăng Dần', dừng quét profile này để tối ưu.\n"
-                        force_stop = True
-                        break
+                        if total_videos > 0 and crawled_count < total_videos:
+                            # There are still uncrawled videos further down, so do not stop crawling
+                            logger.info(f"Gặp 5 video cũ liên tiếp nhưng còn video chưa cào ({crawled_count}/{total_videos}). Tiếp tục quét...")
+                        else:
+                            yield f"[!] Đã gặp 5 video cũ liên tiếp và đã cào hết video mới. Kích hoạt 'Tải Tăng Dần', dừng quét profile này để tối ưu.\n"
+                            force_stop = True
+                            break
                     continue
                     
-                # Reset counter nếu gặp video mới
+                # Reset counter when we encounter a new video
                 consecutive_duplicates = 0
                 
                 desc = aweme.get("desc", "")
@@ -175,13 +300,19 @@ class DouyinScraper:
                 logger.info(f"Đang tải video mới: {video_id} từ {uploader}")
                 yield f"[+] Đang tải video mới: {video_id}\n"
                 
-                for dl_log in self._download_video_generator(client, video_urls, video_id, uploader, clean_caption, tags):
+                download_success = False
+                for dl_log in self._download_video_generator(client, video_urls, video_id, uploader, clean_caption, tags, sec_uid):
                     yield dl_log
+                    if isinstance(dl_log, dict) and dl_log.get("progress") == 100:
+                        download_success = True
+
+                if download_success:
+                    crawled_count += 1
                     
             cursor = data.get("max_cursor", 0)
             has_more = data.get("has_more", False)
 
-    def _download_video_generator(self, client, video_urls: list, video_id: str, uploader: str, original_caption: str = "", original_hashtags: str = ""):
+    def _download_video_generator(self, client, video_urls: list, video_id: str, uploader: str, original_caption: str = "", original_hashtags: str = "", author_sec_uid: str = None):
         import httpx
         user_folder = "".join(c for c in uploader if c.isalnum() or c in (' ', '_', '-')).strip()
         if not user_folder:
@@ -245,10 +376,15 @@ class DouyinScraper:
                                 raw_video_path=output_file,
                                 status=ProcessStatus.PENDING,
                                 original_caption=original_caption,
-                                original_hashtags=original_hashtags
+                                original_hashtags=original_hashtags,
+                                author_sec_uid=author_sec_uid
                             )
                             db.add(record)
                             db.commit()
+                        else:
+                            if not record.author_sec_uid and author_sec_uid:
+                                record.author_sec_uid = author_sec_uid
+                                db.commit()
                     except Exception as e:
                         logger.error(f"Lỗi khi lưu DB VideoHistory: {e}")
                     finally:

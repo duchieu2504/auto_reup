@@ -274,8 +274,19 @@ class VideoEditor:
         
         try:
             import re
+            import redis
+            from app.core.config import REDIS_URL
+            sync_redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+            base_name = os.path.basename(input_video).split('.')[0]
+
             process = subprocess.Popen(cmd, stderr=subprocess.PIPE, universal_newlines=True, encoding='utf-8', errors='replace')
             for line in process.stderr:
+                # Periodically check pause/cancellation flag to cancel render early
+                if sync_redis.get(f"pause_video_{base_name}") == "1":
+                    log_callback(f"[System] Phát hiện lệnh dừng từ người dùng. Đang hủy tiến trình FFmpeg cho {base_name}...\n")
+                    process.kill()
+                    raise Exception("Tiến trình bị hủy bởi người dùng.")
+
                 if log_callback and total_duration > 0:
                     match = re.search(r"time=(\d{2}):(\d{2}):(\d{2}\.\d{2})", line)
                     if match:
@@ -287,6 +298,8 @@ class VideoEditor:
             
             process.wait()
             if process.returncode != 0:
+                if sync_redis.get(f"pause_video_{base_name}") == "1":
+                    raise Exception("Tiến trình bị hủy bởi người dùng.")
                 raise Exception(f"FFmpeg exited with code {process.returncode}")
             return output_video
         except Exception as e:

@@ -22,7 +22,7 @@ const Sidebar = () => {
       items: [
         { to: "/", title: "Tổng quan", icon: LayoutDashboard },
         { to: "/crawler", title: "Cào Video", icon: DownloadCloud },
-        { to: "/discovery", title: "Khám phá", icon: Compass },
+        { to: "/discovery", title: "Đang theo dõi", icon: Compass },
         { to: "/live", title: "Live Restream", icon: Bot },
         { to: "/faceless", title: "Sáng tạo AI", icon: Bot, isSpecial: true },
       ]

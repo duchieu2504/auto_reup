@@ -213,6 +213,14 @@ async def start_processor(request: ProcessRequest):
         request.mask_type, request.mask_color,
         [m.dict() for m in request.masks]
     )
+    
+    # Map task ID to base names of raw videos to control cancellation for all videos in this task
+    try:
+        base_names = [os.path.basename(vp).split('.')[0] for vp in cleaned_paths]
+        await redis_client.set(f"task_videos_{task.id}", json.dumps(base_names), ex=86400)
+    except Exception as e:
+        logger.error(f"Lỗi khi lưu task videos mapping vào Redis: {e}")
+
     return {"status": "started", "task_id": task.id, "video_count": len(cleaned_paths)}
 
 
@@ -299,3 +307,30 @@ async def stream_logs(task_id: str, request: Request):
             await asyncio.sleep(0.5)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/stop/{task_id}")
+async def stop_processor(task_id: str):
+    logger.info(f"Yêu cầu dừng task xử lý video: {task_id}")
+    from app.core.celery_app import celery_app
+    import json
+    try:
+        celery_app.control.revoke(task_id, terminate=True)
+        
+        # Gửi thông điệp hủy tới kênh log stream Redis để đóng kết nối và cập nhật UI phía Client
+        redis_client = get_async_redis()
+        channel = f"task_log_{task_id}"
+        await redis_client.rpush(channel, json.dumps({"log": "[System] Tiến trình xử lý video đã bị hủy bởi người dùng.\n[DONE]\n"}))
+        
+        # Đặt cờ pause cho toàn bộ video thuộc task_id để dừng nhanh
+        task_videos_data = await redis_client.get(f"task_videos_{task_id}")
+        if task_videos_data:
+            base_names = json.loads(task_videos_data)
+            for base_name in base_names:
+                await redis_client.set(f"pause_video_{base_name}", "1")
+                logger.info(f"Đã đặt cờ Pause cho video {base_name} qua dừng task {task_id}")
+                
+        return {"status": "stopped", "message": "Đã gửi lệnh hủy tiến trình xử lý."}
+    except Exception as e:
+        logger.error(f"Lỗi khi hủy tiến trình xử lý: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

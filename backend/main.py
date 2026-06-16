@@ -11,6 +11,7 @@ from app.models.upload_schedule import UploadSchedule
 from app.models.edit_profile import EditProfile
 from app.models.proxy import Proxy
 from app.models.live_job import LiveStreamJob
+from app.models.followed_account import FollowedAccount
 from app.api.social_accounts import router as social_accounts_router
 from app.api.upload_schedule import router as upload_schedule_router
 
@@ -51,7 +52,7 @@ def init_db():
             except Exception as e:
                 print(f"Error updating live_stream_jobs schema: {e}")
                 
-            # Check and add original_caption and original_hashtags to video_history
+            # Check and add original_caption, original_hashtags, and author_sec_uid to video_history
             try:
                 if 'video_history' in inspector.get_table_names():
                     video_history_cols = [col['name'] for col in inspector.get_columns('video_history')]
@@ -60,11 +61,28 @@ def init_db():
                             conn.execute(text("ALTER TABLE video_history ADD COLUMN original_caption TEXT;"))
                         if 'original_hashtags' not in video_history_cols:
                             conn.execute(text("ALTER TABLE video_history ADD COLUMN original_hashtags TEXT;"))
+                        if 'author_sec_uid' not in video_history_cols:
+                            conn.execute(text("ALTER TABLE video_history ADD COLUMN author_sec_uid VARCHAR(255);"))
                         conn.commit()
             except Exception as e:
                 print(f"Error updating video_history schema: {e}")
+
+            # Migrate old video histories to have author_sec_uid if matching followed_accounts
+            try:
+                if 'followed_accounts' in inspector.get_table_names() and 'video_history' in inspector.get_table_names():
+                    with engine.connect() as conn:
+                        res = conn.execute(text("SELECT sec_uid, nickname FROM followed_accounts;")).fetchall()
+                        for sec_uid, nickname in res:
+                            if nickname:
+                                conn.execute(
+                                    text("UPDATE video_history SET author_sec_uid = :sec_uid WHERE (source = :source_nick OR source = :source_full) AND author_sec_uid IS NULL;"),
+                                    {"sec_uid": sec_uid, "source_nick": nickname, "source_full": f"Douyin - {nickname}"}
+                                )
+                        conn.commit()
+            except Exception as e:
+                print(f"Error migrating video_history author_sec_uid: {e}")
                 
-            # Xử lý các tiến trình bị kẹt do restart
+            # Reset stuck upload schedules and video history processes on restart
             try:
                 if 'upload_schedules' in inspector.get_table_names():
                     with engine.connect() as conn:
@@ -73,6 +91,28 @@ def init_db():
                         print("Reset stuck uploading schedules to failed.")
             except Exception as e:
                 print(f"Error resetting uploading schedules: {e}")
+
+            try:
+                if 'video_history' in inspector.get_table_names():
+                    with engine.connect() as conn:
+                        conn.execute(text("""
+                            UPDATE video_history 
+                            SET status = 'failed', error_message = 'Tiến trình bị gián đoạn do khởi động lại hệ thống.' 
+                            WHERE status IN ('downloading', 'transcribing', 'translating', 'generating_tts', 'rendering');
+                        """))
+                        conn.commit()
+                        print("Reset stuck video history processes to failed.")
+            except Exception as e:
+                print(f"Error resetting video history: {e}")
+
+            # Auto-purge pending Celery queue tasks to prevent execution of outdated backlog commands
+            try:
+                from app.core.celery_app import celery_app
+                purged_count = celery_app.control.purge()
+                if purged_count:
+                    print(f"Purged {purged_count} pending Celery tasks on startup.")
+            except Exception as e:
+                print(f"Error purging Celery tasks: {e}")
 
             print("Database connected and initialized successfully.")
             break

@@ -215,6 +215,16 @@ class DouyinAPIClient:
         })
         return self.request_json("/aweme/v1/web/aweme/post/", params)
 
+    def get_user_profile(self, sec_uid: str) -> dict:
+        """Fetch detailed Douyin user profile using sec_uid."""
+        params = self._default_query()
+        params.update({
+            "sec_user_id": sec_uid,
+            "publish_video_strategy_type": "2",
+            "personal_center_strategy": "1",
+        })
+        return self.request_json("/aweme/v1/web/user/profile/other/", params)
+
     def get_hot_search_board(self) -> dict:
         """Lấy danh sách bảng xếp hạng từ khóa hot trend của Douyin"""
         params = self._default_query()

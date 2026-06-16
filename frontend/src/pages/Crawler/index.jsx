@@ -1,20 +1,36 @@
 import React, { useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Download, PlayCircle, Terminal, Cpu } from 'lucide-react';
+import { Search, Download, PlayCircle, Terminal, Cpu, XCircle } from 'lucide-react';
 import { useCrawler } from '../../context/CrawlerContext';
-import Discovery from '../Discovery';
+import DiscoverySection from './DiscoverySection';
 
 const Phase1Crawler = () => {
-  const { urls, setUrls, isCrawling, logs, progress, startCrawling } = useCrawler();
+  const { urls, setUrls, isCrawling, logs, progress, startCrawling, stopCrawling } = useCrawler();
   const logContainerRef = useRef(null);
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const hasStartedRef = useRef(false);
 
   useEffect(() => {
     if (location.state?.presetUrl) {
-      setUrls(location.state.presetUrl);
+      const { presetUrl, autostart } = location.state;
+      if (!hasStartedRef.current) {
+        hasStartedRef.current = true;
+        // Clear history state to avoid duplication on re-render
+        navigate(location.pathname, { replace: true, state: {} });
+        
+        setUrls(presetUrl);
+        if (autostart) {
+          startCrawling(presetUrl);
+        }
+      }
+    } else {
+      // Reset ref when location state is cleared to allow subsequent quick crawls
+      hasStartedRef.current = false;
     }
-  }, [location.state, setUrls]);
+  }, [location.state, setUrls, startCrawling, navigate, location.pathname]);
 
   useEffect(() => {
     if (logContainerRef.current) {
@@ -69,16 +85,28 @@ const Phase1Crawler = () => {
                   />
                 </div>
               </div>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                type="submit"
-                className="flex items-center justify-center gap-2 bg-gradient-to-r from-neon-purple to-neon-pink hover:opacity-95 text-white px-7 py-3.5 rounded-xl font-semibold transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_4px_15px_rgba(168,85,247,0.3)] cursor-pointer w-full"
-                disabled={isCrawling}
-              >
-                {isCrawling ? <PlayCircle size={18} className="animate-spin text-white" /> : <Cpu size={18} />}
-                <span>{isCrawling ? 'Đang chạy...' : 'Bắt đầu Cào'}</span>
-              </motion.button>
+              {isCrawling ? (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={stopCrawling}
+                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white px-7 py-3.5 rounded-xl font-semibold transition-all duration-300 shadow-[0_4px_15px_rgba(239,68,68,0.3)] cursor-pointer w-full"
+                >
+                  <XCircle size={18} className="text-white" />
+                  <span>Hủy tiến trình cào</span>
+                </motion.button>
+              ) : (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  type="submit"
+                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-neon-purple to-neon-pink hover:opacity-95 text-white px-7 py-3.5 rounded-xl font-semibold transition-all duration-300 active:scale-95 shadow-[0_4px_15px_rgba(168,85,247,0.3)] cursor-pointer w-full"
+                >
+                  <Cpu size={18} />
+                  <span>Bắt đầu Cào</span>
+                </motion.button>
+              )}
             </form>
           </div>
 
@@ -150,7 +178,7 @@ const Phase1Crawler = () => {
 
     {/* Trang Khám phá gộp vào bên dưới */}
     <div className="pt-6 border-t border-white/5">
-      <Discovery 
+      <DiscoverySection 
         onSelectUser={(url) => {
           setUrls(url);
           window.scrollTo({ top: 0, behavior: 'smooth' });

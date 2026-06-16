@@ -5,6 +5,7 @@ const ProcessorContext = createContext();
 export const ProcessorProvider = ({ children }) => {
   const [videoPath, setVideoPath] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [activeTaskId, setActiveTaskId] = useState(null);
   const [logs, setLogs] = useState(["[System] Đang chờ lệnh xử lý..."]);
   const [progress, setProgress] = useState(0);
   const eventSourceRef = useRef(null);
@@ -90,6 +91,7 @@ export const ProcessorProvider = ({ children }) => {
 
       const data = await res.json();
       const taskId = data.task_id;
+      setActiveTaskId(taskId);
 
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -103,6 +105,7 @@ export const ProcessorProvider = ({ children }) => {
         if (newLog.includes("[DONE]")) {
           setIsProcessing(false);
           setProgress(100);
+          setActiveTaskId(null);
           eventSource.close();
         } else {
           try {
@@ -124,16 +127,35 @@ export const ProcessorProvider = ({ children }) => {
         setLogs(prev => [...prev, "[System] Mất kết nối Stream API."]);
         eventSource.close();
         setIsProcessing(false);
+        setActiveTaskId(null);
       };
 
     } catch (error) {
       setLogs(prev => [...prev, `[System Error] ${error.message}`]);
       setIsProcessing(false);
+      setActiveTaskId(null);
+    }
+  };
+
+  const stopProcessing = async () => {
+    if (!activeTaskId) return;
+    try {
+      const res = await fetch(`http://localhost:8000/api/processor/stop/${activeTaskId}`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setLogs(prev => [...prev, "[System] Đang gửi yêu cầu hủy tiến trình xử lý..."]);
+      } else {
+        setLogs(prev => [...prev, `[System Error] Không thể hủy: ${data.detail || "Lỗi hệ thống"}`]);
+      }
+    } catch (error) {
+      setLogs(prev => [...prev, `[System Error] Lỗi kết nối: ${error.message}`]);
     }
   };
 
   return (
-    <ProcessorContext.Provider value={{ videoPath, setVideoPath, isProcessing, logs, progress, startProcessing }}>
+    <ProcessorContext.Provider value={{ videoPath, setVideoPath, isProcessing, logs, progress, startProcessing, stopProcessing }}>
       {children}
     </ProcessorContext.Provider>
   );

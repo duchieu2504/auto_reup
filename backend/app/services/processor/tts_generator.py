@@ -129,7 +129,7 @@ class TTSGenerator:
         subs = pysrt.open(srt_path, encoding='utf-8')
         
         import subprocess
-        # Lấy duration bằng ffmpeg_exe để tránh phụ thuộc ffprobe
+        # Get duration using ffmpeg_exe to avoid ffprobe dependency
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
         cmd = [ffmpeg_exe, "-i", video_path]
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -145,8 +145,18 @@ class TTSGenerator:
         
         import tempfile
         tmp_dir = tempfile.gettempdir()
-        
+
+        import redis
+        from app.core.config import REDIS_URL
+        sync_redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+        base_name = os.path.basename(video_path).split('.')[0]
+
         for i, sub in enumerate(subs):
+            # Periodically check pause/cancellation flag to cancel TTS early
+            if sync_redis.get(f"pause_video_{base_name}") == "1":
+                log_callback(f"[System] Phát hiện lệnh dừng từ người dùng. Hủy sinh TTS cho {base_name}...\n")
+                raise Exception("Tiến trình bị hủy bởi người dùng.")
+
             text = sub.text.replace('\n', ' ').strip()
             
             # Detect [M] or [F] tag
