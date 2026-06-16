@@ -5,6 +5,7 @@ const ProcessorContext = createContext();
 export const ProcessorProvider = ({ children }) => {
   const [videoPath, setVideoPath] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [activeTaskId, setActiveTaskId] = useState(null);
   const [logs, setLogs] = useState(["[System] Đang chờ lệnh xử lý..."]);
   const [progress, setProgress] = useState(0);
   const eventSourceRef = useRef(null);
@@ -71,7 +72,16 @@ export const ProcessorProvider = ({ children }) => {
           watermark_y: options.subConfig?.watermarkY ?? 50.0,
           watermark_size: options.subConfig?.watermarkSize ?? 20.0,
           watermark_color: options.subConfig?.watermarkColor || '#FFFFFF',
-          watermark_opacity: options.subConfig?.watermarkOpacity ?? 50.0
+          watermark_opacity: options.subConfig?.watermarkOpacity ?? 50.0,
+          enable_subtitles: options.subConfig?.enableSubtitles ?? true,
+          mask_enabled: options.subConfig?.maskEnabled ?? false,
+          mask_x: options.subConfig?.maskX ?? 10.0,
+          mask_y: options.subConfig?.maskY ?? 10.0,
+          mask_width: options.subConfig?.maskWidth ?? 20.0,
+          mask_height: options.subConfig?.maskHeight ?? 15.0,
+          mask_type: options.subConfig?.maskType || 'color',
+          mask_color: options.subConfig?.maskColor || '#000000',
+          masks: options.subConfig?.masks || []
         })
       });
       
@@ -81,6 +91,7 @@ export const ProcessorProvider = ({ children }) => {
 
       const data = await res.json();
       const taskId = data.task_id;
+      setActiveTaskId(taskId);
 
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -94,6 +105,7 @@ export const ProcessorProvider = ({ children }) => {
         if (newLog.includes("[DONE]")) {
           setIsProcessing(false);
           setProgress(100);
+          setActiveTaskId(null);
           eventSource.close();
         } else {
           try {
@@ -115,16 +127,35 @@ export const ProcessorProvider = ({ children }) => {
         setLogs(prev => [...prev, "[System] Mất kết nối Stream API."]);
         eventSource.close();
         setIsProcessing(false);
+        setActiveTaskId(null);
       };
 
     } catch (error) {
       setLogs(prev => [...prev, `[System Error] ${error.message}`]);
       setIsProcessing(false);
+      setActiveTaskId(null);
+    }
+  };
+
+  const stopProcessing = async () => {
+    if (!activeTaskId) return;
+    try {
+      const res = await fetch(`http://localhost:8000/api/processor/stop/${activeTaskId}`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setLogs(prev => [...prev, "[System] Đang gửi yêu cầu hủy tiến trình xử lý..."]);
+      } else {
+        setLogs(prev => [...prev, `[System Error] Không thể hủy: ${data.detail || "Lỗi hệ thống"}`]);
+      }
+    } catch (error) {
+      setLogs(prev => [...prev, `[System Error] Lỗi kết nối: ${error.message}`]);
     }
   };
 
   return (
-    <ProcessorContext.Provider value={{ videoPath, setVideoPath, isProcessing, logs, progress, startProcessing }}>
+    <ProcessorContext.Provider value={{ videoPath, setVideoPath, isProcessing, logs, progress, startProcessing, stopProcessing }}>
       {children}
     </ProcessorContext.Provider>
   );

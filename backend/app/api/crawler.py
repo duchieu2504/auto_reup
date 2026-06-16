@@ -2,7 +2,7 @@ import asyncio
 import os
 import sys
 import time
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -61,3 +61,22 @@ async def stream_logs(task_id: str, request: Request):
             await asyncio.sleep(0.5)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/stop/{task_id}")
+async def stop_crawler(task_id: str):
+    logger.info(f"Yêu cầu dừng task cào video: {task_id}")
+    from app.core.celery_app import celery_app
+    import json
+    try:
+        celery_app.control.revoke(task_id, terminate=True)
+        
+        # Gửi thông điệp hủy tới kênh log stream Redis để đóng kết nối và cập nhật UI phía Client
+        redis_client = get_async_redis()
+        channel = f"task_log_{task_id}"
+        await redis_client.rpush(channel, json.dumps({"log": "[System] Tiến trình cào video đã bị hủy bởi người dùng.\n[DONE]\n"}))
+        
+        return {"status": "stopped", "message": "Đã gửi lệnh hủy tiến trình cào."}
+    except Exception as e:
+        logger.error(f"Lỗi khi hủy tiến trình cào: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

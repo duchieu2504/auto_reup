@@ -122,6 +122,8 @@ class VideoHistoryResponse(BaseModel):
     final_video_path: Optional[str]
     process_config: Optional[str] = "{}"
     error_message: Optional[str] = None
+    original_caption: Optional[str] = None
+    original_hashtags: Optional[str] = None
     schedules: List[ScheduleSimple] = []
 
     class Config:
@@ -352,6 +354,8 @@ def sync_data(db: Session = Depends(get_db)):
             exists.audio_tts_path = data.get("audio_tts_path", exists.audio_tts_path)
             exists.srt_origin_path = data.get("srt_origin_path", exists.srt_origin_path)
             exists.srt_translated_path = data.get("srt_translated_path", exists.srt_translated_path)
+            exists.original_caption = data.get("original_caption", exists.original_caption)
+            exists.original_hashtags = data.get("original_hashtags", exists.original_hashtags)
             if parse_date(data.get("uploaded_at")):
                 exists.uploaded_at = parse_date(data.get("uploaded_at"))
             updated_count += 1
@@ -370,6 +374,8 @@ def sync_data(db: Session = Depends(get_db)):
                 audio_tts_path=data.get("audio_tts_path"),
                 srt_origin_path=data.get("srt_origin_path"),
                 srt_translated_path=data.get("srt_translated_path"),
+                original_caption=data.get("original_caption"),
+                original_hashtags=data.get("original_hashtags"),
                 uploaded_at=parse_date(data.get("uploaded_at"))
             )
             db.add(new_record)

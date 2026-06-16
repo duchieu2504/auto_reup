@@ -108,3 +108,58 @@ class AIContentGenerator:
             import logging
             logging.error(f"Lỗi khi sinh nội dung AI ({self.active_provider}): {e}")
             raise Exception(f"Lỗi API ({self.active_provider}): {str(e)}")
+
+    def translate_to_vietnamese(self, text: str) -> str:
+        """
+        Dịch một đoạn văn bản (caption gốc) sang tiếng Việt bằng AI đang được cấu hình
+        """
+        if not text:
+            return ""
+            
+        if not self.is_configured:
+            return text
+            
+        prompt = f"""
+        Bạn là một dịch giả chuyên nghiệp. Hãy dịch đoạn văn bản sau đây sang tiếng Việt sao cho tự nhiên, trôi chảy, giữ nguyên ngữ cảnh và phong cách của mạng xã hội (ngắn gọn, thu hút).
+        KHÔNG tự thêm các hashtag mới hay lời giải thích nào khác ngoài bản dịch.
+        
+        Văn bản gốc: {text}
+        
+        Bản dịch tiếng Việt:
+        """
+        
+        try:
+            result_text = ""
+            if self.active_provider == "gemini":
+                response = self.gemini_client.models.generate_content(
+                    model=self.gemini_model,
+                    contents=prompt
+                )
+                result_text = response.text.strip()
+            elif self.active_provider == "openai":
+                response = self.openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=300
+                )
+                result_text = response.choices[0].message.content.strip()
+            elif self.active_provider == "anthropic":
+                response = self.anthropic_client.messages.create(
+                    model="claude-3-haiku-20240307",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=300
+                )
+                result_text = response.content[0].text.strip()
+            elif self.active_provider == "xai":
+                response = self.xai_client.chat.completions.create(
+                    model="grok-beta",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=300
+                )
+                result_text = response.choices[0].message.content.strip()
+                
+            return result_text
+        except Exception as e:
+            import logging
+            logging.error(f"Lỗi khi dịch AI ({self.active_provider}): {e}")
+            raise Exception(f"Lỗi API dịch ({self.active_provider}): {str(e)}")

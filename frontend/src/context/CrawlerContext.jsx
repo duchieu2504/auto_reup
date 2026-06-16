@@ -5,6 +5,7 @@ const CrawlerContext = createContext();
 export const CrawlerProvider = ({ children }) => {
   const [urls, setUrls] = useState('');
   const [isCrawling, setIsCrawling] = useState(false);
+  const [activeTaskId, setActiveTaskId] = useState(null);
   const [logs, setLogs] = useState(["[System] Đang chờ lệnh..."]);
   const [progress, setProgress] = useState(0);
   const eventSourceRef = useRef(null);
@@ -33,6 +34,7 @@ export const CrawlerProvider = ({ children }) => {
 
       const data = await res.json();
       const taskId = data.task_id;
+      setActiveTaskId(taskId);
 
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -46,6 +48,7 @@ export const CrawlerProvider = ({ children }) => {
         if (newLog.includes("[DONE]")) {
           setIsCrawling(false);
           setProgress(100);
+          setActiveTaskId(null);
           eventSource.close();
         } else {
           try {
@@ -67,16 +70,35 @@ export const CrawlerProvider = ({ children }) => {
         setLogs(prev => [...prev, "[System] Mất kết nối Stream API."]);
         eventSource.close();
         setIsCrawling(false);
+        setActiveTaskId(null);
       };
 
     } catch (error) {
       setLogs(prev => [...prev, `[System Error] ${error.message}`]);
       setIsCrawling(false);
+      setActiveTaskId(null);
+    }
+  };
+
+  const stopCrawling = async () => {
+    if (!activeTaskId) return;
+    try {
+      const res = await fetch(`http://localhost:8000/api/crawler/stop/${activeTaskId}`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setLogs(prev => [...prev, "[System] Đang gửi yêu cầu hủy tiến trình cào..."]);
+      } else {
+        setLogs(prev => [...prev, `[System Error] Không thể hủy: ${data.detail || "Lỗi hệ thống"}`]);
+      }
+    } catch (error) {
+      setLogs(prev => [...prev, `[System Error] Lỗi kết nối: ${error.message}`]);
     }
   };
 
   return (
-    <CrawlerContext.Provider value={{ urls, setUrls, isCrawling, logs, progress, startCrawling }}>
+    <CrawlerContext.Provider value={{ urls, setUrls, isCrawling, logs, progress, startCrawling, stopCrawling }}>
       {children}
     </CrawlerContext.Provider>
   );

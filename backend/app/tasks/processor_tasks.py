@@ -57,6 +57,15 @@ def process_video_task(
     watermark_color: str = "#FFFFFF",
     watermark_opacity: float = 50.0,
     subtitle_font_family: str = "Liberation Sans",
+    enable_subtitles: bool = True,
+    mask_enabled: bool = False,
+    mask_x: float = 10.0,
+    mask_y: float = 10.0,
+    mask_width: float = 20.0,
+    mask_height: float = 15.0,
+    mask_type: str = "color",
+    mask_color: str = "#000000",
+    masks: list = None,
 ):
     task_id = self.request.id
     channel = f"task_log_{task_id}"
@@ -112,6 +121,15 @@ def process_video_task(
             watermark_color=watermark_color,
             watermark_opacity=watermark_opacity,
             subtitle_font_family=subtitle_font_family,
+            enable_subtitles=enable_subtitles,
+            mask_enabled=mask_enabled,
+            mask_x=mask_x,
+            mask_y=mask_y,
+            mask_width=mask_width,
+            mask_height=mask_height,
+            mask_type=mask_type,
+            mask_color=mask_color,
+            masks=masks,
         )
 
         def process_single(vp):

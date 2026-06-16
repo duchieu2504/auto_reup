@@ -177,7 +177,7 @@ async def update_keys(data: KeysUpdate):
     return {"status": "success", "message": "Cập nhật cấu hình thành công"}
  
 @router.post("/validate")
-async def validate_keys(data: KeysUpdate):
+def validate_keys(data: KeysUpdate):
     results = {
         "fpt_ai_api_key": "unknown",
         "elevenlabs_api_key": "unknown",
