@@ -18,7 +18,8 @@ export const HistoryTable = ({ hook }) => {
     historyData, loading, selectedIds, searchQuery, filterSource, filterDate, filterStatus,
     setSearchQuery, setFilterSource, setFilterDate, setFilterStatus,
     handleSyncData, handleBulkDelete, handleSelectAll, handleSelect,
-    handlePreview, handleDeleteFiles
+    handlePreview, handleDeleteFiles,
+    setProcessingItems, setShowConfigModal, handleResumeProcessing, handlePauseProcessing
   } = hook;
 
   const filteredData = historyData.filter(item => 
@@ -330,6 +331,42 @@ export const HistoryTable = ({ hook }) => {
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
+                        {(item.status === 'paused' || item.status === 'failed') && (
+                          <button 
+                            className="p-2 rounded-lg text-text-secondary hover:text-green-500 hover:bg-green-500/10 transition-colors group relative inline-flex cursor-pointer" 
+                            onClick={() => handleResumeProcessing(item)}
+                          >
+                            <PlayCircle size={18} />
+                            <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-bg-secondary border border-border-subtle text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                              Chạy tiếp tiến trình
+                            </span>
+                          </button>
+                        )}
+                        {item.status === 'pending' && (
+                          <button 
+                            className="p-2 rounded-lg text-text-secondary hover:text-brand-primary hover:bg-brand-primary/10 transition-colors group relative inline-flex cursor-pointer" 
+                            onClick={() => {
+                              setProcessingItems([item.raw_video_path]);
+                              setShowConfigModal(true);
+                            }}
+                          >
+                            <PlayCircle size={18} />
+                            <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-bg-secondary border border-border-subtle text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                              Cấu hình & Xử lý
+                            </span>
+                          </button>
+                        )}
+                        {(item.status === 'transcribing' || item.status === 'translating' || item.status === 'generating_tts' || item.status === 'rendering') && (
+                          <button 
+                            className="p-2 rounded-lg text-text-secondary hover:text-yellow-500 hover:bg-yellow-500/10 transition-colors group relative inline-flex cursor-pointer" 
+                            onClick={() => handlePauseProcessing(item)}
+                          >
+                            <PauseCircle size={18} />
+                            <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-bg-secondary border border-border-subtle text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                              Tạm dừng (Pause)
+                            </span>
+                          </button>
+                        )}
                         {(item.status === 'completed' || item.status === 'uploaded') && (
                           <a 
                             className="p-2 rounded-lg text-text-secondary hover:text-brand-primary hover:bg-brand-primary/10 transition-colors group relative inline-flex" 

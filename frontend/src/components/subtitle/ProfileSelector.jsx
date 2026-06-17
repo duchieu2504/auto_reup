@@ -51,9 +51,9 @@ export const ProfileSelector = ({ config }) => {
       if (config.setSubtitleStyle) config.setSubtitleStyle('black_white');
       if (config.setSubtitleTextColor) config.setSubtitleTextColor('#000000');
       if (config.setSubtitleBgColor) config.setSubtitleBgColor('#ffffff');
-      if (config.setSubtitleFontSize) config.setSubtitleFontSize(18);
+      if (config.setSubtitleFontSize) config.setSubtitleFontSize(8);
       if (config.setSubtitleMarginV) config.setSubtitleMarginV(40);
-      if (config.setSubtitleBgPadding) config.setSubtitleBgPadding(15);
+      if (config.setSubtitleBgPadding) config.setSubtitleBgPadding(2);
       if (config.setSubtitleBgOpacity) config.setSubtitleBgOpacity(100);
       if (config.setWatermarkType) config.setWatermarkType('none');
       if (config.setWatermarkText) config.setWatermarkText('');
@@ -90,7 +90,7 @@ export const ProfileSelector = ({ config }) => {
       if (config.setSubtitleStyle) config.setSubtitleStyle(parsedConfig.subtitleStyle ?? "outline");
       if (config.setSubtitleTextColor) config.setSubtitleTextColor(parsedConfig.subtitleTextColor ?? "#FFFF00");
       if (config.setSubtitleBgColor) config.setSubtitleBgColor(parsedConfig.subtitleBgColor ?? "#000000");
-      if (config.setSubtitleFontSize) config.setSubtitleFontSize(parsedConfig.subtitleFontSize ?? 24);
+      if (config.setSubtitleFontSize) config.setSubtitleFontSize(parsedConfig.subtitleFontSize ?? 8);
       if (config.setSubtitleMarginV) config.setSubtitleMarginV(parsedConfig.subtitleMarginV ?? 40);
       if (config.setSubtitleBgPadding) config.setSubtitleBgPadding(parsedConfig.subtitleBgPadding ?? 2);
       if (config.setSubtitleBgOpacity) config.setSubtitleBgOpacity(parsedConfig.subtitleBgOpacity ?? 100);
@@ -119,7 +119,7 @@ export const ProfileSelector = ({ config }) => {
           subtitleStyle: parsedConfig.subtitleStyle ?? "outline",
           subtitleTextColor: parsedConfig.subtitleTextColor ?? "#FFFF00",
           subtitleBgColor: parsedConfig.subtitleBgColor ?? "#000000",
-          subtitleFontSize: parsedConfig.subtitleFontSize ?? 24,
+          subtitleFontSize: parsedConfig.subtitleFontSize ?? 8,
           subtitleMarginV: parsedConfig.subtitleMarginV ?? 40,
           subtitleBgPadding: parsedConfig.subtitleBgPadding ?? 2,
           subtitleBgOpacity: parsedConfig.subtitleBgOpacity ?? 100,

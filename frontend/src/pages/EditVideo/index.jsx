@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Loader2, Music, Video as VideoIcon } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Music, Video as VideoIcon, Sliders, ImageIcon, Type } from 'lucide-react';
 import { useEditVideo } from './hooks/useEditVideo';
 import { useSubtitleState } from '../../hooks/useSubtitleState';
 import { SubtitleConfigPanel } from '../../components/subtitle/SubtitleConfigPanel';
@@ -17,6 +17,7 @@ const EditVideo = () => {
   // Custom hooks
   const editHook = useEditVideo(id);
   const subtitleConfig = useSubtitleState();
+  const [activeTab, setActiveTab] = useState('subtitle'); // 'subtitle' | 'watermark' | 'srt'
 
   if (editHook.loading) {
     return (
@@ -39,6 +40,12 @@ const EditVideo = () => {
 
   const { videoData, saving, subtitle, setSubtitle, loadingSubtitle, voices, handleSaveAndRender } = editHook;
 
+  const tabs = [
+    { id: 'subtitle', label: 'Phụ đề & Siêu lách', icon: <Sliders size={14} /> },
+    { id: 'watermark', label: 'Logo / Watermark', icon: <ImageIcon size={14} /> },
+    { id: 'srt', label: 'Chỉnh sửa SRT', icon: <Type size={14} /> }
+  ];
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Header */}
@@ -46,7 +53,8 @@ const EditVideo = () => {
         <div className="flex items-center gap-4">
           <button 
             onClick={() => navigate('/history')}
-            className="p-2 bg-bg-secondary rounded-lg hover:bg-border-subtle transition-colors"
+            className="p-2 bg-bg-secondary rounded-lg hover:bg-border-subtle transition-colors cursor-pointer"
+            title="Quay lại Lịch sử"
           >
             <ArrowLeft size={20} />
           </button>
@@ -57,32 +65,21 @@ const EditVideo = () => {
             <p className="text-text-secondary text-sm mt-1">{videoData.title || "Không có tiêu đề"}</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <SaveProfileButton config={subtitleConfig} />
-          <button 
-            className="px-6 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-hover transition-colors font-medium flex items-center gap-2 shadow-lg shadow-brand-primary/20"
-            onClick={() => handleSaveAndRender(subtitleConfig)}
-            disabled={saving}
-          >
-            {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-            Lưu & Render Lại
-          </button>
-        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Col: Preview & Audio Config */}
-        <div className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        {/* Left Col: Preview & Audio Config (Chiếm 40% = 2/5 cột) */}
+        <div className="lg:col-span-2 space-y-6 flex flex-col">
           <ProfileSelector config={subtitleConfig} />
           
-          <div className="bg-bg-primary border border-border-subtle rounded-2xl p-4">
+          <div className="bg-bg-primary border border-border-subtle rounded-2xl p-4 flex-1">
             <h2 className="text-sm font-semibold text-text-primary mb-3">Xem trước Video Gốc</h2>
             {videoData.raw_video_path ? (
               <InteractiveVideoPreview config={subtitleConfig}>
                 <video 
                   src={`${API_BASE}/files/${videoData.raw_video_path.replace(/^[/]?data[/]/, '')}`}
                   controls
-                  className="w-full max-h-[500px] object-contain rounded-lg"
+                  className="w-full max-h-[420px] object-contain rounded-lg shadow-lg"
                 />
               </InteractiveVideoPreview>
             ) : (
@@ -98,9 +95,9 @@ const EditVideo = () => {
             </h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">Giọng đọc (TTS)</label>
+                <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Giọng đọc (TTS)</label>
                 <select 
-                  className="w-full bg-bg-secondary border border-border-subtle rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-primary transition-colors"
+                  className="w-full bg-bg-secondary border border-border-subtle rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-primary transition-colors text-sm cursor-pointer"
                   value={subtitleConfig.voice}
                   onChange={e => subtitleConfig.setVoice(e.target.value)}
                 >
@@ -111,36 +108,86 @@ const EditVideo = () => {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">Âm lượng nhạc nền: {subtitleConfig.volume}%</label>
+                <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2 flex justify-between">
+                  <span>Âm lượng nhạc nền</span>
+                  <span className="text-brand-primary font-mono">{subtitleConfig.volume}%</span>
+                </label>
                 <input 
                   type="range" 
                   min="0" max="100" 
                   value={subtitleConfig.volume} 
                   onChange={e => subtitleConfig.setVolume(Number(e.target.value))} 
-                  className="w-full h-2 bg-border-subtle rounded-lg appearance-none cursor-pointer accent-brand-primary"
+                  className="w-full h-2 bg-border-subtle rounded-lg appearance-none cursor-pointer accent-brand-primary mt-1"
                 />
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Col: Subtitle Editor */}
-        <div className="bg-bg-primary border border-border-subtle rounded-2xl flex flex-col overflow-hidden h-[800px]">
-          <div className="p-4 border-b border-border-subtle bg-bg-secondary/50 flex justify-between items-center">
-            <h2 className="font-bold text-white">Chỉnh sửa Phụ đề (SRT)</h2>
-            {loadingSubtitle && <Loader2 size={16} className="animate-spin text-brand-primary" />}
+        {/* Right Col: Style Customizer & SRT Editor (Chiếm 60% = 3/5 cột) */}
+        <div className="lg:col-span-3 bg-bg-primary border border-border-subtle rounded-2xl flex flex-col overflow-hidden h-[820px]">
+          {/* Tab Header */}
+          <div className="flex border-b border-border-subtle bg-bg-secondary/50 px-4 pt-2.5 gap-2 overflow-x-auto scrollbar-none">
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`py-2.5 px-3.5 text-xs font-bold uppercase tracking-wider border-b-2 transition-all duration-300 cursor-pointer flex items-center gap-2 pb-3.5 whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? "border-brand-primary text-brand-primary"
+                    : "border-transparent text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+                {tab.id === 'srt' && loadingSubtitle && (
+                  <Loader2 size={12} className="animate-spin text-brand-primary" />
+                )}
+              </button>
+            ))}
           </div>
           
-          <div className="p-4 flex-1 flex flex-col overflow-y-auto">
-            <textarea
-              className="min-h-[200px] w-full bg-bg-secondary border border-border-subtle rounded-xl p-4 text-white font-mono text-sm resize-none focus:outline-none focus:border-brand-primary transition-colors mb-4"
-              value={subtitle}
-              onChange={e => setSubtitle(e.target.value)}
-              placeholder="Nội dung file SRT sẽ hiển thị ở đây..."
-            />
+          {/* Tab Content */}
+          <div className="p-5 flex-1 flex flex-col overflow-y-auto min-h-0 bg-bg-secondary/10">
+            {activeTab === 'srt' && (
+              <div className="flex-1 flex flex-col animate-in fade-in duration-200">
+                <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2.5">
+                  Nội dung File Phụ Đề (SRT)
+                </label>
+                <textarea
+                  className="flex-1 min-h-[480px] w-full bg-bg-primary/40 border border-border-subtle rounded-xl p-4 text-white font-mono text-sm resize-none focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition-all duration-300 placeholder:text-text-secondary/30"
+                  value={subtitle}
+                  onChange={e => setSubtitle(e.target.value)}
+                  placeholder="Nội dung file SRT sẽ tải lên ở đây..."
+                />
+              </div>
+            )}
             
-            <SubtitleConfigPanel config={subtitleConfig} />
-            <WatermarkConfigPanel config={subtitleConfig} />
+            {activeTab === 'subtitle' && (
+              <div className="space-y-4 animate-in fade-in duration-200">
+                <SubtitleConfigPanel config={subtitleConfig} />
+              </div>
+            )}
+            
+            {activeTab === 'watermark' && (
+              <div className="space-y-4 animate-in fade-in duration-200">
+                <WatermarkConfigPanel config={subtitleConfig} />
+              </div>
+            )}
+          </div>
+
+          {/* Sticky Actions Footer */}
+          <div className="p-4 border-t border-border-subtle bg-bg-secondary/40 flex items-center justify-between gap-3 shrink-0">
+            <SaveProfileButton config={subtitleConfig} />
+            <button 
+              className="px-6 py-2.5 bg-gradient-to-r from-brand-primary to-purple-600 hover:opacity-95 text-white rounded-xl font-semibold transition-all duration-300 flex items-center gap-2 shadow-lg shadow-brand-primary/20 cursor-pointer text-sm"
+              onClick={() => handleSaveAndRender(subtitleConfig)}
+              disabled={saving}
+            >
+              {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+              <span>Lưu & Render Lại</span>
+            </button>
           </div>
         </div>
       </div>

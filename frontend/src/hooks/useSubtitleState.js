@@ -16,9 +16,9 @@ export const useSubtitleState = (initialConfig = {}) => {
   const [subtitleStyle, setSubtitleStyle] = useState(initialConfig.subtitleStyle || 'black_white');
   const [subtitleTextColor, setSubtitleTextColor] = useState(initialConfig.subtitleTextColor || '#000000');
   const [subtitleBgColor, setSubtitleBgColor] = useState(initialConfig.subtitleBgColor || '#ffffff');
-  const [subtitleFontSize, setSubtitleFontSize] = useState(initialConfig.subtitleFontSize ?? 18);
+  const [subtitleFontSize, setSubtitleFontSize] = useState(initialConfig.subtitleFontSize ?? 8);
   const [subtitleMarginV, setSubtitleMarginV] = useState(initialConfig.subtitleMarginV ?? 40);
-  const [subtitleBgPadding, setSubtitleBgPadding] = useState(initialConfig.subtitleBgPadding ?? 15);
+  const [subtitleBgPadding, setSubtitleBgPadding] = useState(initialConfig.subtitleBgPadding ?? 2);
   const [subtitleBgOpacity, setSubtitleBgOpacity] = useState(initialConfig.subtitleBgOpacity ?? 100);
   
   // Watermark params
