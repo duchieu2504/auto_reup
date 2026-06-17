@@ -44,7 +44,7 @@ def process_video_task(
     opt_pitch: bool = False,
     subtitle_text_color: str = "#000000",
     subtitle_bg_color: str = "#FFFFFF",
-    subtitle_font_size: int = 20,
+    subtitle_font_size: int = 8,
     subtitle_margin_v: int = 40,
     subtitle_bg_padding: int = 2,
     subtitle_bg_opacity: int = 100,

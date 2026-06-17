@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const InteractiveVideoPreview = ({ config, children }) => {
+export const InteractiveVideoPreview = ({ config, children, className = "w-full h-auto" }) => {
   const handleBoxMouseDown = (e, mask) => {
     e.preventDefault();
     e.stopPropagation();
@@ -83,10 +83,9 @@ export const InteractiveVideoPreview = ({ config, children }) => {
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  // `children` can be the <video> or <img> tag passed from the parent.
   return (
     <div 
-      className="relative w-full h-auto bg-black rounded-lg overflow-hidden flex items-center justify-center select-none cursor-crosshair group"
+      className={`relative bg-black rounded-lg overflow-hidden flex items-center justify-center select-none cursor-crosshair group ${className}`}
       onMouseMove={config.handleMouseMove}
       onMouseUp={config.handleMouseUpOrLeave}
       onMouseLeave={config.handleMouseUpOrLeave}

@@ -264,7 +264,7 @@ export const SubtitleConfigPanel = ({ config }) => {
               </label>
               <input 
                 type="range" 
-                min="10" max="50" 
+                min="2" max="20" 
                 value={config.subtitleFontSize} 
                 onChange={e => config.setSubtitleFontSize(Number(e.target.value))} 
                 className="w-full h-1 bg-border-subtle rounded-lg appearance-none cursor-pointer accent-neon-pink"

@@ -328,7 +328,7 @@ const Phase2Processor = () => {
       subtitleState.setSubtitleStyle(config.subtitleStyle ?? "outline");
       subtitleState.setSubtitleTextColor(config.subtitleTextColor ?? "#FFFF00");
       subtitleState.setSubtitleBgColor(config.subtitleBgColor ?? "#000000");
-      subtitleState.setSubtitleFontSize(config.subtitleFontSize ?? 24);
+      subtitleState.setSubtitleFontSize(config.subtitleFontSize ?? 8);
       subtitleState.setSubtitleMarginV(config.subtitleMarginV ?? 40);
       subtitleState.setSubtitleBgPadding(config.subtitleBgPadding ?? 2);
       subtitleState.setSubtitleBgOpacity(config.subtitleBgOpacity ?? 100);
