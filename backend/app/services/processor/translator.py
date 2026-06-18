@@ -106,6 +106,9 @@ SRT Gốc:
                     )
                     translated_text = response.choices[0].message.content
 
+            if not translated_text or not translated_text.strip():
+                raise Exception("Phản hồi dịch thuật từ AI bị rỗng hoặc không hợp lệ (Empty response)")
+
             with open(output_srt, "w", encoding="utf-8") as f:
                 f.write(translated_text.strip())
                 

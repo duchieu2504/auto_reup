@@ -13,6 +13,25 @@ import redis
 from app.core.config import REDIS_URL
 sync_redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 
+def clean_error_message(err_msg: str) -> str:
+    if not err_msg:
+        return "Lỗi không xác định"
+    
+    # Xử lý lỗi API Quota phổ biến
+    if "RESOURCE_EXHAUSTED" in err_msg or "quota exceeded" in err_msg.lower() or "limit exceeded" in err_msg.lower():
+        return "Lỗi API: Đã hết hạn mức sử dụng hoặc vượt quá giới hạn lượt gọi (Quota Exceeded / Rate Limit)."
+        
+    if "api key" in err_msg.lower() and ("invalid" in err_msg.lower() or "not found" in err_msg.lower() or "chưa cấu hình" in err_msg.lower()):
+        return "Lỗi API Key: Khóa API không hợp lệ hoặc chưa được cấu hình đúng."
+        
+    if "connection" in err_msg.lower() or "timeout" in err_msg.lower() or "cannot connect" in err_msg.lower():
+        return "Lỗi kết nối: Không thể kết nối tới dịch vụ AI (Mạng chập chờn hoặc Timeout)."
+
+    # Giới hạn độ dài tối đa 250 ký tự
+    if len(err_msg) > 250:
+        return err_msg[:250] + "..."
+    return err_msg
+
 class ProcessorPipeline:
     def __init__(self):
         self.transcriber = Transcriber()
@@ -126,7 +145,7 @@ class ProcessorPipeline:
                             os.remove(audio_tmp)
                     except Exception as e:
                         record.status = ProcessStatus.FAILED
-                        record.error_message = f"Dịch thuật: {str(e)}"
+                        record.error_message = clean_error_message(f"Dịch thuật: {str(e)}")
                         db.commit()
                         log_callback(f"[!] Lỗi Dịch thuật: {e}\n")
                         return
@@ -155,7 +174,7 @@ class ProcessorPipeline:
                         except Exception as e:
                             is_canceled = "bị hủy bởi người dùng" in str(e) or sync_redis.get(f"pause_video_{base_name}") == "1"
                             record.status = ProcessStatus.PAUSED if is_canceled else ProcessStatus.FAILED
-                            record.error_message = f"TTS: {str(e)}"
+                            record.error_message = clean_error_message(f"TTS: {str(e)}")
                             db.commit()
                             if is_canceled:
                                 log_callback(f"[*] Tiến trình đã được tạm dừng bởi người dùng.\n")
@@ -223,7 +242,7 @@ class ProcessorPipeline:
                 except Exception as e:
                     is_canceled = "bị hủy bởi người dùng" in str(e) or sync_redis.get(f"pause_video_{base_name}") == "1"
                     record.status = ProcessStatus.PAUSED if is_canceled else ProcessStatus.FAILED
-                    record.error_message = f"Render: {str(e)}"
+                    record.error_message = clean_error_message(f"Render: {str(e)}")
                     db.commit()
                     if is_canceled:
                         log_callback(f"[*] Tiến trình đã được tạm dừng bởi người dùng.\n")

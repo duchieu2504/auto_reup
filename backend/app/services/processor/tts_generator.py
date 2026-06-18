@@ -18,7 +18,7 @@ ENV_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../
 
 class TTSGenerator:
     def __init__(self):
-        pass
+        self._vieneu = None
         
     def _get_fpt_audio(self, text: str, voice: str) -> str:
         load_dotenv(ENV_PATH, override=True)
@@ -125,6 +125,69 @@ class TTSGenerator:
         else:
             raise Exception(f"Lỗi ElevenLabs API: {response.text}")
 
+    def _get_vieneu_client(self):
+        if self._vieneu is None:
+            try:
+                from vieneu import Vieneu
+                # Khởi tạo mô hình VieNeu-TTS
+                self._vieneu = Vieneu(emotion="natural")
+            except Exception as e:
+                raise Exception(f"Lỗi khởi tạo VieNeu-TTS (Vui lòng cài đặt eSpeak NG và pip install vieneu): {str(e)}")
+        return self._vieneu
+
+    def _generate_vieneu_audio(self, text: str, voice: str, output_path: str, reference_audio: str = None):
+        client = self._get_vieneu_client()
+        from app.core.config import DATA_DIR
+        
+        # Check if the voice is a cloned voice prefix (e.g. clone_voice_name.wav)
+        if voice and voice.startswith("clone_"):
+            filename = voice.replace("clone_", "")
+            clone_path = os.path.join(DATA_DIR, "vieneu_clones", filename)
+            if os.path.exists(clone_path):
+                reference_audio = clone_path
+        
+        voice_data = None
+        # Zero-shot Voice Cloning (using reference audio)
+        if reference_audio and os.path.exists(reference_audio):
+            try:
+                voice_data = client.encode_reference(reference_audio)
+            except Exception as e:
+                print(f"Error encoding cloned voice reference {reference_audio}: {e}")
+                # Fallback to default presets if reference encoding fails
+                voice_data = None
+                
+        # If not a cloned voice or encoding failed, use preset voice
+        if voice_data is None and voice and voice != "default":
+            try:
+                presets = client.list_preset_voices()
+                target_voice_id = None
+                
+                if voice == "male":
+                    for desc, v_id in presets:
+                        desc_lower = desc.lower()
+                        if "nam" in desc_lower or "male" in desc_lower:
+                            target_voice_id = v_id
+                            break
+                elif voice == "female":
+                    for desc, v_id in presets:
+                        desc_lower = desc.lower()
+                        if "nu" in desc_lower or "nữ" in desc_lower or "female" in desc_lower:
+                            target_voice_id = v_id
+                            break
+                elif not voice.startswith("clone_"):  # do not match clone_ prefix as preset
+                    target_voice_id = voice
+                    
+                if not target_voice_id and presets:
+                    target_voice_id = presets[0][1]
+                    
+                if target_voice_id:
+                    voice_data = client.get_preset_voice(target_voice_id)
+            except Exception:
+                voice_data = None
+                
+        audio = client.infer(text=text, voice=voice_data)
+        client.save(audio, output_path)
+
     def generate_tts_track(self, srt_path: str, output_audio_path: str, voice_mode: str, video_path: str, log_callback):
         subs = pysrt.open(srt_path, encoding='utf-8')
         
@@ -201,10 +264,13 @@ class TTSGenerator:
                     voice_mode = "openai_onyx" if tag == "M" else "openai_nova"
                 elif active_tts == "elevenlabs":
                     voice_mode = "elevenlabs_drew" if tag == "M" else "elevenlabs_rachel"
+                elif active_tts == "vieneu":
+                    voice_mode = "vieneu_male" if tag == "M" else "vieneu_female"
                 else:
                     voice_mode = "edge_namminh" if tag == "M" else "edge_hoaimy"
             
             # Resolve actual voice
+            is_vieneu = False
             if voice_mode.startswith("edge_"):
                 voice_to_use = "vi-VN-NamMinhNeural" if "namminh" in voice_mode else "vi-VN-HoaiMyNeural"
             elif voice_mode.startswith("fpt_"):
@@ -216,6 +282,9 @@ class TTSGenerator:
             elif voice_mode.startswith("elevenlabs_"):
                 voice_to_use = voice_mode
                 is_elevenlabs = True
+            elif voice_mode.startswith("vieneu_"):
+                voice_to_use = voice_mode.replace("vieneu_", "")
+                is_vieneu = True
             else:
                 voice_to_use = "vi-VN-HoaiMyNeural" # default Edge
                 
@@ -240,22 +309,25 @@ class TTSGenerator:
             clip_wav_path = os.path.join(tmp_dir, f"clip_{i}.wav")
             
             try:
-                if is_fpt:
-                    clip_path = self._get_fpt_audio(tts_text, voice_to_use)
-                elif is_openai:
-                    self._generate_openai_audio(tts_text, voice_to_use, clip_path)
-                elif is_elevenlabs:
-                    self._generate_elevenlabs_audio(tts_text, voice_to_use, clip_path)
+                if is_vieneu:
+                    self._generate_vieneu_audio(tts_text, voice_to_use, clip_wav_path)
                 else:
-                    asyncio.run(self._generate_edge_audio(tts_text, voice_to_use, clip_path, rate=rate, log_callback=log_callback))
-                    
-                import time
-                time.sleep(0.5) # Nghỉ 0.5s giữa các request để tránh bị Microsoft Rate Limit
-                    
-                # Convert MP3 to WAV using FFmpeg to avoid Pydub needing ffprobe
-                subprocess.run([
-                    imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", clip_path, clip_wav_path
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                    if is_fpt:
+                        clip_path = self._get_fpt_audio(tts_text, voice_to_use)
+                    elif is_openai:
+                        self._generate_openai_audio(tts_text, voice_to_use, clip_path)
+                    elif is_elevenlabs:
+                        self._generate_elevenlabs_audio(tts_text, voice_to_use, clip_path)
+                    else:
+                        asyncio.run(self._generate_edge_audio(tts_text, voice_to_use, clip_path, rate=rate, log_callback=log_callback))
+                        
+                    import time
+                    time.sleep(0.5) # Nghỉ 0.5s giữa các request để tránh bị Microsoft Rate Limit
+                        
+                    # Convert MP3 to WAV using FFmpeg to avoid Pydub needing ffprobe
+                    subprocess.run([
+                        imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", clip_path, clip_wav_path
+                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
                 
                 clip_audio = AudioSegment.from_wav(clip_wav_path)
                 

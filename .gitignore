@@ -36,3 +36,8 @@ logs/
 
 # Celery
 celerybeat-schedule*
+
+# Temp & Audio test files
+*.mp3
+scratch/
+

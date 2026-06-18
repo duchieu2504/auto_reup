@@ -1,6 +1,6 @@
 import os
 import requests
-from fastapi import APIRouter, Request, UploadFile, File
+from fastapi import APIRouter, Request, UploadFile, File, Form
 from pydantic import BaseModel
 from dotenv import load_dotenv, set_key
 from app.core.config import DATA_DIR
@@ -93,6 +93,27 @@ async def get_available_voices():
             {"id": "elevenlabs_clyde", "name": "ElevenLabs (Clyde - Nam)", "provider": "ElevenLabs"},
             {"id": "elevenlabs_mimi", "name": "ElevenLabs (Mimi - Nữ em bé)", "provider": "ElevenLabs"}
         ])
+    elif active_tts == "vieneu":
+        voices.extend([
+            {"id": "vieneu_female", "name": "VieNeu Nữ (Miền Nam/Bắc)", "provider": "VieNeu-TTS"},
+            {"id": "vieneu_male", "name": "VieNeu Nam (Miền Nam/Bắc)", "provider": "VieNeu-TTS"},
+            {"id": "vieneu_default", "name": "VieNeu Giọng Mặc Định", "provider": "VieNeu-TTS"}
+        ])
+        
+        # Add cloned voices
+        clone_dir = os.path.join(DATA_DIR, "vieneu_clones")
+        if os.path.exists(clone_dir):
+            try:
+                for filename in sorted(os.listdir(clone_dir)):
+                    if filename.lower().endswith(('.wav', '.mp3', '.m4a')):
+                        voice_name, _ = os.path.splitext(filename)
+                        voices.append({
+                            "id": f"vieneu_clone_{filename}",
+                            "name": f"VieNeu Clone: {voice_name}",
+                            "provider": "VieNeu-TTS (Clone)"
+                        })
+            except Exception as e:
+                print(f"Error scanning cloned voices: {e}")
     else:
         # Default edge
         voices.extend([
@@ -398,4 +419,212 @@ async def upload_background(file: UploadFile = File(...)):
         return {"status": "success", "url": "/api/files/custom_bg.jpg"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+def check_gpu_status():
+    status = {
+        "gpu_available": False,
+        "gpu_name": "Không phát hiện GPU rời NVIDIA",
+        "cuda_version": "N/A",
+        "ffmpeg_nvenc_available": False,
+        "can_use_gpu_acceleration": False,
+        "message": ""
+    }
+    
+    import shutil
+    import subprocess
+    import re
+    import imageio_ffmpeg
+    
+    # 1. Kiểm tra GPU NVIDIA qua nvidia-smi
+    try:
+        if shutil.which("nvidia-smi"):
+            # Lấy tên GPU
+            result = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], 
+                                    capture_output=True, text=True, check=True)
+            gpu_name = result.stdout.strip()
+            if gpu_name:
+                status["gpu_available"] = True
+                status["gpu_name"] = gpu_name
+                
+            # Lấy phiên bản CUDA được driver hỗ trợ
+            cuda_res = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
+            match = re.search(r"CUDA Version:\s*([\d\.]+)", cuda_res.stdout)
+            if match:
+                status["cuda_version"] = match.group(1)
+    except Exception as e:
+        print(f"[GPU Check] Lỗi khi chạy nvidia-smi: {e}")
+        
+    # 2. Kiểm tra FFmpeg hỗ trợ NVENC
+    try:
+        system_ffmpeg = shutil.which("ffmpeg")
+        ffmpeg_exe_path = system_ffmpeg if system_ffmpeg else imageio_ffmpeg.get_ffmpeg_exe()
+        
+        encoder_res = subprocess.run([ffmpeg_exe_path, "-encoders"], capture_output=True, text=True)
+        if "h264_nvenc" in encoder_res.stdout.lower():
+            status["ffmpeg_nvenc_available"] = True
+    except Exception as e:
+        print(f"[GPU Check] Lỗi khi kiểm tra FFmpeg: {e}")
+        
+    # 3. Kết luận khả năng sử dụng GPU acceleration
+    if status["gpu_available"] and status["ffmpeg_nvenc_available"]:
+        status["can_use_gpu_acceleration"] = True
+        status["message"] = f"Phát hiện GPU {status['gpu_name']} (CUDA {status['cuda_version']}). Tăng tốc phần cứng hoạt động tốt."
+    elif status["gpu_available"] and not status["ffmpeg_nvenc_available"]:
+        status["message"] = f"Phát hiện GPU {status['gpu_name']} nhưng FFmpeg hiện tại không hỗ trợ bộ mã hóa h264_nvenc (cần cài bản FFmpeg đầy đủ)."
+    else:
+        status["message"] = "Không phát hiện thấy GPU rời NVIDIA tương thích hoặc driver NVIDIA chưa được cài đặt."
+        
+    return status
+
+@router.get("/gpu-status")
+async def get_gpu_status():
+    return check_gpu_status()
+
+
+_vieneu_instance = None
+
+def get_vieneu_client(emotion="natural"):
+    global _vieneu_instance
+    if _vieneu_instance is None:
+        from vieneu import Vieneu
+        _vieneu_instance = Vieneu(emotion=emotion)
+    return _vieneu_instance
+
+class VieneuTestRequest(BaseModel):
+    text: str
+    voice: str
+    emotion: str = "natural"
+
+@router.get("/vieneu/voices")
+def get_vieneu_voices():
+    try:
+        tts = get_vieneu_client()
+        presets = tts.list_preset_voices()
+        voices = [{"id": v_id, "name": desc} for desc, v_id in presets]
+        
+        # Add cloned voices
+        clone_dir = os.path.join(DATA_DIR, "vieneu_clones")
+        if os.path.exists(clone_dir):
+            try:
+                for filename in sorted(os.listdir(clone_dir)):
+                    if filename.lower().endswith(('.wav', '.mp3', '.m4a')):
+                        voice_name, _ = os.path.splitext(filename)
+                        voices.append({
+                            "id": f"clone_{filename}",
+                            "name": f"VieNeu Clone: {voice_name}"
+                        })
+            except Exception as e:
+                print(f"Error scanning cloned voices in /vieneu/voices: {e}")
+        return {"status": "success", "voices": voices}
+    except Exception as e:
+        return {"status": "error", "message": f"Không thể lấy danh sách giọng VieNeu: {str(e)}"}
+
+@router.post("/vieneu/test")
+def test_vieneu_tts(data: VieneuTestRequest):
+    try:
+        tts = get_vieneu_client(emotion=data.emotion)
+        
+        voice_data = None
+        # Check if voice is a cloned voice
+        if data.voice and data.voice.startswith("clone_"):
+            filename = data.voice.replace("clone_", "")
+            clone_path = os.path.join(DATA_DIR, "vieneu_clones", filename)
+            if os.path.exists(clone_path):
+                try:
+                    voice_data = tts.encode_reference(clone_path)
+                except Exception as e:
+                    print(f"Error encoding cloned voice: {e}")
+                    raise Exception(f"Không thể giải mã file âm thanh mẫu: {str(e)}")
+        elif data.voice and data.voice != "default":
+            try:
+                voice_data = tts.get_preset_voice(data.voice)
+            except Exception:
+                pass
+                
+        audio = tts.infer(text=data.text, voice=voice_data)
+        
+        temp_dir = os.path.join(DATA_DIR, "temp")
+        os.makedirs(temp_dir, exist_ok=True)
+        output_file = os.path.join(temp_dir, "test_vieneu_web.wav")
+        
+        tts.save(audio, output_file)
+        
+        return {
+            "status": "success",
+            "audio_url": "/api/files/temp/test_vieneu_web.wav"
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"Lỗi sinh âm thanh VieNeu: {str(e)}"}
+
+# API quản lý Clone giọng nói (Voice Cloning)
+@router.get("/vieneu/clones")
+def get_vieneu_clones():
+    clone_dir = os.path.join(DATA_DIR, "vieneu_clones")
+    os.makedirs(clone_dir, exist_ok=True)
+    clones = []
+    try:
+        for filename in sorted(os.listdir(clone_dir)):
+            if filename.lower().endswith(('.wav', '.mp3', '.m4a')):
+                file_path = os.path.join(clone_dir, filename)
+                voice_name, _ = os.path.splitext(filename)
+                clones.append({
+                    "id": filename,
+                    "name": voice_name,
+                    "file_url": f"/api/files/vieneu_clones/{filename}",
+                    "size": os.path.getsize(file_path)
+                })
+        return {"status": "success", "clones": clones}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@router.post("/vieneu/clone")
+async def create_vieneu_clone(
+    file: UploadFile = File(...),
+    name: str = Form(...)
+):
+    import shutil
+    # Clean and validate name
+    clean_name = "".join([c for c in name if c.isalpha() or c.isdigit() or c in ' -_']).strip()
+    if not clean_name:
+        return {"status": "error", "message": "Tên giọng đọc không hợp lệ."}
+        
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ['.wav', '.mp3', '.m4a']:
+        return {"status": "error", "message": "Định dạng file không hỗ trợ. Vui lòng tải lên file .wav, .mp3 hoặc .m4a"}
+        
+    clone_dir = os.path.join(DATA_DIR, "vieneu_clones")
+    os.makedirs(clone_dir, exist_ok=True)
+    
+    dest_filename = f"{clean_name}{ext}"
+    dest_path = os.path.join(clone_dir, dest_filename)
+    
+    try:
+        with open(dest_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        return {
+            "status": "success",
+            "message": f"Đã lưu giọng clone '{clean_name}' thành công.",
+            "voice": {
+                "id": dest_filename,
+                "name": clean_name,
+                "file_url": f"/api/files/vieneu_clones/{dest_filename}"
+            }
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"Không thể lưu file: {str(e)}"}
+
+@router.delete("/vieneu/clones/{voice_filename}")
+def delete_vieneu_clone(voice_filename: str):
+    safe_filename = os.path.basename(voice_filename)
+    clone_path = os.path.join(DATA_DIR, "vieneu_clones", safe_filename)
+    
+    if os.path.exists(clone_path):
+        try:
+            os.remove(clone_path)
+            return {"status": "success", "message": "Đã xóa giọng clone thành công"}
+        except Exception as e:
+            return {"status": "error", "message": f"Không thể xóa file: {str(e)}"}
+    else:
+        return {"status": "error", "message": "Không tìm thấy giọng clone cần xóa"}
+
 

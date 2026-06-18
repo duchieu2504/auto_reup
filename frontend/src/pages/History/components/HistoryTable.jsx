@@ -13,6 +13,17 @@ const truncateFilename = (filename) => {
   return `${base.substring(0, 2)}..${base.substring(base.length - 5)}.${ext}`;
 };
 
+const truncateError = (errorMsg) => {
+  if (!errorMsg) return "Lỗi không xác định";
+  if (errorMsg.length <= 100) return errorMsg;
+  
+  // Nếu có lỗi quota 429 từ dữ liệu cũ, hiển thị rút gọn tiếng Việt thân thiện
+  if (errorMsg.includes("RESOURCE_EXHAUSTED") || errorMsg.toLowerCase().includes("quota exceeded")) {
+    return "Lỗi API: Đã hết hạn mức sử dụng (Quota Exceeded / Rate Limit)...";
+  }
+  return errorMsg.substring(0, 100) + "...";
+};
+
 export const HistoryTable = ({ hook }) => {
   const {
     historyData, loading, selectedIds, searchQuery, filterSource, filterDate, filterStatus,
@@ -266,8 +277,11 @@ export const HistoryTable = ({ hook }) => {
                     </td>
                     <td className="p-4 text-sm">
                       {item.status === 'failed' ? (
-                         <span className="text-red-500 font-medium text-xs bg-red-500/10 px-2 py-1 rounded border border-red-500/20 inline-block line-clamp-2" title={item.error_message || 'Lỗi không xác định'}>
-                           {item.error_message || 'Lỗi không xác định'}
+                         <span 
+                           className="text-red-500 font-medium text-xs bg-red-500/10 px-2 py-1 rounded border border-red-500/20 block max-w-[250px] break-words cursor-help" 
+                           title={item.error_message || 'Lỗi không xác định'}
+                         >
+                           {truncateError(item.error_message)}
                          </span>
                       ) : (
                          <span className="text-text-secondary italic text-xs">Không có</span>
