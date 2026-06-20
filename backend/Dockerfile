@@ -1,7 +1,7 @@
 FROM python:3.13-slim
 
 # Thêm đường dẫn thư viện CUDA của các gói pip
-ENV LD_LIBRARY_PATH=/usr/local/lib/python3.13/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.13/site-packages/nvidia/cudnn/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+ENV LD_LIBRARY_PATH=/usr/local/lib/python3.13/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.13/site-packages/nvidia/cudnn/lib
 
 # Cài đặt ffmpeg và các system dependencies bao gồm espeak-ng cho phonemizer
 RUN apt-get update && apt-get install -y \
