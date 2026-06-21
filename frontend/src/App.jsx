@@ -19,6 +19,7 @@ const UploadSchedule = lazy(() => import('./pages/UploadSchedule'));
 const Proxies = lazy(() => import('./pages/Proxies'));
 const AIFaceless = lazy(() => import('./pages/AIFaceless'));
 const LiveRestream = lazy(() => import('./pages/LiveRestream'));
+const VieneuSettings = lazy(() => import('./pages/VieneuSettings'));
 
 const MainLayout = () => {
   const location = useLocation();
@@ -34,6 +35,7 @@ const MainLayout = () => {
   if (location.pathname === '/proxies') title = "Quản lý Proxy";
   if (location.pathname === '/faceless') title = "Sáng Tạo AI Faceless";
   if (location.pathname === '/live') title = "Live Restream";
+  if (location.pathname === '/vienue-settings') title = "Cấu hình VieNeu";
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg-primary/40 text-text-primary backdrop-blur-[2px]">
@@ -61,6 +63,7 @@ const MainLayout = () => {
               <Route path="/proxies" element={<Proxies />} />
               <Route path="/faceless" element={<AIFaceless />} />
               <Route path="/live" element={<LiveRestream />} />
+              <Route path="/vienue-settings" element={<VieneuSettings />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </Suspense>

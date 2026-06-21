@@ -85,9 +85,9 @@ class VideoEditor:
         return "libx264"
         return "libx264"
 
-    def burn_subtitles(self, input_video: str, srt_file: str, output_video: str, tts_audio: str = None, bg_volume: int = 10, flip_video: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False, subtitle_text_color: str = "#000000", subtitle_bg_color: str = "#FFFFFF", subtitle_font_size: int = 8, subtitle_margin_v: int = 40, subtitle_bg_padding: int = 2, subtitle_bg_opacity: int = 100, watermark_type: str = "none", watermark_text: str = None, watermark_image_path: str = None, watermark_x: float = 50.0, watermark_y: float = 50.0, watermark_size: float = 20.0, watermark_color: str = "#FFFFFF", watermark_opacity: float = 50.0, subtitle_font_family: str = "Liberation Sans", enable_subtitles: bool = True, mask_enabled: bool = False, mask_x: float = 10.0, mask_y: float = 10.0, mask_width: float = 20.0, mask_height: float = 15.0, mask_type: str = "color", mask_color: str = "#000000", masks: list = None, log_callback=None):
+    def burn_subtitles(self, input_video: str, srt_file: str, output_video: str, tts_audio: str = None, bg_volume: int = 10, flip_video: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False, subtitle_text_color: str = "#000000", subtitle_bg_color: str = "#FFFFFF", subtitle_font_size: int = 8, subtitle_margin_v: int = 40, subtitle_bg_padding: int = 2, subtitle_bg_opacity: int = 100, watermark_type: str = "none", watermark_text: str = None, watermark_image_path: str = None, watermark_x: float = 50.0, watermark_y: float = 50.0, watermark_size: float = 20.0, watermark_color: str = "#FFFFFF", watermark_opacity: float = 50.0, subtitle_font_family: str = "Liberation Sans", enable_subtitles: bool = True, mask_enabled: bool = False, mask_x: float = 10.0, mask_y: float = 10.0, mask_width: float = 20.0, mask_height: float = 15.0, mask_type: str = "color", mask_color: str = "#000000", masks: list = None, log_callback=None, force_cpu: bool = False):
         load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/.env")), override=True)
-        use_gpu = os.getenv("USE_GPU_ACCELERATION", "False").lower() == "true"
+        use_gpu = os.getenv("USE_GPU_ACCELERATION", "False").lower() == "true" and not force_cpu
         vcodec = self.get_optimal_video_encoder(use_gpu)
         print(f"[*] Sử dụng Video Encoder: {vcodec} (GPU={use_gpu})")
 
@@ -276,10 +276,20 @@ class VideoEditor:
             "-map", v_map,
             "-map", a_map,
             "-c:v", vcodec,
-            "-crf", "28",
-            "-preset", "faster",
-            "-pix_fmt", "yuv420p"
         ])
+
+        if vcodec == "h264_nvenc":
+            # h264_nvenc không hỗ trợ -crf và sử dụng bộ preset riêng (slow, medium, fast)
+            cmd.extend([
+                "-preset", "fast",
+                "-pix_fmt", "yuv420p"
+            ])
+        else:
+            cmd.extend([
+                "-crf", "28",
+                "-preset", "faster",
+                "-pix_fmt", "yuv420p"
+            ])
         
         if tts_idx != -1 or opt_pitch:
             cmd.extend([
@@ -299,15 +309,17 @@ class VideoEditor:
             from app.core.config import REDIS_URL
             sync_redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
             base_name = os.path.basename(input_video).split('.')[0]
-
+ 
+            stderr_lines = []
             process = subprocess.Popen(cmd, stderr=subprocess.PIPE, universal_newlines=True, encoding='utf-8', errors='replace')
             for line in process.stderr:
+                stderr_lines.append(line)
                 # Periodically check pause/cancellation flag to cancel render early
                 if sync_redis.get(f"pause_video_{base_name}") == "1":
                     log_callback(f"[System] Phát hiện lệnh dừng từ người dùng. Đang hủy tiến trình FFmpeg cho {base_name}...\n")
                     process.kill()
                     raise Exception("Tiến trình bị hủy bởi người dùng.")
-
+ 
                 if log_callback and total_duration > 0:
                     match = re.search(r"time=(\d{2}):(\d{2}):(\d{2}\.\d{2})", line)
                     if match:
@@ -321,7 +333,25 @@ class VideoEditor:
             if process.returncode != 0:
                 if sync_redis.get(f"pause_video_{base_name}") == "1":
                     raise Exception("Tiến trình bị hủy bởi người dùng.")
-                raise Exception(f"FFmpeg exited with code {process.returncode}")
+                ffmpeg_err = "".join(stderr_lines[-15:])
+                print(f"FFmpeg Error Output:\n{ffmpeg_err}")
+                raise Exception(f"FFmpeg exited with code {process.returncode}. Log: {ffmpeg_err.strip()}")
             return output_video
         except Exception as e:
-            raise Exception(f"Lỗi FFmpeg khi burn sub: {e}")
+            # Tự động fallback về CPU nếu gặp lỗi do GPU encoder
+            is_gpu_err = any(x in str(e).lower() for x in ["nvenc", "libnvidia", "driver", "encoder", "cuda"])
+            if use_gpu and is_gpu_err:
+                print(f"[!] Lỗi GPU Encoder: {e}. Tự động fallback về CPU (libx264)...")
+                if log_callback:
+                    log_callback(f"[!] Phát hiện lỗi bộ mã hóa GPU (NVENC): {e}.\nTự động chuyển hướng render bằng CPU (libx264)...\n")
+                return self.burn_subtitles(
+                    input_video, srt_file, output_video, tts_audio, bg_volume, flip_video, subtitle_style,
+                    opt_zoom, opt_color, opt_noise, opt_pitch, subtitle_text_color, subtitle_bg_color,
+                    subtitle_font_size, subtitle_margin_v, subtitle_bg_padding, subtitle_bg_opacity,
+                    watermark_type, watermark_text, watermark_image_path, watermark_x, watermark_y,
+                    watermark_size, watermark_color, watermark_opacity, subtitle_font_family,
+                    enable_subtitles, mask_enabled, mask_x, mask_y, mask_width, mask_height, mask_type,
+                    mask_color, masks, log_callback, force_cpu=True
+                )
+            else:
+                raise Exception(f"Lỗi FFmpeg khi burn sub: {e}")

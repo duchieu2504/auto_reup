@@ -6,9 +6,42 @@ ENV_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../
 
 class Translator:
     def __init__(self):
-        # We will load keys in translate_srt to ensure they are fresh
         pass
-        
+
+    def _google_translate_text(self, text: str, from_lang: str = "auto", to_lang: str = "vi") -> str:
+        import requests
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {
+            "client": "gtx",
+            "sl": from_lang,
+            "tl": to_lang,
+            "dt": "t",
+        }
+        response = requests.post(url, params=params, data={"q": text}, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            translated = "".join([sentence[0] for sentence in data[0] if sentence[0]])
+            return translated
+        else:
+            raise Exception(f"Google Translate API trả về mã trạng thái {response.status_code}")
+
+    def _translate_srt_fallback_google(self, input_srt: str, output_srt: str, voice_mode: str = "none"):
+        import pysrt
+        subs = pysrt.open(input_srt, encoding='utf-8')
+        for sub in subs:
+            text = sub.text.strip()
+            if not text:
+                continue
+            
+            translated = self._google_translate_text(text, from_lang="auto", to_lang="vi")
+            
+            if voice_mode == "edge_auto":
+                sub.text = f"[F] {translated}"
+            else:
+                sub.text = translated
+                
+        subs.save(output_srt, encoding='utf-8')
+
     def translate_srt(self, input_srt: str, output_srt: str, voice_mode: str = "none", audio_path: str = None):
         load_dotenv(ENV_PATH, override=True)
         from app.core.security import decrypt_data
@@ -106,10 +139,22 @@ SRT Gốc:
                     )
                     translated_text = response.choices[0].message.content
 
+            if not translated_text or not translated_text.strip():
+                raise Exception("Phản hồi dịch thuật từ AI bị rỗng hoặc không hợp lệ (Empty response)")
+
             with open(output_srt, "w", encoding="utf-8") as f:
                 f.write(translated_text.strip())
                 
             return output_srt
             
         except Exception as e:
-            raise Exception(f"Lỗi khi dịch phụ đề bằng AI ({active_provider}): {e}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Lỗi dịch thuật bằng AI ({active_provider}): {e}. Đang chuyển sang phương thức dự phòng Google Translate...")
+            
+            try:
+                self._translate_srt_fallback_google(input_srt, output_srt, voice_mode)
+                logger.info(f"Đã dịch phụ đề thành công bằng Google Translate dự phòng cho {output_srt}")
+                return output_srt
+            except Exception as google_err:
+                raise Exception(f"Lỗi dịch thuật bằng AI ({e}) và Google Translate dự phòng cũng thất bại: {google_err}")

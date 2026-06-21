@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, DownloadCloud, FileVideo, Settings, Video, History, Compass, Users, CalendarClock, ShieldCheck, Bot, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, DownloadCloud, FileVideo, Settings, Video, History, Compass, Users, CalendarClock, ShieldCheck, Bot, ChevronLeft, ChevronRight, Volume2 } from 'lucide-react';
 
 const Sidebar = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -40,6 +40,7 @@ const Sidebar = () => {
       items: [
         { to: "/social-accounts", title: "Tài khoản", icon: Users },
         { to: "/proxies", title: "Proxy", icon: ShieldCheck },
+        { to: "/vienue-settings", title: "Cấu hình VieNeu", icon: Volume2 },
         { to: "/settings", title: "Cấu hình", icon: Settings },
       ]
     }

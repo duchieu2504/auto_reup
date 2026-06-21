@@ -14,15 +14,37 @@ class Transcriber:
         load_dotenv(ENV_PATH, override=True)
         self.use_groq = os.getenv("USE_GROQ", "False").lower() == "true"
         self.groq_api_key = decrypt_data(os.getenv("GROQ_API_KEY", ""))
+        self.use_gpu = os.getenv("USE_GPU_ACCELERATION", "False").lower() == "true"
         
         # Chỉ load model CPU nếu không dùng Groq để tiết kiệm RAM
         self.model = None
         if not self.use_groq:
-            self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
+            self._init_whisper_model(model_size)
         elif self.use_groq and not self.groq_api_key:
             # Fallback nếu bật Groq nhưng quên nhập Key
             self.use_groq = False
-            self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
+            self._init_whisper_model(model_size)
+
+    def _init_whisper_model(self, model_size):
+        device = "cuda" if self.use_gpu else "cpu"
+        # GPU GTX 1650 4GB VRAM dùng float16 để tăng tốc độ và tiết kiệm bộ nhớ; CPU dùng int8
+        compute_type = "float16" if device == "cuda" else "int8"
+        
+        try:
+            print(f"Initializing WhisperModel '{model_size}' on '{device}' (compute_type={compute_type})...")
+            self.model = WhisperModel(model_size, device=device, compute_type=compute_type)
+            print(f"WhisperModel '{model_size}' successfully initialized on '{device}'.")
+        except Exception as e:
+            if device == "cuda":
+                print(f"Warning: Failed to load WhisperModel on GPU/CUDA: {e}. Falling back to CPU...")
+                try:
+                    self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
+                    print("WhisperModel successfully initialized on CPU fallback.")
+                except Exception as fallback_err:
+                    print(f"Critical Error: Failed to initialize WhisperModel on CPU fallback: {fallback_err}")
+                    raise fallback_err
+            else:
+                raise e
             
     def _extract_audio_for_api(self, video_path: str) -> str:
         audio_path = video_path + ".temp.mp3"

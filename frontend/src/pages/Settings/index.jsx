@@ -26,6 +26,8 @@ const Settings = () => {
   const [saveStatus, setSaveStatus] = useState("");
   const [validateStatus, setValidateStatus] = useState({ fpt: "", elevenlabs: "", gemini: "", openai: "", anthropic: "", xai: "", groq: "", pexels: "", douyin: "", gpm: "" });
   const [activeTab, setActiveTab] = useState("ai");
+  const [gpuStatus, setGpuStatus] = useState(null);
+  const [checkingGpu, setCheckingGpu] = useState(false);
 
   const settingsTabs = [
     { id: "ai", label: "API & AI Keys" },
@@ -34,6 +36,26 @@ const Settings = () => {
     { id: "system", label: "Hệ thống & Giám sát" },
     { id: "theme", label: "Giao diện" }
   ];
+
+  const fetchGpuStatus = () => {
+    setCheckingGpu(true);
+    fetch('http://localhost:8000/api/settings/gpu-status')
+      .then(res => res.json())
+      .then(data => {
+        setGpuStatus(data);
+        setCheckingGpu(false);
+      })
+      .catch(err => {
+        console.error("Lỗi fetch GPU:", err);
+        setCheckingGpu(false);
+      });
+  };
+
+  useEffect(() => {
+    if (activeTab === "system") {
+      fetchGpuStatus();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     fetch('http://localhost:8000/api/settings/keys')
@@ -425,10 +447,19 @@ const Settings = () => {
                     <option value="fpt">FPT.AI (Giọng chuẩn Việt Nam)</option>
                     <option value="openai">OpenAI TTS (Dùng chung key OpenAI, truyền cảm)</option>
                     <option value="elevenlabs">ElevenLabs (Siêu thực, biểu cảm)</option>
+                    <option value="vieneu">VieNeu-TTS (Offline, Tăng tốc GPU/CPU)</option>
                   </select>
+                  
+                  {activeTTSProvider === "vieneu" && (
+                    <div className="mt-3 p-3 bg-bg-secondary/50 rounded-xl border border-border-subtle text-xs text-text-secondary space-y-1">
+                      <p className="font-bold text-neon-purple">• Hệ thống lồng tiếng offline chất lượng cao tiếng Việt.</p>
+                      <p>• Yêu cầu đã cài đặt phần mềm <strong className="text-text-primary">eSpeak NG</strong> trên Windows và cấu hình PATH.</p>
+                      <p>• Tự động sử dụng GPU rời NVIDIA GTX 1650 qua CUDA để tăng tốc nếu bật Tăng tốc phần cứng.</p>
+                    </div>
+                  )}
                 </div>
 
-                {activeTTSProvider !== "edge" && (
+                {activeTTSProvider !== "edge" && activeTTSProvider !== "vieneu" && (
                   <div className="space-y-4">
                     <label className="block text-sm font-medium text-text-secondary mb-2">
                       API Key của {
@@ -565,7 +596,46 @@ const Settings = () => {
                       <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
                     </label>
                   </div>
-                  <p className="text-xs text-text-secondary">Sử dụng GPU (Intel QSV / Nvidia NVENC) để tăng tốc độ xử lý video bằng FFMPEG và giảm tải CPU. Hệ thống sẽ tự động quét và kiểm tra xem thiết bị của bạn có hỗ trợ GPU nào không.</p>
+                  <p className="text-xs text-text-secondary mb-4">Sử dụng GPU (Intel QSV / Nvidia NVENC) để tăng tốc độ xử lý video bằng FFMPEG và giảm tải CPU. Hệ thống sẽ tự động quét và kiểm tra xem thiết bị của bạn có hỗ trợ GPU nào không.</p>
+                  
+                  {/* GPU Check Status Box */}
+                  <div className="mt-3 pt-3 border-t border-border-subtle/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">🔍 Trạng thái phần cứng GPU:</span>
+                      <button
+                        type="button"
+                        onClick={fetchGpuStatus}
+                        disabled={checkingGpu}
+                        className="text-[9px] bg-bg-secondary hover:bg-bg-tertiary text-text-primary border border-border-subtle px-2 py-0.5 rounded transition-colors disabled:opacity-50 font-bold uppercase tracking-wide cursor-pointer"
+                      >
+                        {checkingGpu ? "Đang quét..." : "🔄 Quét lại"}
+                      </button>
+                    </div>
+                    {checkingGpu ? (
+                      <p className="text-xs text-neon-purple animate-pulse">Đang kiểm tra khả năng tương thích của GPU...</p>
+                    ) : gpuStatus ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2.5 h-2.5 rounded-full ${gpuStatus.can_use_gpu_acceleration ? 'bg-green-500 animate-pulse' : gpuStatus.gpu_available ? 'bg-amber-500' : 'bg-gray-500'}`} />
+                          <span className="text-xs font-semibold text-text-primary">{gpuStatus.gpu_name}</span>
+                          {gpuStatus.gpu_available && (
+                            <span className="text-[10px] bg-neon-purple/20 text-neon-purple px-1.5 py-0.5 rounded font-mono font-bold">CUDA {gpuStatus.cuda_version}</span>
+                          )}
+                        </div>
+                        <p className={`text-xs ${gpuStatus.can_use_gpu_acceleration ? 'text-green-500' : gpuStatus.gpu_available ? 'text-amber-500' : 'text-text-secondary'}`}>
+                          {gpuStatus.message}
+                        </p>
+                        {gpuStatus.gpu_available && (
+                          <div className="text-[10px] text-text-secondary/80 bg-bg-secondary/40 p-2 rounded border border-border-subtle/30 space-y-1">
+                            <p>• GPU rời NVIDIA hỗ trợ: <span className="text-green-500 font-semibold">Có</span></p>
+                            <p>• FFmpeg NVENC (Bộ giải mã card rời): <span className={gpuStatus.ffmpeg_nvenc_available ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{gpuStatus.ffmpeg_nvenc_available ? 'Khả dụng (✓)' : 'Không tìm thấy (✕)'}</span></p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-text-secondary italic">Chưa thực hiện quét phần cứng.</p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="bg-bg-tertiary/40 p-4 rounded-xl border border-border-subtle">

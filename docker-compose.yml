@@ -33,7 +33,6 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/autoreup
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
       - ./backend:/app
       - ./data:/data
@@ -52,7 +51,6 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/autoreup
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
       - ./backend:/app
       - ./data:/data
