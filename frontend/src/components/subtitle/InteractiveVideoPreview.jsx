@@ -92,7 +92,7 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
     >
       {/* Container for the media (Video or Image) */}
       <div 
-        className="w-full h-full flex items-center justify-center"
+        className={`w-full h-full flex items-center justify-center ${config.isDragging ? 'pointer-events-none' : ''}`}
         style={{
           transform: (config.flipVideo ? 'scaleX(-1) ' : '') + (config.optZoom ? 'scale(1.02) ' : '')
         }}
@@ -101,9 +101,21 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
       </div>
       
       {/* Overlay Subtitle */}
-      {config.enableSubtitles && (
+      {config.enableSubtitles && (() => {
+        const styleId = config.subtitleStyle || 'classic';
+        const isNeon = styleId === 'neon';
+        const isCloud = styleId === 'cloud';
+        const isRounded = styleId === 'rounded';
+        
+        let br = '4px';
+        if (isRounded) br = '16px';
+        if (isCloud) br = '20px 30px 25px 35px / 30px 20px 35px 25px';
+        
+        const bgColorHex = config.subtitleBgColor + Math.round((config.subtitleBgOpacity / 100) * 255).toString(16).padStart(2, '0').toUpperCase();
+        
+        return (
         <div 
-          className={`absolute w-full flex justify-center transition-opacity z-10 pointer-events-auto ${config.isDragging ? 'opacity-50' : 'hover:opacity-90'}`}
+          className={`absolute w-full flex justify-center transition-opacity z-50 pointer-events-auto ${config.isDragging ? 'opacity-50' : 'hover:opacity-90'}`}
           style={{ bottom: config.subtitleMarginV + '%', cursor: 'move' }}
           onMouseDown={(e) => {
             e.preventDefault();
@@ -112,21 +124,33 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
           }}
         >
           <div
-            className="text-center rounded-lg pointer-events-none"
+            className="text-center pointer-events-none relative"
             style={{
               color: config.subtitleTextColor,
-              backgroundColor: config.subtitleBgColor + Math.round((config.subtitleBgOpacity / 100) * 255).toString(16).padStart(2, '0').toUpperCase(),
+              backgroundColor: isNeon ? 'transparent' : bgColorHex,
               fontSize: config.subtitleFontSize + 'px',
               padding: `${config.subtitleBgPadding * 3}px ${config.subtitleBgPadding * 5}px`,
-              fontWeight: 'bold',
-              textShadow: '0px 1px 2px rgba(0,0,0,0.5)',
-              userSelect: 'none'
+              textShadow: isNeon ? 'none' : '0px 1px 2px rgba(0,0,0,0.5)',
+              userSelect: 'none',
+              borderRadius: br,
+              boxShadow: isNeon ? `0 0 10px ${config.subtitleBgColor}, inset 0 0 10px ${config.subtitleBgColor}` : 'none',
+              border: isNeon ? `2px solid ${config.subtitleBgColor}` : 'none',
             }}
           >
-            Đây là phụ đề mẫu tự động sinh...
+            {isNeon && (
+               <div style={{
+                 position: 'absolute', inset: 0, 
+                 backgroundColor: config.subtitleBgColor, opacity: config.subtitleBgOpacity / 100, 
+                 borderRadius: br, zIndex: 0, filter: 'blur(8px)'
+               }}></div>
+            )}
+            <span style={{ position: 'relative', zIndex: 1, textShadow: isNeon ? `0 0 8px ${config.subtitleBgColor}` : 'none' }}>
+              {config.previewSubtitleText || 'Đây là phụ đề mẫu tự động sinh...'}
+            </span>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Overlay Logo Masks */}
       {config.maskEnabled && (config.masks || []).map((mask, index) => {

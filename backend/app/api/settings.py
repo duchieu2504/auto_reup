@@ -61,6 +61,46 @@ async def get_available_fonts():
     # Thêm font mặc định vào đầu danh sách
     return {"fonts": [default_font] + sorted(fonts, key=lambda x: x["name"])}
 
+@router.get("/edit_profile/{video_id}")
+async def get_edit_profile(video_id: str):
+    profile_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../data/edit_profiles"))
+    os.makedirs(profile_dir, exist_ok=True)
+    
+    # Check specific video profile first
+    profile_path = os.path.join(profile_dir, f"{video_id}.json")
+    default_path = os.path.join(profile_dir, "default.json")
+    
+    try:
+        import json
+        # If specific config exists, return it
+        if os.path.exists(profile_path):
+            with open(profile_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        # Fallback to default if exists
+        elif os.path.exists(default_path):
+            with open(default_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Error reading edit profile: {e}")
+        
+    return {}
+
+@router.post("/edit_profile/{video_id}")
+async def save_edit_profile(video_id: str, request: Request):
+    profile_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../data/edit_profiles"))
+    os.makedirs(profile_dir, exist_ok=True)
+    profile_path = os.path.join(profile_dir, f"{video_id}.json")
+    
+    try:
+        import json
+        data = await request.json()
+        with open(profile_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return {"status": "success"}
+    except Exception as e:
+        print(f"Error saving edit profile: {e}")
+        return {"status": "error", "message": str(e)}
+
 @router.get("/voices")
 async def get_available_voices():
     load_dotenv(ENV_PATH, override=True)

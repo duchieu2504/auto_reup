@@ -26,17 +26,18 @@ export const Pagination = ({ currentPage, totalPages, onPageChange, itemsPerPage
       <div className="flex items-center gap-2">
         <span className="text-text-secondary">Hiển thị:</span>
         <select 
-          className="bg-bg-primary border border-border-subtle rounded px-2 py-1 text-text-primary focus:outline-none focus:border-brand-primary"
+          className="bg-bg-primary border border-border-subtle rounded-xl px-3 py-1.5 text-text-primary focus:outline-none focus:border-brand-primary cursor-pointer hover:bg-glass-hover transition-colors appearance-none shadow-sm font-medium"
+          style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%238892b0' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: `right 0.5rem center`, backgroundRepeat: `no-repeat`, backgroundSize: `1.5em 1.5em`, paddingRight: `2.5rem` }}
           value={itemsPerPage}
           onChange={(e) => {
             onItemsPerPageChange(Number(e.target.value));
             onPageChange(1);
           }}
         >
-          <option value={10}>10</option>
-          <option value={20}>20</option>
-          <option value={50}>50</option>
-          <option value={100}>100</option>
+          <option className="bg-bg-secondary text-text-primary" value={10}>10</option>
+          <option className="bg-bg-secondary text-text-primary" value={20}>20</option>
+          <option className="bg-bg-secondary text-text-primary" value={50}>50</option>
+          <option className="bg-bg-secondary text-text-primary" value={100}>100</option>
         </select>
         <span className="text-text-secondary">dòng</span>
       </div>

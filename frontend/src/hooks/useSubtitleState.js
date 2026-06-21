@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
-export const useSubtitleState = (initialConfig = {}) => {
+export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
   const [voice, setVoice] = useState(initialConfig.voice || 'edge_auto');
   const [volume, setVolume] = useState(initialConfig.volume ?? 10);
+  
+  // Preview Subtitle Text
+  const [previewSubtitleText, setPreviewSubtitleText] = useState(initialConfig.previewSubtitleText || 'Đây là phụ đề mẫu tự động sinh...');
   
   // Micro-alterations
   const [flipVideo, setFlipVideo] = useState(initialConfig.flipVideo || false);
@@ -93,6 +96,49 @@ export const useSubtitleState = (initialConfig = {}) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isDraggingWatermark, setIsDraggingWatermark] = useState(false);
 
+  // Load from backend API if initialConfig is empty
+  useEffect(() => {
+    if (Object.keys(initialConfig).length === 0 && videoId) {
+      fetch(`http://localhost:8000/api/settings/edit_profile/${videoId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && Object.keys(data).length > 0) {
+            if (data.voice) setVoice(data.voice);
+            if (data.volume !== undefined) setVolume(data.volume);
+            if (data.previewSubtitleText) setPreviewSubtitleText(data.previewSubtitleText);
+            if (data.flipVideo !== undefined) setFlipVideo(data.flipVideo);
+            if (data.optZoom !== undefined) setOptZoom(data.optZoom);
+            if (data.optColor !== undefined) setOptColor(data.optColor);
+            if (data.optNoise !== undefined) setOptNoise(data.optNoise);
+            if (data.optPitch !== undefined) setOptPitch(data.optPitch);
+            if (data.subtitleFont) setSubtitleFont(data.subtitleFont);
+            if (data.subtitleStyle) setSubtitleStyle(data.subtitleStyle);
+            if (data.subtitleTextColor) setSubtitleTextColor(data.subtitleTextColor);
+            if (data.subtitleBgColor) setSubtitleBgColor(data.subtitleBgColor);
+            if (data.subtitleFontSize !== undefined) setSubtitleFontSize(data.subtitleFontSize);
+            if (data.subtitleMarginV !== undefined) setSubtitleMarginV(data.subtitleMarginV);
+            if (data.subtitleBgPadding !== undefined) setSubtitleBgPadding(data.subtitleBgPadding);
+            if (data.subtitleBgOpacity !== undefined) setSubtitleBgOpacity(data.subtitleBgOpacity);
+            if (data.watermarkType) setWatermarkType(data.watermarkType);
+            if (data.watermarkText) setWatermarkText(data.watermarkText);
+            if (data.watermarkImagePreview) setWatermarkImagePreview(data.watermarkImagePreview);
+            if (data.watermarkX !== undefined) setWatermarkX(data.watermarkX);
+            if (data.watermarkY !== undefined) setWatermarkY(data.watermarkY);
+            if (data.watermarkSize !== undefined) setWatermarkSize(data.watermarkSize);
+            if (data.watermarkColor) setWatermarkColor(data.watermarkColor);
+            if (data.watermarkOpacity !== undefined) setWatermarkOpacity(data.watermarkOpacity);
+            if (data.enableSubtitles !== undefined) setEnableSubtitles(data.enableSubtitles);
+            if (data.maskEnabled !== undefined) setMaskEnabled(data.maskEnabled);
+            if (data.masks && data.masks.length > 0) {
+              setMasks(data.masks);
+              setActiveMaskId(data.masks[0].id);
+            }
+          }
+        })
+        .catch(err => console.error('Failed to load edit profile from backend:', err));
+    }
+  }, [videoId]);
+
   const toggleAllMicroAlterations = () => {
     const newState = !(flipVideo && optZoom && optColor && optNoise && optPitch);
     setFlipVideo(newState);
@@ -152,10 +198,21 @@ export const useSubtitleState = (initialConfig = {}) => {
     voice, volume, flipVideo, optZoom, optColor, optNoise, optPitch,
     subtitleFont, subtitleStyle, subtitleTextColor, subtitleBgColor,
     subtitleFontSize, subtitleMarginV, subtitleBgPadding, subtitleBgOpacity,
+    previewSubtitleText,
     watermarkType, watermarkText, watermarkImagePreview,
     watermarkX, watermarkY, watermarkSize, watermarkColor, watermarkOpacity,
     enableSubtitles, maskEnabled, masks
   });
+  
+  // Auto-save to backend when config changes (with debounce/effect logic implemented where called)
+  const saveEditProfile = () => {
+    if (!videoId) return;
+    fetch(`http://localhost:8000/api/settings/edit_profile/${videoId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(getCurrentConfigObj())
+    }).catch(err => console.error('Failed to save edit profile to backend:', err));
+  };
 
   const normalizeConfig = (configObj) => {
     if (!configObj) return null;
@@ -175,6 +232,7 @@ export const useSubtitleState = (initialConfig = {}) => {
       subtitleMarginV: String(configObj.subtitleMarginV || ''),
       subtitleBgPadding: String(configObj.subtitleBgPadding || ''),
       subtitleBgOpacity: String(configObj.subtitleBgOpacity || ''),
+      previewSubtitleText: String(configObj.previewSubtitleText || ''),
       watermarkType: String(configObj.watermarkType || ''),
       watermarkText: String(configObj.watermarkText || ''),
       watermarkImagePreview: String(configObj.watermarkImagePreview || ''),
@@ -207,6 +265,7 @@ export const useSubtitleState = (initialConfig = {}) => {
     flipVideo, optZoom, optColor, optNoise, optPitch,
     subtitleFont, subtitleStyle, subtitleTextColor, subtitleBgColor,
     subtitleFontSize, subtitleMarginV, subtitleBgPadding, subtitleBgOpacity,
+    previewSubtitleText,
     // Watermark State values
     watermarkType, watermarkText, watermarkImageFile, watermarkImagePreview,
     watermarkX, watermarkY, watermarkSize, watermarkColor, watermarkOpacity,
@@ -223,6 +282,7 @@ export const useSubtitleState = (initialConfig = {}) => {
     setFlipVideo, setOptZoom, setOptColor, setOptNoise, setOptPitch,
     setSubtitleFont, setSubtitleStyle, setSubtitleTextColor, setSubtitleBgColor,
     setSubtitleFontSize, setSubtitleMarginV, setSubtitleBgPadding, setSubtitleBgOpacity,
+    setPreviewSubtitleText,
     setWatermarkType, setWatermarkText, setWatermarkImageFile, setWatermarkImagePreview,
     setWatermarkX, setWatermarkY, setWatermarkSize, setWatermarkColor, setWatermarkOpacity,
     setEnableSubtitles, setMaskEnabled, setMasks, setActiveMaskId,
@@ -234,6 +294,7 @@ export const useSubtitleState = (initialConfig = {}) => {
     toggleAllMicroAlterations,
     handleMouseMove,
     handleMouseUpOrLeave,
-    getCurrentConfigObj
+    getCurrentConfigObj,
+    saveEditProfile
   };
 };

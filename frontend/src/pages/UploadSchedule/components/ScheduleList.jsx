@@ -43,6 +43,7 @@ export const ScheduleList = ({ hook }) => {
         <table className="w-full text-left border-collapse">
           <thead className="bg-bg-primary sticky top-0 z-10 shadow-sm">
             <tr>
+              <th className="p-4 text-xs font-semibold text-text-secondary uppercase tracking-wider w-12 text-center border-r border-border-subtle/50">STT</th>
               <th className="p-4 text-xs font-semibold text-text-secondary uppercase tracking-wider">Video ID</th>
               <th className="p-4 text-xs font-semibold text-text-secondary uppercase tracking-wider">Account</th>
               <th className="p-4 text-xs font-semibold text-text-secondary uppercase tracking-wider">Engine</th>
@@ -54,13 +55,16 @@ export const ScheduleList = ({ hook }) => {
           <tbody className="divide-y divide-border-subtle">
             {schedules.length === 0 && (
               <tr>
-                <td colSpan="6" className="p-8 text-center text-text-tertiary">
+                <td colSpan="7" className="p-8 text-center text-text-tertiary">
                   Chưa có lịch đăng nào được tạo.
                 </td>
               </tr>
             )}
-            {currentSchedules.map(sch => (
+            {currentSchedules.map((sch, index) => (
               <tr key={sch.id} className="hover:bg-glass-hover transition-colors">
+                <td className="p-4 text-sm font-bold text-center text-text-secondary border-r border-border-subtle/50">
+                  {(currentPage - 1) * itemsPerPage + index + 1}
+                </td>
                 <td className="p-4 text-sm font-medium">
                   {(() => {
                     const v = videos.find(v => v.id === sch.video_history_id);

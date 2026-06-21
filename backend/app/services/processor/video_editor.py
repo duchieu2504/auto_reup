@@ -92,6 +92,7 @@ class VideoEditor:
         print(f"[*] Sử dụng Video Encoder: {vcodec} (GPU={use_gpu})")
 
         cmd = [ffmpeg_exe, "-y", "-i", input_video]
+        input_count = 1
         video_w, video_h = get_video_resolution(input_video)
         
         # Build dynamic video filters
@@ -113,21 +114,35 @@ class VideoEditor:
         real_margin_v = int(video_h * float(subtitle_margin_v) / 100.0)
         real_bg_padding = max(0, int(float(subtitle_bg_padding) * scale_factor))
         
+        subs_input_idx = -1
         if enable_subtitles and srt_file:
-            # Escape path for FFmpeg subtitles filter on Windows
-            srt_escaped = srt_file.replace('\\', '/').replace(':', '\\:')
-            # Sử dụng các tham số tùy chỉnh thay vì preset
-            primary_color = hex_to_ass_color(subtitle_text_color, "00")
+            from app.services.processor.subtitle_renderer import SubtitleRenderer
+            import tempfile
             
-            # Calculate alpha from opacity (100 -> 00, 0 -> FF)
-            alpha_val = int((100 - subtitle_bg_opacity) * 255 / 100)
-            alpha_hex = f"{alpha_val:02X}"
-            back_color = hex_to_ass_color(subtitle_bg_color, alpha_hex)
+            # Use /tmp directly on Linux (Docker), but fallback to system temp on Windows
+            subs_dir = tempfile.mkdtemp(prefix="subs_")
             
-            # BorderStyle=3 (Opaque box) = Solid rectangle background matching the UI preview
-            style = f"Fontname={subtitle_font_family},Fontsize={real_sub_size},PrimaryColour={primary_color},OutlineColour={back_color},BackColour={back_color},BorderStyle=3,Outline={real_bg_padding},Shadow=0,Alignment=2,MarginV={real_margin_v}"
-                
-            vf_filters.append(f"subtitles='{srt_escaped}':force_style='{style}'")
+            renderer = SubtitleRenderer(
+                video_width=video_w,
+                video_height=video_h,
+                font_family=subtitle_font_family,
+                font_size=subtitle_font_size,
+                text_color=subtitle_text_color,
+                bg_color=subtitle_bg_color,
+                bg_opacity=subtitle_bg_opacity,
+                margin_v=subtitle_margin_v,
+                bg_padding=subtitle_bg_padding,
+                style=subtitle_style
+            )
+            
+            concat_file = renderer.generate_subtitle_sequence(srt_file, subs_dir)
+            
+            # Format path for FFmpeg on Windows if needed
+            concat_escaped = concat_file.replace('\\', '/')
+            
+            cmd.extend(["-f", "concat", "-safe", "0", "-i", concat_escaped])
+            subs_input_idx = input_count
+            input_count += 1
         
         # Add watermark filter if applicable
         if watermark_type == "text" and watermark_text:
@@ -211,25 +226,31 @@ class VideoEditor:
                     v_filter_complex = v_filter_complex[:-len(input_label)] + "[vbase]"
             else:
                 v_filter_complex = "[0:v]copy[vbase]"
+                
+        # Overlay generated subtitles if any
+        if subs_input_idx != -1:
+            v_filter_complex += f";[vbase][{subs_input_idx}:v]overlay=x=0:y=0:shortest=1[vsub_out]"
+            vbase_label = "[vsub_out]"
+        else:
+            vbase_label = "[vbase]"
         
         print(f"DEBUG V_FILTER_COMPLEX: {v_filter_complex}")
         
         wm_idx = -1
         if watermark_type == "image" and watermark_image_path and os.path.exists(watermark_image_path):
             cmd.extend(["-i", watermark_image_path])
-            wm_idx = 1
+            wm_idx = input_count
+            input_count += 1
             opacity_val = watermark_opacity / 100.0
-            v_filter_complex += f";[{wm_idx}:v]format=rgba,colorchannelmixer=aa={opacity_val},scale=iw*{watermark_size}/100:-1[wm];[vbase][wm]overlay=x=(W-w)*{watermark_x}/100:y=(H-h)*{watermark_y}/100[vout]"
+            v_filter_complex += f";[{wm_idx}:v]format=rgba,colorchannelmixer=aa={opacity_val},scale=iw*{watermark_size}/100:-1[wm];{vbase_label}[wm]overlay=x=(W-w)*{watermark_x}/100:y=(H-h)*{watermark_y}/100[vout]"
         else:
-            if v_filter_complex.endswith("[vbase]"):
-                v_filter_complex = v_filter_complex.replace("[vbase]", "[vout]")
-            else:
-                v_filter_complex += ";[vbase]copy[vout]"
+            v_filter_complex += f";{vbase_label}copy[vout]"
             
         tts_idx = -1
         if tts_audio and os.path.exists(tts_audio):
             cmd.extend(["-i", tts_audio])
-            tts_idx = 2 if wm_idx != -1 else 1
+            tts_idx = input_count
+            input_count += 1
 
         filter_complex_str = v_filter_complex
         a_map = "0:a?"

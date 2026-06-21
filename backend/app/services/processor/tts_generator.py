@@ -258,6 +258,25 @@ class TTSGenerator:
                 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
                 
                 clip_audio = AudioSegment.from_wav(clip_wav_path)
+                audio_duration_ms = len(clip_audio)
+                
+                # Áp dụng thuật toán FFmpeg ATempo nếu audio sinh ra dài hơn thời gian cho phép của phụ đề
+                target_duration_ms = max(end_ms - start_ms, 100)
+                if audio_duration_ms > target_duration_ms:
+                    ratio = audio_duration_ms / target_duration_ms
+                    if ratio > 1.05: # Nếu dài hơn 5%, bắt đầu ép tốc độ
+                        # Cắt giới hạn tối đa 1.5x để tránh bị méo giọng (chipmunk)
+                        ratio = min(ratio, 1.5)
+                        stretched_wav_path = os.path.join(tmp_dir, f"clip_{i}_stretched.wav")
+                        
+                        subprocess.run([
+                            imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", clip_wav_path,
+                            "-filter:a", f"atempo={ratio}", stretched_wav_path
+                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                        
+                        clip_audio = AudioSegment.from_wav(stretched_wav_path)
+                        if os.path.exists(stretched_wav_path):
+                            os.remove(stretched_wav_path)
                 
                 # Overlay audio clip at exact start time
                 base_audio = base_audio.overlay(clip_audio, position=start_ms)

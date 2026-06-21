@@ -16,7 +16,7 @@ const EditVideo = () => {
   
   // Custom hooks
   const editHook = useEditVideo(id);
-  const subtitleConfig = useSubtitleState();
+  const subtitleConfig = useSubtitleState(id);
   const [activeTab, setActiveTab] = useState('subtitle'); // 'subtitle' | 'watermark' | 'srt'
 
   if (editHook.loading) {
@@ -182,7 +182,12 @@ const EditVideo = () => {
             <SaveProfileButton config={subtitleConfig} />
             <button 
               className="px-6 py-2.5 bg-gradient-to-r from-brand-primary to-purple-600 hover:opacity-95 text-white rounded-xl font-semibold transition-all duration-300 flex items-center gap-2 shadow-lg shadow-brand-primary/20 cursor-pointer text-sm"
-              onClick={() => handleSaveAndRender(subtitleConfig)}
+              onClick={() => {
+                if (typeof subtitleConfig.saveEditProfile === 'function') {
+                  subtitleConfig.saveEditProfile();
+                }
+                handleSaveAndRender(subtitleConfig);
+              }}
               disabled={saving}
             >
               {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}

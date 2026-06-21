@@ -221,6 +221,20 @@ export const SubtitleConfigPanel = ({ config }) => {
               </select>
             </div>
             
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Kiểu Nền (Style)</label>
+              <select
+                value={config.subtitleStyle}
+                onChange={e => config.setSubtitleStyle(e.target.value)}
+                className="w-full bg-bg-primary border border-border-subtle text-text-primary text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-neon-purple cursor-pointer"
+              >
+                <option value="classic">Cổ điển (Vuông)</option>
+                <option value="rounded">Bo Góc (Sang trọng)</option>
+                <option value="cloud">Đám mây (Lượn sóng)</option>
+                <option value="neon">Neon Glow (Phát sáng)</option>
+              </select>
+            </div>
+            
             <div className="flex items-center justify-between bg-bg-primary/60 border border-border-subtle rounded-xl p-2 h-[38px]">
               <label className="text-xs font-bold text-text-secondary uppercase tracking-wider pl-1">Màu Chữ</label>
               <input 
@@ -257,6 +271,19 @@ export const SubtitleConfigPanel = ({ config }) => {
           </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2 bg-bg-primary/30 border border-border-subtle rounded-xl p-3 sm:col-span-2">
+              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider flex justify-between">
+                <span>Nội Dung Phụ Đề Mẫu</span>
+              </label>
+              <input 
+                type="text" 
+                value={config.previewSubtitleText || ''} 
+                onChange={e => config.setPreviewSubtitleText(e.target.value)} 
+                placeholder="Nhập nội dung mẫu..."
+                className="w-full bg-bg-primary border border-white/5 text-text-primary text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-neon-purple"
+              />
+            </div>
+            
             <div className="flex flex-col gap-2 bg-bg-primary/30 border border-border-subtle rounded-xl p-3">
               <label className="text-xs font-bold text-text-secondary uppercase tracking-wider flex justify-between">
                 <span>Kích Thước Chữ</span>
