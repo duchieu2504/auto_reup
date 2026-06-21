@@ -331,6 +331,29 @@ class TTSGenerator:
                 
                 clip_audio = AudioSegment.from_wav(clip_wav_path)
                 
+                # Check duration mismatch and speed up if necessary
+                audio_len_ms = len(clip_audio)
+                if audio_len_ms > duration_ms:
+                    speed_factor = audio_len_ms / duration_ms
+                    # Limit maximum speed factor to keep voice natural (e.g. 1.5)
+                    speed_factor = min(speed_factor, 1.5)
+                    
+                    if speed_factor > 1.01:  # Only speed up if mismatch is significant (>1%)
+                        speed_wav_path = os.path.join(tmp_dir, f"clip_{i}_speed.wav")
+                        try:
+                            # Apply ffmpeg atempo filter to speed up audio without changing pitch
+                            subprocess.run([
+                                imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", clip_wav_path,
+                                "-filter:a", f"atempo={speed_factor}", speed_wav_path
+                            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                            
+                            if os.path.exists(speed_wav_path):
+                                clip_audio = AudioSegment.from_wav(speed_wav_path)
+                                os.remove(speed_wav_path)
+                                log_callback(f"[*] Đồng bộ âm thanh dòng {i}: Tăng tốc {speed_factor:.2f}x (Thời lượng phụ đề: {duration_ms}ms, TTS gốc: {audio_len_ms}ms)\n")
+                        except Exception as speed_err:
+                            log_callback(f"[!] Lỗi khi tăng tốc audio dòng {i}: {speed_err}. Tiếp tục sử dụng audio gốc.\n")
+                
                 # Overlay audio clip at exact start time
                 base_audio = base_audio.overlay(clip_audio, position=start_ms)
                 
