@@ -134,11 +134,24 @@ async def get_available_voices():
             {"id": "elevenlabs_mimi", "name": "ElevenLabs (Mimi - Nữ em bé)", "provider": "ElevenLabs"}
         ])
     elif active_tts == "vieneu":
-        voices.extend([
-            {"id": "vieneu_female", "name": "VieNeu Nữ (Miền Nam/Bắc)", "provider": "VieNeu-TTS"},
-            {"id": "vieneu_male", "name": "VieNeu Nam (Miền Nam/Bắc)", "provider": "VieNeu-TTS"},
-            {"id": "vieneu_default", "name": "VieNeu Giọng Mặc Định", "provider": "VieNeu-TTS"}
-        ])
+        try:
+            from vieneu import Vieneu
+            tts = Vieneu()
+            presets = tts.list_preset_voices()
+            for desc, v_id in presets:
+                voices.append({
+                    "id": f"vieneu_{v_id}",
+                    "name": f"VieNeu: {desc}",
+                    "provider": "VieNeu-TTS"
+                })
+        except Exception as e:
+            print(f"Error loading Vieneu presets: {e}")
+            # Fallback if library not loaded
+            voices.extend([
+                {"id": "vieneu_female", "name": "VieNeu Nữ (Miền Nam/Bắc)", "provider": "VieNeu-TTS"},
+                {"id": "vieneu_male", "name": "VieNeu Nam (Miền Nam/Bắc)", "provider": "VieNeu-TTS"},
+                {"id": "vieneu_default", "name": "VieNeu Giọng Mặc Định", "provider": "VieNeu-TTS"}
+            ])
         
         # Add cloned voices
         clone_dir = os.path.join(DATA_DIR, "vieneu_clones")
