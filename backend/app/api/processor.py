@@ -171,6 +171,14 @@ async def start_processor(request: ProcessRequest):
                         "mask_type": request.mask_type,
                         "mask_color": request.mask_color,
                         "masks": [m.dict() for m in request.masks],
+                        "watermark_type": request.watermark_type,
+                        "watermark_text": request.watermark_text,
+                        "watermark_image_path": request.watermark_image_path,
+                        "watermark_x": request.watermark_x,
+                        "watermark_y": request.watermark_y,
+                        "watermark_size": request.watermark_size,
+                        "watermark_color": request.watermark_color,
+                        "watermark_opacity": request.watermark_opacity,
                     }
 
                     config_changed = (old_config != new_config)

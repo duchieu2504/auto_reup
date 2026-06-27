@@ -22,6 +22,10 @@ const Settings = () => {
   const [gpmApiUrl, setGpmApiUrl] = useState("");
   const [themeBgType, setThemeBgType] = useState("default");
   const [themeBgCustomPath, setThemeBgCustomPath] = useState("");
+  const [hfToken, setHfToken] = useState("");
+  const [enableDemucs, setEnableDemucs] = useState(false);
+  const [enableDiarization, setEnableDiarization] = useState(false);
+  const [bgmVolume, setBgmVolume] = useState(50);
   const [uploadBgStatus, setUploadBgStatus] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   const [validateStatus, setValidateStatus] = useState({ fpt: "", elevenlabs: "", gemini: "", openai: "", anthropic: "", xai: "", groq: "", pexels: "", douyin: "", gpm: "" });
@@ -82,6 +86,10 @@ const Settings = () => {
         if (data.gpm_api_url) setGpmApiUrl(data.gpm_api_url);
         if (data.theme_bg_type) setThemeBgType(data.theme_bg_type);
         if (data.theme_bg_custom_path) setThemeBgCustomPath(data.theme_bg_custom_path);
+        if (data.hf_token) setHfToken(data.hf_token);
+        if (data.enable_demucs !== undefined) setEnableDemucs(data.enable_demucs);
+        if (data.enable_diarization !== undefined) setEnableDiarization(data.enable_diarization);
+        if (data.bgm_volume !== undefined) setBgmVolume(data.bgm_volume);
 
         // Tự động kiểm tra trạng thái ngay khi load trang nếu có dữ liệu
         if (data.fpt_ai_api_key || data.gemini_api_key || data.douyin_cookie || data.pexels_api_key) {
@@ -154,7 +162,11 @@ const Settings = () => {
           enable_health_check: enableHealthCheck,
           health_check_interval_hours: Number(healthCheckInterval),
           theme_bg_type: themeBgType,
-          theme_bg_custom_path: themeBgCustomPath
+          theme_bg_custom_path: themeBgCustomPath,
+          hf_token: hfToken,
+          enable_demucs: enableDemucs,
+          enable_diarization: enableDiarization,
+          bgm_volume: Number(bgmVolume)
         })
       });
       if (res.ok) {
@@ -428,6 +440,65 @@ const Settings = () => {
                     onChange={(e) => setConcurrency(e.target.value)}
                   />
                   <p className="text-xs text-text-secondary mt-2 italic">Lưu ý: Tăng số luồng sẽ tốn nhiều RAM/VRAM máy chủ hơn khi dùng AI Whisper/TTS nội bộ.</p>
+                </div>
+
+                <div className="bg-bg-tertiary/40 p-4 rounded-xl border border-border-subtle">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-bold text-text-primary">🎙️ Phân tách Người nói (Pyannote Diarization)</label>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={enableDiarization}
+                        onChange={(e) => setEnableDiarization(e.target.checked)}
+                      />
+                      <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                    </label>
+                  </div>
+                  <p className="text-xs text-text-secondary mb-3">Tự động nhận diện nhiều người nói trong video (Nam/Nữ) để gán giọng AI khác nhau. Yêu cầu có Hugging Face Token.</p>
+                  
+                  {enableDiarization && (
+                    <div className="mt-4">
+                      <input
+                        type="text"
+                        className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 text-sm font-medium"
+                        placeholder="Nhập Hugging Face Token (hf_...) tại đây..."
+                        value={hfToken}
+                        onChange={(e) => setHfToken(e.target.value)}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-bg-tertiary/40 p-4 rounded-xl border border-border-subtle">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-bold text-text-primary">🎵 Tách Nhạc Nền (Demucs Audio Separation)</label>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={enableDemucs}
+                        onChange={(e) => setEnableDemucs(e.target.checked)}
+                      />
+                      <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                    </label>
+                  </div>
+                  <p className="text-xs text-text-secondary mb-3">Xóa giọng nói gốc nhưng GIỮ NGUYÊN nhạc nền và tiếng động (BGM/SFX). Tốn rất nhiều CPU/GPU khi chạy.</p>
+                  
+                  {enableDemucs && (
+                    <div className="mt-4">
+                      <label className="block text-xs font-medium text-text-secondary mb-2">Âm lượng Nhạc nền (BGM Volume %)</label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={bgmVolume}
+                        onChange={(e) => setBgmVolume(e.target.value)}
+                        className="w-full h-2 bg-bg-secondary rounded-lg appearance-none cursor-pointer"
+                      />
+                      <div className="text-right text-xs font-bold mt-1 text-brand-primary">{bgmVolume}%</div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Enum
+from sqlalchemy import Column, Integer, String, DateTime, Text, Enum, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import enum
@@ -27,7 +27,7 @@ class VideoHistory(Base):
     source = Column(String, index=True) # Douyin, Xiaohongshu...
     
     # Tiền trình
-    status = Column(String, default=ProcessStatus.PENDING)
+    status = Column(String, default=ProcessStatus.PENDING, index=True)
     error_message = Column(Text, nullable=True)
     
     # Nền tảng đã upload
@@ -47,7 +47,7 @@ class VideoHistory(Base):
     original_hashtags = Column(Text, nullable=True)
     author_sec_uid = Column(String(255), nullable=True, index=True)
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationship for eager loading (lazy='noload' = only loaded when explicitly requested)

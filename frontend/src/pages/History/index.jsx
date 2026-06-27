@@ -1,13 +1,11 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useHistoryData } from './hooks/useHistoryData';
 import { HistoryTable } from './components/HistoryTable';
 import { PreviewModal } from './components/PreviewModal';
 import { BulkConfigModal } from './components/BulkConfigModal';
-import { useSubtitleState } from '../../hooks/useSubtitleState';
 
 export default function History() {
   const historyHook = useHistoryData();
-  const subtitleConfig = useSubtitleState();
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto w-full pb-20">
@@ -24,7 +22,7 @@ export default function History() {
 
       <HistoryTable hook={historyHook} />
       <PreviewModal hook={historyHook} />
-      <BulkConfigModal hook={historyHook} subtitleConfig={subtitleConfig} />
+      <BulkConfigModal hook={historyHook} />
     </div>
   );
 }

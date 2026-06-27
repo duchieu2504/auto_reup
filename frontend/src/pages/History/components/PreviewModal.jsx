@@ -17,9 +17,9 @@ export const PreviewModal = ({ hook }) => {
         <h3 className="text-xl font-bold">Preview</h3>
         <div className="w-full bg-black rounded-lg overflow-hidden flex items-center justify-center min-h-[300px]">
           {previewType === 'video' ? (
-            <video src={previewFile} controls autoPlay className="w-full max-h-[60vh] object-contain" />
+            <video src={`${previewFile}${previewFile.includes('?') ? '&' : '?'}t=${Date.now()}`} controls autoPlay className="w-full max-h-[60vh] object-contain" />
           ) : (
-            <audio src={previewFile} controls autoPlay className="w-full max-w-md" />
+            <audio src={`${previewFile}${previewFile.includes('?') ? '&' : '?'}t=${Date.now()}`} controls autoPlay className="w-full max-w-md" />
           )}
         </div>
       </div>

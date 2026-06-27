@@ -1,6 +1,8 @@
 import os
 import requests
-from fastapi import APIRouter, Request, UploadFile, File, Form
+from fastapi import APIRouter, Request, UploadFile, File, Form, Depends
+from sqlalchemy.orm import Session
+from app.db.session import get_db
 from pydantic import BaseModel
 from dotenv import load_dotenv, set_key
 from app.core.config import DATA_DIR
@@ -32,6 +34,10 @@ class KeysUpdate(BaseModel):
     health_check_interval_hours: int = 4
     theme_bg_type: str = "default"
     theme_bg_custom_path: str = ""
+    hf_token: str = ""
+    enable_demucs: bool = False
+    enable_diarization: bool = False
+    bgm_volume: int = 50
 
 @router.get("/fonts")
 async def get_available_fonts():
@@ -62,7 +68,7 @@ async def get_available_fonts():
     return {"fonts": [default_font] + sorted(fonts, key=lambda x: x["name"])}
 
 @router.get("/edit_profile/{video_id}")
-async def get_edit_profile(video_id: str):
+async def get_edit_profile(video_id: str, db: Session = Depends(get_db)):
     profile_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../data/edit_profiles"))
     os.makedirs(profile_dir, exist_ok=True)
     
@@ -76,8 +82,53 @@ async def get_edit_profile(video_id: str):
         if os.path.exists(profile_path):
             with open(profile_path, "r", encoding="utf-8") as f:
                 return json.load(f)
+                
+        # Fallback to process_config in db if video_id is a history id
+        if video_id.isdigit():
+            from app.models.history import VideoHistory
+            record = db.query(VideoHistory).filter(VideoHistory.id == int(video_id)).first()
+            if record and record.process_config:
+                try:
+                    p_config = json.loads(record.process_config)
+                    camel_config = {
+                        "voice": p_config.get("voice_mode"),
+                        "volume": p_config.get("bg_volume"),
+                        "flipVideo": p_config.get("flip_video"),
+                        "optZoom": p_config.get("opt_zoom"),
+                        "optColor": p_config.get("opt_color"),
+                        "optNoise": p_config.get("opt_noise"),
+                        "optPitch": p_config.get("opt_pitch"),
+                        "subtitleFont": p_config.get("subtitle_font_family"),
+                        "subtitleStyle": p_config.get("subtitle_style"),
+                        "subtitleTextColor": p_config.get("subtitle_text_color"),
+                        "subtitleBgColor": p_config.get("subtitle_bg_color"),
+                        "subtitleFontSize": p_config.get("subtitle_font_size"),
+                        "subtitleMarginV": p_config.get("subtitle_margin_v"),
+                        "subtitleBgPadding": p_config.get("subtitle_bg_padding"),
+                        "enableSubtitles": p_config.get("enable_subtitles"),
+                        "maskEnabled": p_config.get("mask_enabled"),
+                        "maskX": p_config.get("mask_x"),
+                        "maskY": p_config.get("mask_y"),
+                        "maskWidth": p_config.get("mask_width"),
+                        "maskHeight": p_config.get("mask_height"),
+                        "maskType": p_config.get("mask_type"),
+                        "maskColor": p_config.get("mask_color"),
+                        "masks": p_config.get("masks", []),
+                        "watermarkType": p_config.get("watermark_type"),
+                        "watermarkText": p_config.get("watermark_text"),
+                        "watermarkImagePreview": p_config.get("watermark_image_path"),
+                        "watermarkX": p_config.get("watermark_x"),
+                        "watermarkY": p_config.get("watermark_y"),
+                        "watermarkSize": p_config.get("watermark_size"),
+                        "watermarkColor": p_config.get("watermark_color"),
+                        "watermarkOpacity": p_config.get("watermark_opacity")
+                    }
+                    return {k: v for k, v in camel_config.items() if v is not None}
+                except Exception as e:
+                    print(f"Error parsing process_config for {video_id}: {e}")
+                    
         # Fallback to default if exists
-        elif os.path.exists(default_path):
+        if os.path.exists(default_path):
             with open(default_path, "r", encoding="utf-8") as f:
                 return json.load(f)
     except Exception as e:
@@ -101,10 +152,18 @@ async def save_edit_profile(video_id: str, request: Request):
         print(f"Error saving edit profile: {e}")
         return {"status": "error", "message": str(e)}
 
+# In-memory cache for voices list (avoids re-initializing VieNeu engine on every request)
+_voices_cache = {"provider": None, "voices": None}
+
 @router.get("/voices")
 async def get_available_voices():
+    global _voices_cache
     load_dotenv(ENV_PATH, override=True)
     active_tts = os.getenv("ACTIVE_TTS_PROVIDER", "edge")
+    
+    # Return cached result if provider hasn't changed
+    if _voices_cache["provider"] == active_tts and _voices_cache["voices"] is not None:
+        return {"voices": _voices_cache["voices"]}
     
     voices = []
     
@@ -135,18 +194,31 @@ async def get_available_voices():
         ])
     elif active_tts == "vieneu":
         try:
-            from vieneu import Vieneu
-            tts = Vieneu()
-            presets = tts.list_preset_voices()
-            for desc, v_id in presets:
-                voices.append({
-                    "id": f"vieneu_{v_id}",
-                    "name": f"VieNeu: {desc}",
-                    "provider": "VieNeu-TTS"
-                })
+            import json
+            import importlib.util
+            from pathlib import Path
+            
+            # Find vieneu package path without importing its heavy modules
+            spec = importlib.util.find_spec("vieneu")
+            if spec and spec.origin:
+                assets_path = Path(spec.origin).parent / "assets" / "voices_v3_turbo.json"
+                if assets_path.exists():
+                    data = json.loads(assets_path.read_text(encoding="utf-8"))
+                    for name, v in data.get("presets", {}).items():
+                        desc = v.get("description", "")
+                        label = f"{name} — {desc}" if desc else name
+                        voices.append({
+                            "id": f"vieneu_{name}",
+                            "name": f"VieNeu: {label}",
+                            "provider": "VieNeu-TTS"
+                        })
+                else:
+                    raise FileNotFoundError("assets/voices_v3_turbo.json not found")
+            else:
+                raise ImportError("vieneu module not found")
         except Exception as e:
-            print(f"Error loading Vieneu presets: {e}")
-            # Fallback if library not loaded
+            print(f"Error loading Vieneu presets JSON: {e}")
+            # Fallback if library or file not found
             voices.extend([
                 {"id": "vieneu_female", "name": "VieNeu Nữ (Miền Nam/Bắc)", "provider": "VieNeu-TTS"},
                 {"id": "vieneu_male", "name": "VieNeu Nam (Miền Nam/Bắc)", "provider": "VieNeu-TTS"},
@@ -175,6 +247,9 @@ async def get_available_voices():
         ])
         
     voices.append({"id": "none", "name": "Không lồng tiếng (Chỉ ghép phụ đề)", "provider": "None"})
+    
+    # Cache the result
+    _voices_cache = {"provider": active_tts, "voices": voices}
         
     return {"voices": voices}
 
@@ -202,7 +277,11 @@ async def get_keys():
         "enable_health_check": os.getenv("ENABLE_HEALTH_CHECK", "False").lower() == "true",
         "health_check_interval_hours": int(os.getenv("HEALTH_CHECK_INTERVAL_HOURS", 4)),
         "theme_bg_type": os.getenv("THEME_BG_TYPE", "default"),
-        "theme_bg_custom_path": os.getenv("THEME_BG_CUSTOM_PATH", "")
+        "theme_bg_custom_path": os.getenv("THEME_BG_CUSTOM_PATH", ""),
+        "hf_token": decrypt_data(os.getenv("HF_TOKEN", "")),
+        "enable_demucs": os.getenv("ENABLE_DEMUCS", "False").lower() == "true",
+        "enable_diarization": os.getenv("ENABLE_DIARIZATION", "False").lower() == "true",
+        "bgm_volume": int(os.getenv("BGM_VOLUME", 50))
     }
 
 @router.post("/keys")
@@ -233,6 +312,14 @@ async def update_keys(data: KeysUpdate):
     set_key(ENV_PATH, "HEALTH_CHECK_INTERVAL_HOURS", str(data.health_check_interval_hours))
     set_key(ENV_PATH, "THEME_BG_TYPE", data.theme_bg_type)
     set_key(ENV_PATH, "THEME_BG_CUSTOM_PATH", data.theme_bg_custom_path)
+    set_key(ENV_PATH, "HF_TOKEN", encrypt_data(data.hf_token))
+    set_key(ENV_PATH, "ENABLE_DEMUCS", str(data.enable_demucs))
+    set_key(ENV_PATH, "ENABLE_DIARIZATION", str(data.enable_diarization))
+    set_key(ENV_PATH, "BGM_VOLUME", str(data.bgm_volume))
+    
+    # Invalidate voices cache when TTS provider might have changed
+    global _voices_cache
+    _voices_cache = {"provider": None, "voices": None}
     
     # Save cookie to file in Netscape format for yt-dlp (Lưu ý: yt-dlp cần file raw text)
     cookie_path = os.path.join(os.path.dirname(ENV_PATH), "douyin_cookie.txt")
@@ -247,7 +334,7 @@ async def update_keys(data: KeysUpdate):
             
         with open(cookie_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
-            
+    
     return {"status": "success", "message": "Cập nhật cấu hình thành công"}
  
 @router.post("/validate")

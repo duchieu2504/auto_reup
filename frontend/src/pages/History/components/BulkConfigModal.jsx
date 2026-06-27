@@ -4,14 +4,16 @@ import { WatermarkConfigPanel } from '../../../components/subtitle/WatermarkConf
 import { InteractiveVideoPreview } from '../../../components/subtitle/InteractiveVideoPreview';
 import { ProfileSelector, SaveProfileButton } from '../../../components/subtitle/ProfileSelector';
 import { PlayCircle, Sliders, ImageIcon, Type, Music, X, Loader2 } from 'lucide-react';
+import { useSubtitleState } from '../../../hooks/useSubtitleState';
 
-export const BulkConfigModal = ({ hook, subtitleConfig }) => {
+export const BulkConfigModal = ({ hook }) => {
   const {
     showConfigModal, setShowConfigModal, processingItems,
     previewTime, setPreviewTime, previewImageUrl,
     voices, submitProcessing
   } = hook;
 
+  const subtitleConfig = useSubtitleState();
   const [activeTab, setActiveTab] = useState('basic'); // 'basic' | 'subtitle' | 'watermark'
 
   if (!showConfigModal) return null;

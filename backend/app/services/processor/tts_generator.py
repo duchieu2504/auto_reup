@@ -310,7 +310,15 @@ class TTSGenerator:
             
             try:
                 if is_vieneu:
-                    self._generate_vieneu_audio(tts_text, voice_to_use, clip_wav_path)
+                    raw_vieneu_path = os.path.join(tmp_dir, f"raw_vieneu_{i}.wav")
+                    self._generate_vieneu_audio(tts_text, voice_to_use, raw_vieneu_path)
+                    # Convert to standard 16-bit PCM WAV so Pydub's wave module can read it safely
+                    subprocess.run([
+                        imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", raw_vieneu_path,
+                        "-acodec", "pcm_s16le", "-ar", "44100", clip_wav_path
+                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                    if os.path.exists(raw_vieneu_path):
+                        os.remove(raw_vieneu_path)
                 else:
                     if is_fpt:
                         clip_path = self._get_fpt_audio(tts_text, voice_to_use)
@@ -332,30 +340,34 @@ class TTSGenerator:
                 clip_audio = AudioSegment.from_wav(clip_wav_path)
                 audio_duration_ms = len(clip_audio)
                 
-                # Áp dụng thuật toán FFmpeg ATempo nếu audio sinh ra dài hơn thời gian cho phép của phụ đề
+                # Áp dụng thuật toán FFmpeg ATempo để ép tốc độ (cả tua nhanh và tua chậm)
                 target_duration_ms = max(end_ms - start_ms, 100)
-                if audio_duration_ms > target_duration_ms:
-                    ratio = audio_duration_ms / target_duration_ms
-                    if ratio > 1.05: # Nếu dài hơn 5%, bắt đầu ép tốc độ
-                        # Cắt giới hạn tối đa 1.5x để tránh bị méo giọng (chipmunk)
-                        ratio = min(ratio, 1.5)
-                        stretched_wav_path = os.path.join(tmp_dir, f"clip_{i}_stretched.wav")
+                ratio = audio_duration_ms / target_duration_ms
+                
+                # Áp dụng nếu sai lệch > 5%
+                if ratio > 1.05 or ratio < 0.95:
+                    # Thiết lập biên độ an toàn: Tua chậm tối đa 0.8x, tua nhanh tối đa 1.75x
+                    # Tránh méo giọng (chipmunk effect) hoặc giọng robot rề rà
+                    safe_ratio = max(0.8, min(ratio, 1.75))
+                    
+                    stretched_wav_path = os.path.join(tmp_dir, f"clip_{i}_stretched.wav")
+                    
+                    try:
+                        subprocess.run([
+                            imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", clip_wav_path,
+                            "-filter:a", f"atempo={safe_ratio}", stretched_wav_path
+                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
                         
-                        try:
-                            subprocess.run([
-                                imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", clip_wav_path,
-                                "-filter:a", f"atempo={ratio}", stretched_wav_path
-                            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                        clip_audio = AudioSegment.from_wav(stretched_wav_path)
+                        if os.path.exists(stretched_wav_path):
+                            os.remove(stretched_wav_path)
                             
-                            clip_audio = AudioSegment.from_wav(stretched_wav_path)
-                            if os.path.exists(stretched_wav_path):
-                                os.remove(stretched_wav_path)
-                                
-                            if log_callback:
-                                log_callback(f"[*] Đồng bộ âm thanh dòng {i}: Tăng tốc {ratio:.2f}x (Thời lượng phụ đề: {target_duration_ms}ms, TTS gốc: {audio_duration_ms}ms)\n")
-                        except Exception as speed_err:
-                            if log_callback:
-                                log_callback(f"[!] Lỗi khi tăng tốc audio dòng {i}: {speed_err}. Tiếp tục sử dụng audio gốc.\n")
+                        action = "Tăng tốc" if safe_ratio > 1 else "Tua chậm"
+                        if log_callback:
+                            log_callback(f"[*] Đồng bộ âm thanh dòng {i}: {action} {safe_ratio:.2f}x (Phụ đề: {target_duration_ms}ms, TTS gốc: {audio_duration_ms}ms)\n")
+                    except Exception as speed_err:
+                        if log_callback:
+                            log_callback(f"[!] Lỗi khi ép tốc độ audio dòng {i}: {speed_err}. Tiếp tục sử dụng audio gốc.\n")
                 
                 # Overlay audio clip at exact start time
                 base_audio = base_audio.overlay(clip_audio, position=start_ms)

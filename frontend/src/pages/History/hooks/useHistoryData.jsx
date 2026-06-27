@@ -218,27 +218,32 @@ export const useHistoryData = () => {
       return;
     }
     
-    if (item.process_config && item.process_config !== "{}" && item.process_config !== "") {
-      try {
-        const config = JSON.parse(item.process_config);
-        const payload = {
-          video_paths: [item.raw_video_path],
-          ...config
-        };
-        const res = await fetch(`${API_BASE}/processor/start`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (data.status === 'started') {
-          toast.success('Đã tiếp tục xử lý với cấu hình cũ!');
-          fetchHistory();
-          return;
+    // Fetch full record with process_config (deferred from list query for performance)
+    try {
+      const detailRes = await fetch(`${API_BASE}/history/${item.id}`);
+      if (detailRes.ok) {
+        const fullItem = await detailRes.json();
+        if (fullItem.process_config && fullItem.process_config !== "{}" && fullItem.process_config !== "") {
+          const config = JSON.parse(fullItem.process_config);
+          const payload = {
+            video_paths: [item.raw_video_path],
+            ...config
+          };
+          const res = await fetch(`${API_BASE}/processor/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if (data.status === 'started') {
+            toast.success('Đã tiếp tục xử lý với cấu hình cũ!');
+            fetchHistory();
+            return;
+          }
         }
-      } catch (e) {
-        console.error("Lỗi khi resume tự động:", e);
       }
+    } catch (e) {
+      console.error("Lỗi khi resume tự động:", e);
     }
     
     setProcessingItems([item.raw_video_path]);

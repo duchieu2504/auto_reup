@@ -50,6 +50,10 @@
 - [x] Giữ lại data dưới dạng gói (archive) để đẩy lên Cloud, giải pháp an toàn nhất để đảm bảo có thể "Rollback" hoặc tận dụng lại file gốc bất kỳ lúc nào. (Đã có /api/history/backup)
 ## 6. Thêm tab chức năng sao chép (backend + frontend)
 - [ ]. Người dùng nhập đường dẫn đến user của nền tảng, hệ thống sẽ lưu lại id, tên user đó, sau đó quét video mới nhất của user đó và tải về.
+- [x] Integrate Demucs via `audio-separator` for BGM extraction.
+- [x] Integrate Pyannote for speaker diarization to support multiple AI voices.
+- [x] Expose configuration flags via API (HF Token, Enable Demucs, Enable Diarization, BGM Volume).
+- [x] Update Settings Frontend UI to control these features.
 - [ ]. Hệ thống sẽ so sánh video đã tải về với video đã có trong database để tránh tải lại video đã tải.
 - [ ]. Không cập nhật liên tục, thêm nút "Kiểm tra data", để phát hiện user đó có đăng tải video nào mới không, sau đó mới chạy tiến trình
 - [ ]. Tự động up video sau khi chỉnh sửa của user đó lên các nền tảng đến 1 tài khoản mạng xã hội khác được gắn vào
@@ -122,6 +126,9 @@ Khi kích hoạt vào lịch bài đăng hiện toast báo lỗi" Lỗi khi tả
 - [ ] **Smart Crop (Auto Re-frame 16:9 -> 9:16):** Tích hợp AI (OpenCV) nhận diện khuôn mặt người nói để tự động crop khung hình dọc bám theo chuyển động (chống reup hiệu quả cho video YouTube/Ngang).
 - [ ] **Chèn Logo/Watermark Động:** Tùy chọn cho phép Logo di chuyển ngẫu nhiên hoặc trôi nổi khắp màn hình để tránh bị AI của nền tảng quét mã băm (hash) tĩnh.
 - [ ] **Voice Cloning (Lồng tiếng AI Độc quyền):** Tích hợp API của ElevenLabs hoặc VITS cho phép nhân bản giọng nói thật của bạn, tự động lồng tiếng cho mọi video reup thay vì dùng giọng Google nhàm chán.
+- [ ] **Phân tách Người nói (Pyannote Diarization):** Tự động nhận diện nhiều người nói trong video để gán các giọng lồng tiếng khác nhau (Nam/Nữ) thay vì phải gán thủ công [M]/[F].
+- [ ] **Tách Âm thanh Nền (Demucs Audio Separation):** Xóa sạch giọng gốc của video nhưng giữ nguyên 100% tiếng nhạc nền (BGM) và tiếng động môi trường (SFX) để trộn với giọng TTS mới, tạo ra bản lồng tiếng chuyên nghiệp.
+- [ ] **Chuyển đổi Giọng nói Cảm xúc (RVC - Retrieval-based Voice Conversion):** Nhái lại giọng nói gốc của video (giữ nguyên tiếng khóc, cười, ho, la hét) nhưng được phát âm bằng ngôn ngữ dịch.
 
 ## 22. Lộ trình Nâng cấp "Live Restream" (Giữ chân & Tăng chuyển đổi)
 - [ ] **1. Auto Audio Mixer (Nhạc Nền Chill):** FFmpeg tự động giảm âm lượng gốc xuống 20%, mix thêm nhạc Lofi/Trending không bản quyền để lách âm thanh và tăng độ giữ chân.
@@ -129,7 +136,7 @@ Khi kích hoạt vào lịch bài đăng hiện toast báo lỗi" Lỗi khi tả
 - [ ] **3. Khung Viền & Đếm Ngược (Dynamic Overlay):** Chèn các thông báo kích Sale (vd: "Flash Sale 1K giỏ hàng") và đồng hồ đếm ngược kích thích hiệu ứng tâm lý FOMO.
 - [ ] **4. Bot Chim Mồi (Auto Chatbot):** Bot tự động thả comment dạo theo kịch bản để tạo luồng tranh luận giả, làm nhộn nhịp không khí phòng Live.
 - [ ] **5. Minigame Tương Tác (Vinh danh Real-time):** Quét API comment TikTok, khi có người thả từ khóa, FFmpeg sẽ lập tức đóng mác (drawtext) tên họ lên video để tri ân ngay trên Live reup.
-##23. Fix lỗi đăng bài qua ADB
+## 23. Fix lỗi đăng bài qua ADB
 - [ ]. Với 1 số dòng máy có kích thước khác nhau như snap 88, thì với logic bấm dấu "+"ở trang chủ tiktok 
         dòng 313 và 314 trong file @adb_engine.py:
             logger.info("[ADB] Bấm nút + (Tạo mới) ở giữa cạnh dưới màn hình...")
@@ -143,3 +150,6 @@ Khi kích hoạt vào lịch bài đăng hiện toast báo lỗi" Lỗi khi tả
     + Hướng giải quyết, tìm nút "Đã follow" trước, sau đó tìm nút" Đề xuất"hoặc "Dành cho bạn", các mục đề xuất này nằm trên cùng màn hình và bị ẩn hoặc mờ thiếu chữ vì nó quá dài.
     docker-compose up -d
 
+## 24. Một số lỗi nhỏ cần sửa 
+- [ ].  Sau khi chỉnh sửa những video đã edit,hệ thống data vẫn lưu lại video đã edit cũ trước đó
+- [ ]. Kiểm tra lại logic tách gốc voice ra khỏi video, vì có thể đó là lý do phần sub dịch bị thiếu, voice gốc tách bị thiếu -> srt gốc bị thiếu  -> sub dịch thiếu -> voice tts bị thiếu.

@@ -63,13 +63,14 @@ class ProcessorPipeline:
         audio_tmp = os.path.join(audio_dir, f"{base_name}_audio.mp3")
         audio_tts_path = os.path.join(audio_dir, f"{base_name}_tts.mp3")
         
-        # Nếu cờ force_render bật, xóa file output cũ nếu có
-        if force_render and os.path.exists(output_video):
-            try:
-                os.remove(output_video)
-                log_callback(f"[*] Force Render: Đã xóa video cũ để render lại.\n")
-            except Exception as e:
-                log_callback(f"[!] Force Render: Không thể xóa video cũ: {e}\n")
+        # Nếu cờ force_render bật, chỉ xóa file video output cũ để tiết kiệm thời gian dịch thuật cho các bước sau
+        if force_render:
+            if os.path.exists(output_video):
+                try:
+                    os.remove(output_video)
+                    log_callback(f"[*] Force Render: Đã xóa video cũ {os.path.basename(output_video)}.\n")
+                except Exception as e:
+                    log_callback(f"[!] Force Render: Không thể xóa video cũ {os.path.basename(output_video)}: {e}\n")
 
         # Init DB record
         db = SessionLocal()
@@ -104,10 +105,32 @@ class ProcessorPipeline:
                     try:
                         record.status = ProcessStatus.TRANSCRIBING
                         db.commit()
-                        self.transcriber.transcribe(video_path, orig_srt)
+                        
+                        # Sử dụng AI bóc tách nhạc nền trước khi đưa vào Whisper
+                        from app.services.processor.audio_extractor import separate_audio_with_ai
+                        extract_audio(video_path, audio_tmp)
+                        use_demucs = os.getenv("ENABLE_DEMUCS", "False").lower() == "true"
+                        
+                        vocal_audio_path = audio_tmp
+                        instrumental_audio_path = None
+                        if use_demucs:
+                            v_path, i_path = separate_audio_with_ai(audio_tmp, audio_dir, log_callback)
+                            if v_path: vocal_audio_path = v_path
+                            if i_path: instrumental_audio_path = i_path
+                            
+                        # Lưu trữ biến môi trường (BGM path) vào dict record thay vì local var để truyền xuống render sau
+                        record.bgm_audio_path = instrumental_audio_path
+                        db.commit()
+                        
+                        self.transcriber.transcribe(vocal_audio_path, orig_srt)
                         record.srt_origin_path = orig_srt
                         db.commit()
                         log_callback(f"[*] Đã tạo phụ đề gốc thành công.\n", progress=15.0)
+                        
+                        # Dọn dẹp file vocal AI tạm
+                        if vocal_audio_path != audio_tmp and os.path.exists(vocal_audio_path):
+                            try: os.remove(vocal_audio_path)
+                            except: pass
                     except GroqQuotaExceeded:
                         log_callback(f"[!] Groq API đã hết hạn miễn phí. Tạm dừng tiến trình.\n")
                         record.status = ProcessStatus.PAUSED
@@ -205,8 +228,13 @@ class ProcessorPipeline:
                 try:
                     record.status = ProcessStatus.RENDERING
                     db.commit()
+                    
+                    # Truy xuất biến môi trường BGM VOLUME
+                    env_bg_volume = int(os.getenv("BGM_VOLUME", str(bg_volume)))
+                    bgm_audio = getattr(record, 'bgm_audio_path', None)
+                    
                     self.editor.burn_subtitles(
-                        video_path, vi_srt, output_video, tts_audio, bg_volume, flip_video, subtitle_style, 
+                        video_path, vi_srt, output_video, tts_audio, env_bg_volume, bgm_audio, flip_video, subtitle_style, 
                         opt_zoom, opt_color, opt_noise, opt_pitch, 
                         subtitle_text_color=subtitle_text_color,
                         subtitle_bg_color=subtitle_bg_color,

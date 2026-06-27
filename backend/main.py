@@ -3,6 +3,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 
+# --- PYTORCH 2.3.1 POLYFILL: nn.RMSNorm (added in PyTorch 2.4) ---
+# Required by VieNeu TTS model on legacy GPU (GTX 1050 / sm_61)
+import torch
+import torch.nn as nn
+if not hasattr(nn, 'RMSNorm'):
+    class _RMSNorm(nn.Module):
+        def __init__(self, normalized_shape, eps=1e-6):
+            super().__init__()
+            if isinstance(normalized_shape, int):
+                normalized_shape = (normalized_shape,)
+            self.weight = nn.Parameter(torch.ones(normalized_shape))
+            self.eps = eps
+
+        def forward(self, x):
+            variance = x.float().pow(2).mean(-1, keepdim=True)
+            return (self.weight * x * torch.rsqrt(variance + self.eps)).to(x.dtype)
+
+    nn.RMSNorm = _RMSNorm
+# -----------------------------------------------------------------
+
+
 from app.core.config import DATA_DIR
 from app.db.session import engine
 from app.models.history import Base

@@ -186,12 +186,15 @@ export const HistoryTable = ({ hook }) => {
                               src={`http://localhost:8000/api/history/thumbnail?path=${encodeURIComponent(item.final_video_path || item.raw_video_path)}`}
                               className="w-full h-full object-cover opacity-90"
                               alt="thumbnail"
+                              loading="lazy"
                             />
                           ) : (
                             <video 
-                              src={`http://localhost:8000/api/files/${(item.final_video_path || item.raw_video_path || '').replace(/^[/]?data[/]/, '')}#t=2.0`}
+                              src={`http://localhost:8000/api/files/${(item.final_video_path || item.raw_video_path || '').replace(/^[/]?data[/]/, '')}`}
+                              poster={`http://localhost:8000/api/history/thumbnail?path=${encodeURIComponent(item.final_video_path || item.raw_video_path)}`}
                               className="w-full h-full object-cover opacity-90 group-hover/vid:opacity-100 transition-opacity"
                               muted loop playsInline preload="none"
+                              loading="lazy"
                               onMouseEnter={(e) => { e.target.play().catch(()=>{}); }}
                               onMouseLeave={(e) => { e.target.pause(); e.target.currentTime = 0; }}
                             />

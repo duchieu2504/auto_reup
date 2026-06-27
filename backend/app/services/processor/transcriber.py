@@ -58,9 +58,67 @@ class Transcriber:
 
     def transcribe(self, media_path: str, output_srt_path: str):
         if self.use_groq:
-            return self._transcribe_groq(media_path, output_srt_path)
+            srt_path = self._transcribe_groq(media_path, output_srt_path)
         else:
-            return self._transcribe_offline(media_path, output_srt_path)
+            srt_path = self._transcribe_offline(media_path, output_srt_path)
+            
+        # Tự động Diarization nếu được bật
+        if os.getenv("ENABLE_DIARIZATION", "False").lower() == "true":
+            self._apply_diarization(media_path, srt_path)
+            
+        return srt_path
+        
+    def _apply_diarization(self, media_path: str, srt_path: str):
+        try:
+            hf_token = decrypt_data(os.getenv("HF_TOKEN", ""))
+            if not hf_token:
+                print("Skipping Diarization: HF_TOKEN is not configured.")
+                return
+                
+            from pyannote.audio import Pipeline
+            import torch
+            import pysrt
+            
+            print("Running Pyannote Diarization...")
+            device = torch.device("cuda" if self.use_gpu else "cpu")
+            pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", use_auth_token=hf_token)
+            pipeline.to(device)
+            
+            diarization = pipeline(media_path)
+            
+            # Đọc file srt vừa tạo
+            subs = pysrt.open(srt_path, encoding="utf-8")
+            
+            # Ánh xạ Speaker -> M hoặc F. SPEAKER_00 -> M, SPEAKER_01 -> F, v.v.
+            speaker_map = {}
+            gender_cycle = ["M", "F"]
+            
+            for sub in subs:
+                start_sec = sub.start.ordinal / 1000.0
+                end_sec = sub.end.ordinal / 1000.0
+                mid_sec = (start_sec + end_sec) / 2.0
+                
+                # Tìm speaker có mặt tại mid_sec
+                assigned_speaker = None
+                for turn, _, speaker in diarization.itertracks(yield_label=True):
+                    if turn.start <= mid_sec <= turn.end:
+                        assigned_speaker = speaker
+                        break
+                        
+                if assigned_speaker:
+                    if assigned_speaker not in speaker_map:
+                        speaker_map[assigned_speaker] = gender_cycle[len(speaker_map) % 2]
+                    
+                    gender_tag = speaker_map[assigned_speaker]
+                    # Chèn tag [M] hoặc [F] vào đầu câu nếu chưa có
+                    if not sub.text.startswith("[M]") and not sub.text.startswith("[F]"):
+                        sub.text = f"[{gender_tag}] {sub.text}"
+                        
+            subs.save(srt_path, encoding="utf-8")
+            print("Diarization completed. Tags injected into SRT.")
+            
+        except Exception as e:
+            print(f"Diarization failed: {e}")
 
     def _transcribe_groq(self, media_path: str, output_srt_path: str):
         try:

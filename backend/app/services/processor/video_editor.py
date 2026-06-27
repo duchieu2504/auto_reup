@@ -85,7 +85,7 @@ class VideoEditor:
         return "libx264"
         return "libx264"
 
-    def burn_subtitles(self, input_video: str, srt_file: str, output_video: str, tts_audio: str = None, bg_volume: int = 10, flip_video: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False, subtitle_text_color: str = "#000000", subtitle_bg_color: str = "#FFFFFF", subtitle_font_size: int = 8, subtitle_margin_v: int = 40, subtitle_bg_padding: int = 2, subtitle_bg_opacity: int = 100, watermark_type: str = "none", watermark_text: str = None, watermark_image_path: str = None, watermark_x: float = 50.0, watermark_y: float = 50.0, watermark_size: float = 20.0, watermark_color: str = "#FFFFFF", watermark_opacity: float = 50.0, subtitle_font_family: str = "Liberation Sans", enable_subtitles: bool = True, mask_enabled: bool = False, mask_x: float = 10.0, mask_y: float = 10.0, mask_width: float = 20.0, mask_height: float = 15.0, mask_type: str = "color", mask_color: str = "#000000", masks: list = None, log_callback=None, force_cpu: bool = False):
+    def burn_subtitles(self, input_video: str, srt_file: str, output_video: str, tts_audio: str = None, bg_volume: int = 10, bgm_audio: str = None, flip_video: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False, subtitle_text_color: str = "#000000", subtitle_bg_color: str = "#FFFFFF", subtitle_font_size: int = 8, subtitle_margin_v: int = 40, subtitle_bg_padding: int = 2, subtitle_bg_opacity: int = 100, watermark_type: str = "none", watermark_text: str = None, watermark_image_path: str = None, watermark_x: float = 50.0, watermark_y: float = 50.0, watermark_size: float = 20.0, watermark_color: str = "#FFFFFF", watermark_opacity: float = 50.0, subtitle_font_family: str = "Liberation Sans", enable_subtitles: bool = True, mask_enabled: bool = False, mask_x: float = 10.0, mask_y: float = 10.0, mask_width: float = 20.0, mask_height: float = 15.0, mask_type: str = "color", mask_color: str = "#000000", masks: list = None, log_callback=None, force_cpu: bool = False):
         load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/.env")), override=True)
         use_gpu = os.getenv("USE_GPU_ACCELERATION", "False").lower() == "true" and not force_cpu
         vcodec = self.get_optimal_video_encoder(use_gpu)
@@ -229,7 +229,7 @@ class VideoEditor:
                 
         # Overlay generated subtitles if any
         if subs_input_idx != -1:
-            v_filter_complex += f";[vbase][{subs_input_idx}:v]overlay=x=0:y=0:shortest=1[vsub_out]"
+            v_filter_complex += f";[vbase][{subs_input_idx}:v]overlay=x=0:y=0[vsub_out]"
             vbase_label = "[vsub_out]"
         else:
             vbase_label = "[vbase]"
@@ -251,23 +251,31 @@ class VideoEditor:
             cmd.extend(["-i", tts_audio])
             tts_idx = input_count
             input_count += 1
+            
+        bgm_idx = 0
+        if bgm_audio and os.path.exists(bgm_audio):
+            cmd.extend(["-i", bgm_audio])
+            bgm_idx = input_count
+            input_count += 1
 
         filter_complex_str = v_filter_complex
-        a_map = "0:a?"
+        a_map = "0:a?" if bgm_idx == 0 else f"{bgm_idx}:a?"
         v_map = "[vout]"
+        
+        bg_audio_label = f"[{bgm_idx}:a]"
         
         if tts_idx != -1:
             bg_vol_float = bg_volume / 100.0
             if opt_pitch:
-                audio_filter = f"[0:a]volume={bg_vol_float},asetrate=44100*1.02,atempo=1/1.02[bg];[{tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                audio_filter = f"{bg_audio_label}volume={bg_vol_float},asetrate=44100*1.02,atempo=1/1.02[bg];[{tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=2[aout]"
             else:
-                audio_filter = f"[0:a]volume={bg_vol_float}[bg];[{tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                audio_filter = f"{bg_audio_label}volume={bg_vol_float}[bg];[{tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=2[aout]"
             
             filter_complex_str += ";" + audio_filter
             a_map = "[aout]"
         else:
             if opt_pitch:
-                audio_filter = f"[0:a]asetrate=44100*1.02,atempo=1/1.02[aout]"
+                audio_filter = f"{bg_audio_label}asetrate=44100*1.02,atempo=1/1.02[aout]"
                 filter_complex_str += ";" + audio_filter
                 a_map = "[aout]"
 
@@ -345,7 +353,7 @@ class VideoEditor:
                 if log_callback:
                     log_callback(f"[!] Phát hiện lỗi bộ mã hóa GPU (NVENC): {e}.\nTự động chuyển hướng render bằng CPU (libx264)...\n")
                 return self.burn_subtitles(
-                    input_video, srt_file, output_video, tts_audio, bg_volume, flip_video, subtitle_style,
+                    input_video, srt_file, output_video, tts_audio, bg_volume, bgm_audio, flip_video, subtitle_style,
                     opt_zoom, opt_color, opt_noise, opt_pitch, subtitle_text_color, subtitle_bg_color,
                     subtitle_font_size, subtitle_margin_v, subtitle_bg_padding, subtitle_bg_opacity,
                     watermark_type, watermark_text, watermark_image_path, watermark_x, watermark_y,

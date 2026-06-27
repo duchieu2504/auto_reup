@@ -23,6 +23,26 @@ def _get_pipeline(log_callback=None):
         with _pipeline_lock:
             # Double-checked locking
             if _pipeline_instance is None:
+                # --- PYTORCH 2.3.1 POLYFILL: nn.RMSNorm (added in PyTorch 2.4) ---
+                # Required by VieNeu TTS model on legacy GPU (GTX 1050 / sm_61)
+                import torch
+                import torch.nn as nn
+                if not hasattr(nn, 'RMSNorm'):
+                    class _RMSNorm(nn.Module):
+                        def __init__(self, normalized_shape, eps=1e-6):
+                            super().__init__()
+                            if isinstance(normalized_shape, int):
+                                normalized_shape = (normalized_shape,)
+                            self.weight = nn.Parameter(torch.ones(normalized_shape))
+                            self.eps = eps
+
+                        def forward(self, x):
+                            variance = x.float().pow(2).mean(-1, keepdim=True)
+                            return (self.weight * x * torch.rsqrt(variance + self.eps)).to(x.dtype)
+
+                    nn.RMSNorm = _RMSNorm
+                # -----------------------------------------------------------------
+                
                 if log_callback:
                     log_callback("[System] Đang nạp AI Models vào bộ nhớ tiến trình (chỉ chạy 1 lần)...\n")
                 _pipeline_instance = ProcessorPipeline()

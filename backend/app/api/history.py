@@ -1,5 +1,6 @@
 import os
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse, Response
 from app.core.config import DATA_DIR
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
@@ -49,8 +50,12 @@ def pre_generate_thumbnail(path: str, time: int = 3):
         except Exception as e:
             print(f"Error pre-generating thumbnail: {e}")
 
+import asyncio
+
+thumbnail_semaphore = asyncio.Semaphore(4)
+
 @router.get("/thumbnail")
-def get_thumbnail(path: str, time: int = 3):
+async def get_thumbnail(path: str, time: int = 3):
     if not path:
         raise HTTPException(status_code=400, detail="Path is empty")
         
@@ -66,7 +71,7 @@ def get_thumbnail(path: str, time: int = 3):
     thumb_path = os.path.join(temp_dir, f"thumb_{file_hash}.jpg")
     
     if os.path.exists(thumb_path):
-        return FileResponse(thumb_path, media_type="image/jpeg")
+        return FileResponse(thumb_path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
         
     if not os.path.exists(clean_path):
         raise HTTPException(status_code=404, detail="File video gốc không tồn tại để sinh thumbnail")
@@ -79,13 +84,17 @@ def get_thumbnail(path: str, time: int = 3):
     
     try:
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-        subprocess.run([
-            ffmpeg_exe, '-y', '-i', clean_path, '-ss', time_str, '-vframes', '1', thumb_path
-        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        async with thumbnail_semaphore:
+            process = await asyncio.create_subprocess_exec(
+                ffmpeg_exe, '-y', '-i', clean_path, '-ss', time_str, '-vframes', '1', thumb_path,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            await process.communicate()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
             
-    return FileResponse(thumb_path, media_type="image/jpeg")
+    return FileResponse(thumb_path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
 
 class SocialAccountSimple(BaseModel):
     id: int
@@ -138,7 +147,7 @@ def get_history(
     skip: int = 0,
     limit: int = 100
 ):
-    from sqlalchemy.orm import joinedload
+    from sqlalchemy.orm import selectinload, defer
 
     query = db.query(VideoHistory)
     if source:
@@ -149,10 +158,13 @@ def get_history(
         # Lọc theo ngày (YYYY-MM-DD)
         query = query.filter(func.date(VideoHistory.created_at) == date)
     
-    # Eager load schedules + account in a single query (fixes N+1)
+    # Eager load schedules + account, defer heavy columns not needed for listing
     records = (
         query
-        .options(joinedload(VideoHistory.schedules).joinedload(UploadSchedule.account))
+        .options(
+            selectinload(VideoHistory.schedules).joinedload(UploadSchedule.account),
+            defer(VideoHistory.process_config),
+        )
         .order_by(VideoHistory.created_at.desc())
         .offset(skip)
         .limit(limit)
