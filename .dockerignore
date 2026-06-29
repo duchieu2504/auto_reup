@@ -4,3 +4,10 @@ __pycache__/
 *.pyc
 .env
 data/
+
+.agent/
+.gemini/
+scratch_repo/
+compact_docker.txt
+pip_output.txt
+vieneu_source.txt
