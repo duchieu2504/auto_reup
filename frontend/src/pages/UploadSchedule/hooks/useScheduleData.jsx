@@ -78,14 +78,36 @@ export const useScheduleData = () => {
 
   const postedMap = useMemo(() => {
     const map = {};
+    
+    // Add from schedules
     schedules.forEach(sch => {
       const vId = String(sch.video_history_id);
       const aId = String(sch.account_id);
       if (!map[vId]) map[vId] = new Set();
       map[vId].add(aId);
     });
+    
+    // Add from permanent upload_history (for synced data)
+    videos.forEach(v => {
+      if (v.upload_history && v.upload_history !== "[]") {
+        try {
+          const historyEntries = JSON.parse(v.upload_history);
+          const vId = String(v.id);
+          if (!map[vId]) map[vId] = new Set();
+          
+          historyEntries.forEach(entry => {
+            if (entry.account_id) {
+              map[vId].add(String(entry.account_id));
+            }
+          });
+        } catch (e) {
+          // ignore parsing error
+        }
+      }
+    });
+    
     return map;
-  }, [schedules]);
+  }, [schedules, videos]);
 
   const handleAccountToggle = (accId) => {
     setSelectedAccounts(prev => 

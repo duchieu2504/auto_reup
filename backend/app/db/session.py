@@ -4,6 +4,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from app.core.config import DATA_DIR
+from dotenv import load_dotenv
+
+# Ensure .env is loaded (especially for Celery workers starting up)
+env_path = os.path.join(os.path.dirname(__file__), "../../.env")
+load_dotenv(env_path, override=True)
 
 # Ưu tiên lấy từ biến môi trường (Docker)
 SQLALCHEMY_DATABASE_URL = os.environ.get(

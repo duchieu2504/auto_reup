@@ -130,7 +130,8 @@ class Transcriber:
                 transcription = client.audio.transcriptions.create(
                     file=(os.path.basename(audio_path), file.read()),
                     model="whisper-large-v3",
-                    response_format="verbose_json"
+                    response_format="verbose_json",
+                    timeout=300
                 )
             
             # Xóa file audio tạm

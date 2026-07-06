@@ -45,7 +45,7 @@ def pre_generate_thumbnail(path: str, time: int = 3):
             seconds = time % 60
             time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
             subprocess.run([
-                ffmpeg_exe, '-y', '-i', clean_path, '-ss', time_str, '-vframes', '1', thumb_path
+                ffmpeg_exe, '-y', '-ss', time_str, '-i', clean_path, '-frames:v', '1', '-update', '1', thumb_path
             ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as e:
             print(f"Error pre-generating thumbnail: {e}")
@@ -85,12 +85,14 @@ async def get_thumbnail(path: str, time: int = 3):
     try:
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
         async with thumbnail_semaphore:
-            process = await asyncio.create_subprocess_exec(
-                ffmpeg_exe, '-y', '-i', clean_path, '-ss', time_str, '-vframes', '1', thumb_path,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL
-            )
-            await process.communicate()
+            def run_ffmpeg():
+                import subprocess
+                subprocess.run(
+                    [ffmpeg_exe, '-y', '-ss', time_str, '-i', clean_path, '-frames:v', '1', '-update', '1', thumb_path],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            await asyncio.to_thread(run_ffmpeg)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
             
@@ -348,6 +350,11 @@ def sync_data(db: Session = Depends(get_db)):
             except:
                 return None
 
+        def verify_path(path):
+            if path and not path.startswith("deleted:") and not os.path.exists(path):
+                return f"deleted:{path}"
+            return path
+
         if exists:
             # Update
             import json
@@ -361,8 +368,8 @@ def sync_data(db: Session = Depends(get_db)):
                 exists.upload_history = uh if isinstance(uh, str) else json.dumps(uh)
                 
             exists.error_message = data.get("error_message", exists.error_message)
-            exists.raw_video_path = data.get("raw_video_path", exists.raw_video_path)
-            exists.final_video_path = data.get("final_video_path", exists.final_video_path)
+            exists.raw_video_path = verify_path(data.get("raw_video_path", exists.raw_video_path))
+            exists.final_video_path = verify_path(data.get("final_video_path", exists.final_video_path))
             exists.audio_tts_path = data.get("audio_tts_path", exists.audio_tts_path)
             exists.srt_origin_path = data.get("srt_origin_path", exists.srt_origin_path)
             exists.srt_translated_path = data.get("srt_translated_path", exists.srt_translated_path)
@@ -381,8 +388,8 @@ def sync_data(db: Session = Depends(get_db)):
                 uploaded_platforms=data.get("uploaded_platforms"),
                 upload_history=data.get("upload_history", "[]") if isinstance(data.get("upload_history", "[]"), str) else json.dumps(data.get("upload_history", "[]")),
                 error_message=data.get("error_message"),
-                raw_video_path=data.get("raw_video_path"),
-                final_video_path=data.get("final_video_path"),
+                raw_video_path=verify_path(data.get("raw_video_path")),
+                final_video_path=verify_path(data.get("final_video_path")),
                 audio_tts_path=data.get("audio_tts_path"),
                 srt_origin_path=data.get("srt_origin_path"),
                 srt_translated_path=data.get("srt_translated_path"),

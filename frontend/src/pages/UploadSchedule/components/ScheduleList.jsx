@@ -76,7 +76,7 @@ export const ScheduleList = ({ hook }) => {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-14 shrink-0 rounded overflow-hidden bg-black/50 border border-border-subtle relative group/vid">
                           <video 
-                            src={`http://localhost:8000/api/files/${(v.final_video_path || v.raw_video_path).replace(/^[/]?data[/]/, '')}#t=2.0`}
+                            src={`http://localhost:8000/api/files/${(v.final_video_path || v.raw_video_path || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '').split('/').map(encodeURIComponent).join('/')}#t=2.0`}
                             className="w-full h-full object-cover opacity-90 group-hover/vid:opacity-100 transition-opacity"
                             muted loop playsInline preload="metadata"
                             onLoadedMetadata={(e) => { e.target.currentTime = 2; }}

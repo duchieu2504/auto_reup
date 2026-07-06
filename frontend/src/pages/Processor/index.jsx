@@ -136,6 +136,7 @@ const Phase2Processor = () => {
   const [newProfileName, setNewProfileName] = useState("");
   const [activeTab, setActiveTab] = useState("source");
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [aspectRatio, setAspectRatio] = useState(null);
 
   const tabs = [
     { id: "source", label: "Nguồn & Giọng AI" },
@@ -641,7 +642,7 @@ const Phase2Processor = () => {
                                             />
                                           ) : (
                                             <video
-                                              src={`http://localhost:8000/api/files/${(video.raw_video_path || '').replace(/^[/]?data[/]/, '')}#t=2.0`}
+                                              src={`http://localhost:8000/api/files/${(video.raw_video_path || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '').split('/').map(encodeURIComponent).join('/')}#t=2.0`}
                                               className="w-full h-full object-cover"
                                               muted
                                               playsInline
@@ -861,22 +862,26 @@ const Phase2Processor = () => {
               Xem Trước Video & Phụ Đề
             </h3>
             
-            <div className="bg-bg-secondary/40 border border-border-subtle rounded-2xl p-4 flex-1 flex flex-col justify-center min-h-[300px]">
-              {previewVideoPath ? (
-                <InteractiveVideoPreview config={subtitleState}>
-                  <video 
-                    src={`http://localhost:8000/api/files/${previewVideoPath.replace(/^[/]?data[/]/, '').replace(/^\\data\\/, '').replace(/\\/g, '/')}`}
-                    controls
-                    className="w-full max-h-[500px] object-contain rounded-lg shadow-lg"
-                  />
-                </InteractiveVideoPreview>
-              ) : (
-                <div className="w-full aspect-video bg-bg-secondary/20 rounded-lg flex flex-col items-center justify-center text-text-secondary border border-dashed border-border-subtle p-6 select-none">
-                  <PlayCircle size={36} className="opacity-20 mb-2 text-neon-pink animate-pulse" />
-                  <p className="text-sm font-semibold">Chưa có video được chọn</p>
-                  <p className="text-xs text-text-tertiary mt-1">Chọn 1 video từ Crawler hoặc Upload để xem trước phụ đề</p>
-                </div>
-              )}
+            <div className="bg-bg-secondary/40 border border-border-subtle rounded-2xl p-4 flex-1 flex items-center justify-center min-h-[300px] relative overflow-hidden">
+              <div className="absolute inset-4 flex items-center justify-center">
+                {previewVideoPath ? (
+                  <InteractiveVideoPreview config={subtitleState} aspectRatio={aspectRatio} className="max-w-full max-h-full">
+                    <video 
+                      src={`http://localhost:8000/api/files/${(previewVideoPath || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '').split('/').map(encodeURIComponent).join('/')}`}
+                      controls
+                      className="max-w-full max-h-full block rounded-lg shadow-lg"
+                      onLoadedMetadata={(e) => setAspectRatio(e.target.videoWidth / e.target.videoHeight)}
+                    />
+                  </InteractiveVideoPreview>
+                ) : (
+                  <div className="w-full aspect-video bg-bg-secondary/20 rounded-lg flex flex-col items-center justify-center text-text-secondary border border-dashed border-border-subtle p-6 select-none">
+                    <PlayCircle size={36} className="opacity-20 mb-2 text-neon-pink animate-pulse" />
+                    <p className="text-sm font-semibold">Chưa có video được chọn</p>
+                    <p className="text-xs text-text-tertiary mt-1">Chọn 1 video từ Crawler hoặc Upload để xem trước phụ đề</p>
+                  </div>
+                )}
+              </div>
+            </div>
             </div>
           </div>
         </div>

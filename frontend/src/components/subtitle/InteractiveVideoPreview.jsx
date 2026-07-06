@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const InteractiveVideoPreview = ({ config, children, className = "w-full h-auto" }) => {
+export const InteractiveVideoPreview = ({ config, children, className = "w-full h-auto", aspectRatio }) => {
   const handleBoxMouseDown = (e, mask) => {
     e.preventDefault();
     e.stopPropagation();
@@ -85,15 +85,29 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
 
   return (
     <div 
-      className={`relative bg-black rounded-lg overflow-hidden flex items-center justify-center select-none cursor-crosshair group ${className}`}
+      className={`relative bg-black rounded-lg overflow-hidden select-none cursor-crosshair group ${className}`}
+      style={{
+         ...(aspectRatio ? {
+           aspectRatio: `${aspectRatio}`,
+           width: 'auto',
+           height: 'auto',
+           maxWidth: '100%',
+           maxHeight: '100%',
+           display: 'flex',
+           alignItems: 'center',
+           justifyContent: 'center',
+           margin: '0 auto'
+         } : {})
+      }}
       onMouseMove={config.handleMouseMove}
       onMouseUp={config.handleMouseUpOrLeave}
       onMouseLeave={config.handleMouseUpOrLeave}
     >
       {/* Container for the media (Video or Image) */}
       <div 
-        className={`w-full h-full flex items-center justify-center ${config.isDragging ? 'pointer-events-none' : ''}`}
+        className={`flex items-center justify-center max-w-full max-h-full ${config.isDragging ? 'pointer-events-none' : ''}`}
         style={{
+          ...(aspectRatio ? { width: '100%', height: '100%' } : { width: 'fit-content', height: 'fit-content' }),
           transform: (config.flipVideo ? 'scaleX(-1) ' : '') + (config.optZoom ? 'scale(1.02) ' : '')
         }}
       >

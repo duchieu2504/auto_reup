@@ -188,7 +188,7 @@ class TTSGenerator:
         audio = client.infer(text=text, voice=voice_data)
         client.save(audio, output_path)
 
-    def generate_tts_track(self, srt_path: str, output_audio_path: str, voice_mode: str, video_path: str, log_callback):
+    def generate_tts_track(self, srt_path: str, output_audio_path: str, voice_mode: str, video_path: str, log_callback, vocal_path_to_clone: str = None):
         subs = pysrt.open(srt_path, encoding='utf-8')
         
         import subprocess
@@ -209,9 +209,8 @@ class TTSGenerator:
         import tempfile
         tmp_dir = tempfile.gettempdir()
 
-        import redis
-        from app.core.config import REDIS_URL
-        sync_redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+        from app.core.redis_pool import get_sync_redis
+        sync_redis = get_sync_redis(decode_responses=True)
         base_name = os.path.basename(video_path).split('.')[0]
 
         for i, sub in enumerate(subs):
@@ -311,7 +310,10 @@ class TTSGenerator:
             try:
                 if is_vieneu:
                     raw_vieneu_path = os.path.join(tmp_dir, f"raw_vieneu_{i}.wav")
-                    self._generate_vieneu_audio(tts_text, voice_to_use, raw_vieneu_path)
+                    
+                    # Ưu tiên vocal path tự động từ Demucs nếu có, nếu không thì dùng clone có sẵn
+                    ref_audio = vocal_path_to_clone
+                    self._generate_vieneu_audio(tts_text, voice_to_use, raw_vieneu_path, reference_audio=ref_audio)
                     # Convert to standard 16-bit PCM WAV so Pydub's wave module can read it safely
                     subprocess.run([
                         imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", raw_vieneu_path,

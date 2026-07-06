@@ -190,7 +190,7 @@ export const HistoryTable = ({ hook }) => {
                             />
                           ) : (
                             <video 
-                              src={`http://localhost:8000/api/files/${(item.final_video_path || item.raw_video_path || '').replace(/^[/]?data[/]/, '')}`}
+                              src={`http://localhost:8000/api/files/${(item.final_video_path || item.raw_video_path || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '').split('/').map(encodeURIComponent).join('/')}`}
                               poster={`http://localhost:8000/api/history/thumbnail?path=${encodeURIComponent(item.final_video_path || item.raw_video_path)}`}
                               className="w-full h-full object-cover opacity-90 group-hover/vid:opacity-100 transition-opacity"
                               muted loop playsInline preload="none"
@@ -326,6 +326,9 @@ export const HistoryTable = ({ hook }) => {
                             })}
                             {historyEntries.map((hist, i) => {
                               const borderColor = hist.status === 'COMPLETED' ? 'border-green-500' : hist.status === 'FAILED' ? 'border-red-500' : 'border-blue-500';
+                              const account = hook.accounts?.find(a => a.id === hist.account_id);
+                              const avatarUrl = hist.avatar_url || account?.avatar_url;
+                              
                               return (
                                 <a 
                                   key={`hist-${i}`} href={hist.video_url || '#'} target="_blank" rel="noreferrer"
@@ -333,9 +336,13 @@ export const HistoryTable = ({ hook }) => {
                                   className={`block p-0.5 rounded-full border-2 ${borderColor} transition-transform hover:scale-110 bg-bg-primary`}
                                   onClick={(e) => { if(!hist.video_url) e.preventDefault(); }}
                                 >
-                                  <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-[10px] font-bold text-blue-500 uppercase" title="ADB Sync">
-                                    {hist.platform?.charAt(0) || 'A'}
-                                  </div>
+                                  {avatarUrl ? (
+                                    <img src={avatarUrl} alt="avt" referrerPolicy="no-referrer" className="w-6 h-6 rounded-full object-cover" />
+                                  ) : (
+                                    <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-[10px] font-bold text-blue-500 uppercase" title="ADB Sync">
+                                      {hist.platform?.charAt(0) || 'A'}
+                                    </div>
+                                  )}
                                 </a>
                               );
                             })}

@@ -106,6 +106,34 @@ def execute_upload(self, schedule_id: int):
             logger.info(f"Upload thành công schedule_id={schedule_id}")
             schedule.status = "success"
             schedule.post_url = post_url
+            
+            # Update video history
+            video_history.upload_status = "uploaded"
+            video_history.uploaded_at = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
+            
+            # Update platforms string
+            platforms = [p.strip() for p in (video_history.uploaded_platforms or "").split(",") if p.strip()]
+            if account.platform not in platforms:
+                platforms.append(account.platform)
+            video_history.uploaded_platforms = ",".join(platforms)
+            
+            # Update JSON upload history for duplicate checking and UI display
+            try:
+                uh = json.loads(video_history.upload_history or "[]")
+            except:
+                uh = []
+                
+            uh.append({
+                "account_id": account.id,
+                "platform": account.platform,
+                "account_name": account.username,
+                "avatar_url": account.avatar_url,
+                "status": "COMPLETED",
+                "uploaded_at": video_history.uploaded_at.isoformat(),
+                "video_url": post_url
+            })
+            video_history.upload_history = json.dumps(uh)
+            
             db.commit()
 
         except Exception as e:

@@ -149,8 +149,12 @@ class VideoEditor:
             text_color = watermark_color.replace('#', '0x')
             opacity_val = watermark_opacity / 100.0
             
-            # Default fallback for Linux/Docker
-            font_path = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+            # Default fallback for Linux/Docker/Windows
+            import platform
+            if platform.system() == "Windows":
+                font_path = "C:/Windows/Fonts/arial.ttf"
+            else:
+                font_path = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
             
             # If a custom font is selected, try to find its file in data/fonts
             fonts_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/fonts"))
@@ -162,11 +166,20 @@ class VideoEditor:
             
             # Write watermark text to a temp file to avoid all FFmpeg quoting/escaping hell
             import uuid
-            wm_file = f"/tmp/wm_{uuid.uuid4().hex}.txt"
+            import tempfile
+            # Use system temp directory and escape colons/slashes for FFmpeg drawtext
+            wm_file = os.path.join(tempfile.gettempdir(), f"wm_{uuid.uuid4().hex}.txt")
             with open(wm_file, "w", encoding="utf-8") as f:
                 f.write(watermark_text)
                 
-            drawtext_filter = f"drawtext=fontfile='{font_path}':textfile='{wm_file}':fontcolor={text_color}@{opacity_val}:fontsize={real_watermark_size}:x=(w-text_w)*{watermark_x}/100:y=(h-text_h)*{watermark_y}/100"
+            # FFmpeg drawtext needs absolute paths to have colons escaped (e.g. C\:/temp/...)
+            wm_file_esc = wm_file.replace('\\', '/').replace(':', '\\:')
+            font_path_esc = font_path.replace('\\', '/').replace(':', '\\:')
+            
+            # Increase watermark font size to be more visible (watermark_size from UI is 0-100)
+            wm_real_size = int(float(watermark_size) * (video_h / 540.0) * 1.5)
+                
+            drawtext_filter = f"drawtext=fontfile='{font_path_esc}':textfile='{wm_file_esc}':fontcolor={text_color}@{opacity_val}:fontsize={wm_real_size}:x=(w-text_w)*{watermark_x}/100:y=(h-text_h)*{watermark_y}/100"
             print(f"DEBUG DRAWTEXT FILTER: {drawtext_filter}")
             vf_filters.append(drawtext_filter)
             
@@ -313,9 +326,8 @@ class VideoEditor:
         
         try:
             import re
-            import redis
-            from app.core.config import REDIS_URL
-            sync_redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+            from app.core.redis_pool import get_sync_redis
+            sync_redis = get_sync_redis(decode_responses=True)
             base_name = os.path.basename(input_video).split('.')[0]
  
             stderr_lines = []

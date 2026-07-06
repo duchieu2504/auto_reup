@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-
-const Settings = () => {
+import AiKeysTab from './components/AiKeysTab';
+import TtsTab from './components/TtsTab';
+import BrowserTab from './components/BrowserTab';
+import SystemTab from './components/SystemTab';
+import ThemeTab from './components/ThemeTab';const Settings = () => {
   const [fptKey, setFptKey] = useState("");
   const [elevenlabsKey, setElevenlabsKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
@@ -24,6 +27,7 @@ const Settings = () => {
   const [themeBgCustomPath, setThemeBgCustomPath] = useState("");
   const [hfToken, setHfToken] = useState("");
   const [enableDemucs, setEnableDemucs] = useState(false);
+  const [enableAutoVoiceClone, setEnableAutoVoiceClone] = useState(false);
   const [enableDiarization, setEnableDiarization] = useState(false);
   const [bgmVolume, setBgmVolume] = useState(50);
   const [uploadBgStatus, setUploadBgStatus] = useState("");
@@ -35,7 +39,7 @@ const Settings = () => {
 
   const settingsTabs = [
     { id: "ai", label: "API & AI Keys" },
-    { id: "tts", label: "Giọng nói (TTS)" },
+    { id: "tts", label: "🎙️ Âm thanh & Lồng tiếng (Audio/TTS)" },
     { id: "browser", label: "Trình duyệt & Proxy" },
     { id: "system", label: "Hệ thống & Giám sát" },
     { id: "theme", label: "Giao diện" }
@@ -88,8 +92,9 @@ const Settings = () => {
         if (data.theme_bg_custom_path) setThemeBgCustomPath(data.theme_bg_custom_path);
         if (data.hf_token) setHfToken(data.hf_token);
         if (data.enable_demucs !== undefined) setEnableDemucs(data.enable_demucs);
+        if (data.enable_auto_voice_clone !== undefined) setEnableAutoVoiceClone(data.enable_auto_voice_clone);
         if (data.enable_diarization !== undefined) setEnableDiarization(data.enable_diarization);
-        if (data.bgm_volume !== undefined) setBgmVolume(data.bgm_volume);
+        if (data.bgmVolume !== undefined) setBgmVolume(data.bgmVolume);
 
         // Tự động kiểm tra trạng thái ngay khi load trang nếu có dữ liệu
         if (data.fpt_ai_api_key || data.gemini_api_key || data.douyin_cookie || data.pexels_api_key) {
@@ -165,6 +170,7 @@ const Settings = () => {
           theme_bg_custom_path: themeBgCustomPath,
           hf_token: hfToken,
           enable_demucs: enableDemucs,
+          enable_auto_voice_clone: enableAutoVoiceClone,
           enable_diarization: enableDiarization,
           bgm_volume: Number(bgmVolume)
         })
@@ -287,7 +293,7 @@ const Settings = () => {
 
   return (
     <div className="space-y-6">
-      <div className="glass-panel p-6 rounded-2xl max-w-3xl relative overflow-hidden">
+      <div className="glass-panel p-6 rounded-2xl max-w-6xl w-full relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-neon-purple/5 blur-3xl rounded-full pointer-events-none" />
         
         <h3 className="text-xl font-bold mb-6 tracking-tight font-display bg-gradient-to-r from-white to-text-secondary bg-clip-text text-transparent">
@@ -314,550 +320,62 @@ const Settings = () => {
 
         <form className="space-y-6">
           <div className="min-h-[350px]">
-            {/* TAB 1: API & AI Keys */}
             {activeTab === "ai" && (
-              <div className="space-y-6">
-                <div className="bg-bg-tertiary/40 p-4 rounded-xl border border-border-subtle">
-                  <label className="block text-sm font-bold text-text-primary mb-2">🤖 AI Mặc định (Active AI Provider)</label>
-                  <p className="text-xs text-text-secondary mb-3">Chọn AI sẽ được sử dụng mặc định để Dịch thuật và Sinh Caption tự động (Lưu ý: Tính năng "Phân vai Nam/Nữ" qua âm thanh luôn dùng Gemini. Vui lòng đảm bảo bạn đã chọn Gemini và lưu Key ít nhất 1 lần).</p>
-                  <select
-                    className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 cursor-pointer text-sm"
-                    value={activeAIProvider}
-                    onChange={(e) => setActiveAIProvider(e.target.value)}
-                  >
-                    <option value="gemini">Google Gemini (Khuyên dùng - gemini-2.5-flash)</option>
-                    <option value="openai">OpenAI (ChatGPT - gpt-4o-mini)</option>
-                    <option value="anthropic">Anthropic (Claude - claude-3-haiku)</option>
-                    <option value="xai">xAI (Grok - grok-beta)</option>
-                  </select>
-                </div>
-
-                <div className="space-y-4">
-                  <label className="block text-sm font-medium text-text-secondary">
-                    API Key của {
-                      activeAIProvider === "gemini" ? "Google Gemini" :
-                        activeAIProvider === "openai" ? "OpenAI (ChatGPT)" :
-                          activeAIProvider === "anthropic" ? "Anthropic (Claude)" : "xAI (Grok)"
-                    }
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 text-sm font-medium"
-                    placeholder={`Nhập API Key của ${activeAIProvider} tại đây...`}
-                    value={
-                      activeAIProvider === "gemini" ? geminiKey :
-                        activeAIProvider === "openai" ? openaiKey :
-                          activeAIProvider === "anthropic" ? anthropicKey : xaiKey
-                    }
-                    onChange={(e) => {
-                      if (activeAIProvider === "gemini") setGeminiKey(e.target.value);
-                      else if (activeAIProvider === "openai") setOpenaiKey(e.target.value);
-                      else if (activeAIProvider === "anthropic") setAnthropicKey(e.target.value);
-                      else setXaiKey(e.target.value);
-                    }}
-                  />
-                  {activeAIProvider === "gemini" && (
-                    <div className="mt-3">
-                      <label className="block text-xs font-medium text-text-secondary mb-1">Phiên bản Mô hình Gemini (Model)</label>
-                      <select
-                        className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-2.5 px-3 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 transition-all duration-200 cursor-pointer"
-                        value={geminiModel}
-                        onChange={(e) => setGeminiModel(e.target.value)}
-                      >
-                        <option value="gemini-3.5-flash">Gemini 3.5 Flash (Mới nhất - có thể gặp lỗi quá tải)</option>
-                        <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                        <option value="gemini-2.0-flash">Gemini 2.0 Flash (Khuyên dùng - Ổn định nhất)</option>
-                        <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                      </select>
-                    </div>
-                  )}
-                  {validateStatus[activeAIProvider] === "valid" && <p className="text-sm text-green-500 mt-2 font-medium">✓ API Key hợp lệ và đang hoạt động</p>}
-                  {validateStatus[activeAIProvider] === "invalid" && <p className="text-sm text-red-500 mt-2 font-medium">✕ API Key không hợp lệ</p>}
-                </div>
-
-                <div className="bg-bg-tertiary/40 p-4 rounded-xl border border-border-subtle">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-bold text-text-primary">⚡ Bóc băng Siêu tốc (Groq API)</label>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="sr-only peer"
-                        checked={useGroq}
-                        onChange={(e) => setUseGroq(e.target.checked)}
-                      />
-                      <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
-                    </label>
-                  </div>
-                  <p className="text-xs text-text-secondary mb-3">Sử dụng mô hình LPU siêu tốc của Groq để thay thế CPU nội bộ cho việc bóc tách phụ đề. Tốc độ &lt; 1 giây. Cần nhập API Key.</p>
-                  
-                  {useGroq && (
-                    <div className="mt-4">
-                      <input
-                        type="text"
-                        className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 text-sm font-medium"
-                        placeholder="Nhập API Key của Groq tại đây..."
-                        value={groqKey}
-                        onChange={(e) => setGroqKey(e.target.value)}
-                      />
-                      {validateStatus.groq === "valid" && <p className="text-sm text-green-500 mt-2 font-medium">✓ API Key hợp lệ và đang hoạt động</p>}
-                      {validateStatus.groq === "invalid" && <p className="text-sm text-red-500 mt-2 font-medium">✕ API Key không hợp lệ</p>}
-                    </div>
-                  )}
-                </div>
-                <div className="bg-bg-tertiary/40 p-4 rounded-xl border border-border-subtle space-y-4">
-                  <label className="block text-sm font-bold text-text-primary mb-1">📸 Kho Media (Stock Media Keys)</label>
-                  <p className="text-xs text-text-secondary">Cấu hình khóa API để tự động tìm kiếm video nền hoặc sinh ảnh minh họa trong trang AI Faceless.</p>
-                  
-                  <div>
-                    <label className="block text-xs font-medium text-text-secondary mb-1.5">Pexels API Key</label>
-                    <input
-                      type="text"
-                      className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 text-sm font-medium"
-                      placeholder="Nhập Pexels API Key tại đây..."
-                      value={pexelsKey}
-                      onChange={(e) => setPexelsKey(e.target.value)}
-                    />
-                    {validateStatus.pexels === "valid" && <p className="text-sm text-green-500 mt-2 font-medium">✓ API Key hợp lệ và đang hoạt động</p>}
-                    {validateStatus.pexels === "invalid" && <p className="text-sm text-red-500 mt-2 font-medium">✕ API Key không hợp lệ</p>}
-                    {validateStatus.pexels === "error" && <p className="text-sm text-amber-500 mt-2 font-medium">⚠ Lỗi kết nối kiểm tra API Key</p>}
-                  </div>
-
-                  <div className="pt-2 border-t border-border-subtle/50">
-                    <p className="text-xs text-text-secondary leading-relaxed">
-                      💡 <strong>DALL-E 3 (OpenAI Image Source):</strong> Sẽ tự động sử dụng <strong>API Key của OpenAI</strong> mà bạn cấu hình ở trên để sinh hình ảnh minh họa cho video.
-                    </p>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-2">Số luồng xử lý AI song song (Max Concurrency)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 text-sm font-medium"
-                    value={concurrency}
-                    onChange={(e) => setConcurrency(e.target.value)}
-                  />
-                  <p className="text-xs text-text-secondary mt-2 italic">Lưu ý: Tăng số luồng sẽ tốn nhiều RAM/VRAM máy chủ hơn khi dùng AI Whisper/TTS nội bộ.</p>
-                </div>
-
-                <div className="bg-bg-tertiary/40 p-4 rounded-xl border border-border-subtle">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-bold text-text-primary">🎙️ Phân tách Người nói (Pyannote Diarization)</label>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="sr-only peer"
-                        checked={enableDiarization}
-                        onChange={(e) => setEnableDiarization(e.target.checked)}
-                      />
-                      <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
-                    </label>
-                  </div>
-                  <p className="text-xs text-text-secondary mb-3">Tự động nhận diện nhiều người nói trong video (Nam/Nữ) để gán giọng AI khác nhau. Yêu cầu có Hugging Face Token.</p>
-                  
-                  {enableDiarization && (
-                    <div className="mt-4">
-                      <input
-                        type="text"
-                        className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 text-sm font-medium"
-                        placeholder="Nhập Hugging Face Token (hf_...) tại đây..."
-                        value={hfToken}
-                        onChange={(e) => setHfToken(e.target.value)}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="bg-bg-tertiary/40 p-4 rounded-xl border border-border-subtle">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-bold text-text-primary">🎵 Tách Nhạc Nền (Demucs Audio Separation)</label>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="sr-only peer"
-                        checked={enableDemucs}
-                        onChange={(e) => setEnableDemucs(e.target.checked)}
-                      />
-                      <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
-                    </label>
-                  </div>
-                  <p className="text-xs text-text-secondary mb-3">Xóa giọng nói gốc nhưng GIỮ NGUYÊN nhạc nền và tiếng động (BGM/SFX). Tốn rất nhiều CPU/GPU khi chạy.</p>
-                  
-                  {enableDemucs && (
-                    <div className="mt-4">
-                      <label className="block text-xs font-medium text-text-secondary mb-2">Âm lượng Nhạc nền (BGM Volume %)</label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={bgmVolume}
-                        onChange={(e) => setBgmVolume(e.target.value)}
-                        className="w-full h-2 bg-bg-secondary rounded-lg appearance-none cursor-pointer"
-                      />
-                      <div className="text-right text-xs font-bold mt-1 text-brand-primary">{bgmVolume}%</div>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <AiKeysTab
+                activeAIProvider={activeAIProvider} setActiveAIProvider={setActiveAIProvider}
+                geminiKey={geminiKey} setGeminiKey={setGeminiKey}
+                openaiKey={openaiKey} setOpenaiKey={setOpenaiKey}
+                anthropicKey={anthropicKey} setAnthropicKey={setAnthropicKey}
+                xaiKey={xaiKey} setXaiKey={setXaiKey}
+                geminiModel={geminiModel} setGeminiModel={setGeminiModel}
+                validateStatus={validateStatus}
+                useGroq={useGroq} setUseGroq={setUseGroq}
+                groqKey={groqKey} setGroqKey={setGroqKey}
+                pexelsKey={pexelsKey} setPexelsKey={setPexelsKey}
+              />
             )}
 
-            {/* TAB 2: Giọng nói (TTS) */}
             {activeTab === "tts" && (
-              <div className="space-y-6">
-                <div className="bg-bg-tertiary/40 p-4 rounded-xl border border-border-subtle">
-                  <label className="block text-sm font-bold text-text-primary mb-2">🎙️ Nền tảng Lồng tiếng (Active TTS Provider)</label>
-                  <p className="text-xs text-text-secondary mb-3">Chọn nền tảng AI sẽ được dùng để tạo giọng đọc lồng tiếng cho video.</p>
-                  <select
-                    className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 cursor-pointer text-sm"
-                    value={activeTTSProvider}
-                    onChange={(e) => setActiveTTSProvider(e.target.value)}
-                  >
-                    <option value="edge">Edge-TTS (Miễn phí, Không cần Key)</option>
-                    <option value="fpt">FPT.AI (Giọng chuẩn Việt Nam)</option>
-                    <option value="openai">OpenAI TTS (Dùng chung key OpenAI, truyền cảm)</option>
-                    <option value="elevenlabs">ElevenLabs (Siêu thực, biểu cảm)</option>
-                    <option value="vieneu">VieNeu-TTS (Offline, Tăng tốc GPU/CPU)</option>
-                  </select>
-                  
-                  {activeTTSProvider === "vieneu" && (
-                    <div className="mt-3 p-3 bg-bg-secondary/50 rounded-xl border border-border-subtle text-xs text-text-secondary space-y-1">
-                      <p className="font-bold text-neon-purple">• Hệ thống lồng tiếng offline chất lượng cao tiếng Việt.</p>
-                      <p>• Yêu cầu đã cài đặt phần mềm <strong className="text-text-primary">eSpeak NG</strong> trên Windows và cấu hình PATH.</p>
-                      <p>• Tự động sử dụng GPU rời NVIDIA GTX 1650 qua CUDA để tăng tốc nếu bật Tăng tốc phần cứng.</p>
-                    </div>
-                  )}
-                </div>
-
-                {activeTTSProvider !== "edge" && activeTTSProvider !== "vieneu" && (
-                  <div className="space-y-4">
-                    <label className="block text-sm font-medium text-text-secondary mb-2">
-                      API Key của {
-                        activeTTSProvider === "fpt" ? "FPT.AI" :
-                          activeTTSProvider === "openai" ? "OpenAI TTS" :
-                            activeTTSProvider === "elevenlabs" ? "ElevenLabs" : ""
-                      }
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 text-sm font-medium"
-                      placeholder={`Nhập API Key của ${activeTTSProvider} tại đây...`}
-                      value={
-                        activeTTSProvider === "fpt" ? fptKey :
-                          activeTTSProvider === "openai" ? openaiKey :
-                            activeTTSProvider === "elevenlabs" ? elevenlabsKey : ""
-                      }
-                      onChange={(e) => {
-                        if (activeTTSProvider === "fpt") setFptKey(e.target.value);
-                        else if (activeTTSProvider === "openai") setOpenaiKey(e.target.value);
-                        else if (activeTTSProvider === "elevenlabs") setElevenlabsKey(e.target.value);
-                      }}
-                    />
-                    {validateStatus[activeTTSProvider] === "valid" && <p className="text-sm text-green-500 mt-2 font-medium">✓ API Key hợp lệ và đang hoạt động</p>}
-                    {validateStatus[activeTTSProvider] === "invalid" && <p className="text-sm text-red-500 mt-2 font-medium">✕ API Key không hợp lệ</p>}
-                  </div>
-                )}
-              </div>
+              <TtsTab
+                concurrency={concurrency} setConcurrency={setConcurrency}
+                enableDiarization={enableDiarization} setEnableDiarization={setEnableDiarization}
+                hfToken={hfToken} setHfToken={setHfToken}
+                enableDemucs={enableDemucs} setEnableDemucs={setEnableDemucs}
+                bgmVolume={bgmVolume} setBgmVolume={setBgmVolume}
+                activeTTSProvider={activeTTSProvider} setActiveTTSProvider={setActiveTTSProvider}
+                enableAutoVoiceClone={enableAutoVoiceClone} setEnableAutoVoiceClone={setEnableAutoVoiceClone}
+                fptKey={fptKey} setFptKey={setFptKey}
+                openaiKey={openaiKey} setOpenaiKey={setOpenaiKey}
+                elevenlabsKey={elevenlabsKey} setElevenlabsKey={setElevenlabsKey}
+                validateStatus={validateStatus}
+              />
             )}
 
-            {/* TAB 3: Trình duyệt & Proxy */}
             {activeTab === "browser" && (
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-2">Cookie Douyin (Bắt buộc nếu lỗi cào)</label>
-                  <textarea
-                    className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 font-mono text-xs leading-relaxed"
-                    rows="5"
-                    placeholder="Nhập chuỗi cookie (ttwid=...; sessionid=...;) vào đây..."
-                    value={douyinCookie}
-                    onChange={(e) => setDouyinCookie(e.target.value)}
-                  ></textarea>
-                  {validateStatus.douyin === "valid" && (
-                    <div className="mt-2 text-sm bg-bg-tertiary/20 p-3 rounded-lg border border-border-subtle">
-                      <p className="text-green-500 font-medium">✓ Douyin API trả về thành công</p>
-                      {validateStatus.douyin_details?.expires && (
-                        <p className="text-text-secondary mt-1">🗓️ Hết hạn: <span className="text-text-primary font-medium">{validateStatus.douyin_details.expires}</span></p>
-                      )}
-                      {validateStatus.douyin_details?.missing?.length > 0 && (
-                        <p className="text-amber-500 font-medium mt-1">
-                          ⚠ Thiếu thông số: {validateStatus.douyin_details.missing.join(', ')} (Có thể gây lỗi khi tìm kiếm)
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {validateStatus.douyin === "invalid" && (
-                    <div className="mt-2 text-sm bg-bg-tertiary/20 p-3 rounded-lg border border-red-500/30">
-                      <p className="text-red-500 font-medium">✕ Cookie đã hết hạn hoặc bị Douyin từ chối. Vui lòng lấy lại Cookie mới!</p>
-                      {validateStatus.douyin_details?.expires && (
-                        <p className="text-text-secondary mt-1">🗓️ Hết hạn: <span className="text-text-primary font-medium">{validateStatus.douyin_details.expires}</span></p>
-                      )}
-                      {validateStatus.douyin_details?.missing?.length > 0 && (
-                        <p className="text-amber-500 font-medium mt-1">
-                          ⚠ Thiếu thông số: {validateStatus.douyin_details.missing.join(', ')} (Cần copy ĐẦY ĐỦ chuỗi cookie từ tab Network)
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {validateStatus.douyin === "missing" && (
-                    <div className="mt-2 text-sm bg-bg-tertiary/20 p-3 rounded-lg border border-red-500/30">
-                      <p className="text-red-500 font-medium">✕ Thiếu Cookie Douyin!</p>
-                      <p className="text-amber-500 font-medium mt-1">
-                        ⚠ Nếu không có Cookie, tính năng <span className="font-bold">Cào Video</span> và <span className="font-bold">Tìm Kiếm Khám Phá</span> sẽ KHÔNG hoạt động.
-                        (Chỉ duy nhất "Bảng xếp hạng Hot Trend" là xem được do Douyin không yêu cầu đăng nhập cho bảng này).
-                      </p>
-                    </div>
-                  )}
-                  <p className="text-xs text-text-secondary mt-2 italic">Dán nội dung Cookie của trình duyệt (Nhấn F12 trên Douyin, xem tab Network) vào đây.</p>
-                </div>
-
-                <div className="bg-bg-tertiary/40 p-4 rounded-xl border border-border-subtle">
-                  <label className="block text-sm font-bold text-text-primary mb-2">🛡️ Cấu hình Trình duyệt chống phát hiện (Anti-Detect Browser)</label>
-                  <p className="text-xs text-text-secondary mb-3">Tích hợp phần mềm ẩn danh để an toàn tuyệt đối khi đăng video / Nuôi tài khoản tránh bị Shadowban.</p>
-                  <select
-                    className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 mb-4 cursor-pointer text-sm"
-                    value={antiDetectProvider}
-                    onChange={(e) => setAntiDetectProvider(e.target.value)}
-                  >
-                    <option value="none">Không dùng (Dùng Trình duyệt Web cơ bản của Playwright)</option>
-                    <option value="gpm">GPM Login (GPMLogin API)</option>
-                  </select>
-                  
-                  {antiDetectProvider === "gpm" && (
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-text-secondary mb-2">Đường dẫn API của GPM Login</label>
-                      <input
-                        type="text"
-                        className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 text-sm font-medium"
-                        placeholder="Ví dụ: http://127.0.0.1:19995"
-                        value={gpmApiUrl}
-                        onChange={(e) => setGpmApiUrl(e.target.value)}
-                      />
-                      <p className="text-xs text-text-secondary mt-2">Mở app GPMLogin -{">"} Cài đặt -{">"} Bật API -{">"} Lấy cổng localhost dán vào đây.</p>
-                      {validateStatus.gpm === "valid" && <p className="text-sm text-green-500 mt-2 font-medium">✓ Đã kết nối thành công tới GPM Login API</p>}
-                      {validateStatus.gpm === "invalid" && <p className="text-sm text-red-500 mt-2 font-medium">✕ Không thể kết nối. Hãy đảm bảo phần mềm GPMLogin đang bật và tính năng API đã được kích hoạt.</p>}
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-2">HTTP Proxy (Tuỳ chọn)</label>
-                  <input
-                    type="text"
-                    className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary transition-all duration-200 text-sm font-medium"
-                    placeholder="http://user:pass@ip:port"
-                  />
-                </div>
-              </div>
+              <BrowserTab
+                douyinCookie={douyinCookie} setDouyinCookie={setDouyinCookie}
+                antiDetectProvider={antiDetectProvider} setAntiDetectProvider={setAntiDetectProvider}
+                gpmApiUrl={gpmApiUrl} setGpmApiUrl={setGpmApiUrl}
+                validateStatus={validateStatus}
+              />
             )}
 
-            {/* TAB 4: Hệ thống & Giám sát */}
             {activeTab === "system" && (
-              <div className="space-y-6">
-                <div className="bg-bg-tertiary/40 p-4 rounded-xl border border-border-subtle">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-bold text-text-primary">🖥️ Tăng tốc phần cứng (GPU Acceleration)</label>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="sr-only peer"
-                        checked={useGpuAcceleration}
-                        onChange={(e) => setUseGpuAcceleration(e.target.checked)}
-                      />
-                      <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
-                    </label>
-                  </div>
-                  <p className="text-xs text-text-secondary mb-4">Sử dụng GPU (Intel QSV / Nvidia NVENC) để tăng tốc độ xử lý video bằng FFMPEG và giảm tải CPU. Hệ thống sẽ tự động quét và kiểm tra xem thiết bị của bạn có hỗ trợ GPU nào không.</p>
-                  
-                  {/* GPU Check Status Box */}
-                  <div className="mt-3 pt-3 border-t border-border-subtle/50">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">🔍 Trạng thái phần cứng GPU:</span>
-                      <button
-                        type="button"
-                        onClick={fetchGpuStatus}
-                        disabled={checkingGpu}
-                        className="text-[9px] bg-bg-secondary hover:bg-bg-tertiary text-text-primary border border-border-subtle px-2 py-0.5 rounded transition-colors disabled:opacity-50 font-bold uppercase tracking-wide cursor-pointer"
-                      >
-                        {checkingGpu ? "Đang quét..." : "🔄 Quét lại"}
-                      </button>
-                    </div>
-                    {checkingGpu ? (
-                      <p className="text-xs text-neon-purple animate-pulse">Đang kiểm tra khả năng tương thích của GPU...</p>
-                    ) : gpuStatus ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className={`w-2.5 h-2.5 rounded-full ${gpuStatus.can_use_gpu_acceleration ? 'bg-green-500 animate-pulse' : gpuStatus.gpu_available ? 'bg-amber-500' : 'bg-gray-500'}`} />
-                          <span className="text-xs font-semibold text-text-primary">{gpuStatus.gpu_name}</span>
-                          {gpuStatus.gpu_available && (
-                            <span className="text-[10px] bg-neon-purple/20 text-neon-purple px-1.5 py-0.5 rounded font-mono font-bold">CUDA {gpuStatus.cuda_version}</span>
-                          )}
-                        </div>
-                        <p className={`text-xs ${gpuStatus.can_use_gpu_acceleration ? 'text-green-500' : gpuStatus.gpu_available ? 'text-amber-500' : 'text-text-secondary'}`}>
-                          {gpuStatus.message}
-                        </p>
-                        {gpuStatus.gpu_available && (
-                          <div className="text-[10px] text-text-secondary/80 bg-bg-secondary/40 p-2 rounded border border-border-subtle/30 space-y-1">
-                            <p>• GPU rời NVIDIA hỗ trợ: <span className="text-green-500 font-semibold">Có</span></p>
-                            <p>• FFmpeg NVENC (Bộ giải mã card rời): <span className={gpuStatus.ffmpeg_nvenc_available ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>{gpuStatus.ffmpeg_nvenc_available ? 'Khả dụng (✓)' : 'Không tìm thấy (✕)'}</span></p>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-text-secondary italic">Chưa thực hiện quét phần cứng.</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-bg-tertiary/40 p-4 rounded-xl border border-border-subtle">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-bold text-text-primary">🏥 Giám sát Sức khỏe Tài khoản (Shadowban Check)</label>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="sr-only peer"
-                        checked={enableHealthCheck}
-                        onChange={(e) => setEnableHealthCheck(e.target.checked)}
-                      />
-                      <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
-                    </label>
-                  </div>
-                  <p className="text-xs text-text-secondary mb-4">Tự động dùng trình duyệt quét số lượt xem của các video mới đăng trong vòng 3 ngày. Nếu 0 view liên tục, hệ thống sẽ cảnh báo đỏ (Shadowbanned).</p>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-text-secondary mb-2">Chu kỳ kiểm tra</label>
-                      <select
-                        className="w-full bg-bg-secondary border border-border-subtle rounded-xl py-2.5 px-3 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/50 transition-all duration-200 cursor-pointer"
-                        value={healthCheckInterval}
-                        onChange={(e) => setHealthCheckInterval(Number(e.target.value))}
-                        disabled={!enableHealthCheck}
-                      >
-                        <option value={4}>Mỗi 4 giờ (Khuyên dùng)</option>
-                        <option value={8}>Mỗi 8 giờ</option>
-                        <option value={12}>Mỗi 12 giờ</option>
-                        <option value={24}>Mỗi 24 giờ</option>
-                      </select>
-                    </div>
-                    <div className="flex items-end">
-                      <button
-                        type="button"
-                        onClick={handleCheckNow}
-                        className="w-full bg-bg-secondary hover:bg-bg-tertiary border border-border-subtle text-text-primary px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer"
-                      >
-                        🔍 Kiểm tra ngay
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <SystemTab
+                useGpuAcceleration={useGpuAcceleration} setUseGpuAcceleration={setUseGpuAcceleration}
+                checkingGpu={checkingGpu} fetchGpuStatus={fetchGpuStatus} gpuStatus={gpuStatus}
+                enableHealthCheck={enableHealthCheck} setEnableHealthCheck={setEnableHealthCheck}
+                healthCheckInterval={healthCheckInterval} setHealthCheckInterval={setHealthCheckInterval}
+                handleCheckNow={handleCheckNow}
+              />
             )}
 
-            {/* TAB 5: Giao diện */}
             {activeTab === "theme" && (
-              <div className="space-y-6">
-                <div className="bg-bg-tertiary/40 p-5 rounded-xl border border-border-subtle space-y-4">
-                  <label className="block text-sm font-bold text-text-primary">🌌 Hình nền giao diện (Background Style)</label>
-                  <p className="text-xs text-text-secondary leading-relaxed">
-                    Tùy chỉnh phong cách hình nền của hệ thống. Thay đổi sẽ được hiển thị ngay lập tức.
-                  </p>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {/* Dark Option */}
-                    <button
-                      type="button"
-                      onClick={() => setThemeBgType("dark")}
-                      className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-300 relative cursor-pointer ${
-                        themeBgType === "dark"
-                          ? "border-neon-purple bg-neon-purple/5 shadow-md shadow-neon-purple/10"
-                          : "border-border-subtle bg-bg-secondary/50 hover:border-brand-primary/30"
-                      }`}
-                    >
-                      <div className="w-full aspect-[16/10] bg-bg-primary rounded-lg mb-3 border border-border-subtle flex items-center justify-center">
-                        <span className="text-xs font-semibold text-text-secondary">Pure Dark</span>
-                      </div>
-                      <span className="text-sm font-bold text-text-primary">Tông đen xám (Dark)</span>
-                    </button>
-
-                    {/* Default Option */}
-                    <button
-                      type="button"
-                      onClick={() => setThemeBgType("default")}
-                      className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-300 relative cursor-pointer ${
-                        themeBgType === "default"
-                          ? "border-neon-purple bg-neon-purple/5 shadow-md shadow-neon-purple/10"
-                          : "border-border-subtle bg-bg-secondary/50 hover:border-brand-primary/30"
-                      }`}
-                    >
-                      <div className="w-full aspect-[16/10] rounded-lg mb-3 border border-border-subtle overflow-hidden relative">
-                        <div className="absolute inset-0 bg-cover bg-center opacity-80" style={{ backgroundImage: "url('/src/assets/bg.jpg')" }} />
-                        <div className="absolute inset-0 bg-bg-primary/20" />
-                      </div>
-                      <span className="text-sm font-bold text-text-primary">Mặc định hệ thống</span>
-                    </button>
-
-                    {/* Custom Option */}
-                    <button
-                      type="button"
-                      onClick={() => setThemeBgType("custom")}
-                      className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-300 relative cursor-pointer ${
-                        themeBgType === "custom"
-                          ? "border-neon-purple bg-neon-purple/5 shadow-md shadow-neon-purple/10"
-                          : "border-border-subtle bg-bg-secondary/50 hover:border-brand-primary/30"
-                      }`}
-                    >
-                      <div className="w-full aspect-[16/10] rounded-lg mb-3 border border-border-subtle overflow-hidden relative flex items-center justify-center bg-bg-secondary">
-                        {themeBgCustomPath ? (
-                          <img
-                            src={themeBgCustomPath.startsWith('http') ? themeBgCustomPath : `http://localhost:8000${themeBgCustomPath}`}
-                            alt="Custom Background"
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-xs font-semibold text-text-secondary">Chưa tải ảnh lên</span>
-                        )}
-                      </div>
-                      <span className="text-sm font-bold text-text-primary">Tự tải lên (Custom)</span>
-                    </button>
-                  </div>
-
-                  {themeBgType === "custom" && (
-                    <div className="mt-4 p-4 rounded-xl bg-bg-secondary/50 border border-border-subtle space-y-3">
-                      <label className="block text-xs font-bold text-text-primary">Tải lên hình nền mới (Khuyên dùng tỉ lệ 16:9 hoặc ảnh ngang phân giải cao)</label>
-                      <div className="flex items-center gap-4">
-                        <label className="flex-1 flex flex-col items-center justify-center h-28 border-2 border-dashed border-border-subtle hover:border-brand-primary/50 rounded-xl cursor-pointer bg-bg-tertiary/20 hover:bg-bg-tertiary/40 transition-all">
-                          <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                            <span className="text-2xl mb-1">📤</span>
-                            <p className="text-xs text-text-secondary"><span className="font-bold text-brand-primary">Nhấp để chọn file</span> hoặc kéo thả</p>
-                            <p className="text-[10px] text-text-secondary/60 mt-1">PNG, JPG (Tối đa 5MB)</p>
-                          </div>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={handleUploadBg}
-                          />
-                        </label>
-                        
-                        {themeBgCustomPath && (
-                          <div className="w-28 h-28 rounded-xl border border-border-subtle overflow-hidden relative group">
-                            <img
-                              src={themeBgCustomPath.startsWith('http') ? themeBgCustomPath : `http://localhost:8000${themeBgCustomPath}`}
-                              alt="Background Preview"
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        )}
-                      </div>
-                      {uploadBgStatus && (
-                        <p className={`text-xs font-semibold ${uploadBgStatus.includes("thành công") ? "text-green-500" : "text-brand-primary animate-pulse"}`}>
-                          {uploadBgStatus}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <ThemeTab
+                themeBgType={themeBgType} setThemeBgType={setThemeBgType}
+                themeBgCustomPath={themeBgCustomPath} handleUploadBg={handleUploadBg}
+                uploadBgStatus={uploadBgStatus}
+              />
             )}
           </div>
 

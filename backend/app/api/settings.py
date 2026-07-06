@@ -36,6 +36,7 @@ class KeysUpdate(BaseModel):
     theme_bg_custom_path: str = ""
     hf_token: str = ""
     enable_demucs: bool = False
+    enable_auto_voice_clone: bool = False
     enable_diarization: bool = False
     bgm_volume: int = 50
 
@@ -280,6 +281,7 @@ async def get_keys():
         "theme_bg_custom_path": os.getenv("THEME_BG_CUSTOM_PATH", ""),
         "hf_token": decrypt_data(os.getenv("HF_TOKEN", "")),
         "enable_demucs": os.getenv("ENABLE_DEMUCS", "False").lower() == "true",
+        "enable_auto_voice_clone": os.getenv("ENABLE_AUTO_VOICE_CLONE", "False").lower() == "true",
         "enable_diarization": os.getenv("ENABLE_DIARIZATION", "False").lower() == "true",
         "bgm_volume": int(os.getenv("BGM_VOLUME", 50))
     }
@@ -314,6 +316,7 @@ async def update_keys(data: KeysUpdate):
     set_key(ENV_PATH, "THEME_BG_CUSTOM_PATH", data.theme_bg_custom_path)
     set_key(ENV_PATH, "HF_TOKEN", encrypt_data(data.hf_token))
     set_key(ENV_PATH, "ENABLE_DEMUCS", str(data.enable_demucs))
+    set_key(ENV_PATH, "ENABLE_AUTO_VOICE_CLONE", str(data.enable_auto_voice_clone))
     set_key(ENV_PATH, "ENABLE_DIARIZATION", str(data.enable_diarization))
     set_key(ENV_PATH, "BGM_VOLUME", str(data.bgm_volume))
     

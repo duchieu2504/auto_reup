@@ -149,16 +149,25 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
   };
 
   const handleMouseMove = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
+    // Find the actual media element (video or img) inside the container
+    // to get accurate dimensions for coordinate mapping
+    const container = e.currentTarget;
+    const mediaEl = container.querySelector('video, img');
+    const rect = mediaEl ? mediaEl.getBoundingClientRect() : container.getBoundingClientRect();
+    
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
+    // Clamp coordinates to media boundaries
+    const clampedX = Math.max(0, Math.min(rect.width, x));
+    const clampedY = Math.max(0, Math.min(rect.height, y));
+    
     if (isDragging) {
-      const percentage = ((rect.height - y) / rect.height) * 100;
-      setSubtitleMarginV(Math.round(Math.max(5, Math.min(95, percentage))));
+      const percentage = ((rect.height - clampedY) / rect.height) * 100;
+      setSubtitleMarginV(Math.round(Math.max(0, Math.min(95, percentage))));
     } else if (isDraggingWatermark) {
-      const xPercent = (x / rect.width) * 100;
-      const yPercent = (y / rect.height) * 100;
+      const xPercent = (clampedX / rect.width) * 100;
+      const yPercent = (clampedY / rect.height) * 100;
       setWatermarkX(Math.round(Math.max(0, Math.min(100, xPercent))));
       setWatermarkY(Math.round(Math.max(0, Math.min(100, yPercent))));
     }

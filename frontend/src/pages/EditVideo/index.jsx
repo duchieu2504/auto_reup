@@ -18,6 +18,7 @@ const EditVideo = () => {
   const editHook = useEditVideo(id);
   const subtitleConfig = useSubtitleState(id);
   const [activeTab, setActiveTab] = useState('subtitle'); // 'subtitle' | 'watermark' | 'srt'
+  const [aspectRatio, setAspectRatio] = useState(null);
 
   if (editHook.loading) {
     return (
@@ -72,21 +73,26 @@ const EditVideo = () => {
         <div className="lg:col-span-2 space-y-6 flex flex-col">
           <ProfileSelector config={subtitleConfig} />
           
-          <div className="bg-bg-primary border border-border-subtle rounded-2xl p-4 flex-1">
-            <h2 className="text-sm font-semibold text-text-primary mb-3">Xem trước Video Gốc</h2>
-            {videoData.raw_video_path ? (
-              <InteractiveVideoPreview config={subtitleConfig}>
-                <video 
-                  src={`${API_BASE}/files/${videoData.raw_video_path.replace(/^[/]?data[/]/, '')}`}
-                  controls
-                  className="w-full max-h-[420px] object-contain rounded-lg shadow-lg"
-                />
-              </InteractiveVideoPreview>
-            ) : (
-              <div className="w-full aspect-video bg-bg-secondary rounded-lg flex items-center justify-center text-text-secondary">
-                Không tìm thấy file video
+          <div className="bg-bg-primary border border-border-subtle rounded-2xl p-4 flex-1 flex flex-col min-h-0">
+            <h2 className="text-sm font-semibold text-text-primary mb-3 shrink-0">Xem trước Video Gốc</h2>
+            <div className="flex-1 flex items-center justify-center min-h-0 relative overflow-hidden bg-black/20 rounded-lg">
+              <div className="absolute inset-0 flex items-center justify-center">
+                {videoData.raw_video_path ? (
+                  <InteractiveVideoPreview config={subtitleConfig} aspectRatio={aspectRatio} className="max-w-full max-h-full">
+                    <video 
+                      src={`${API_BASE}/files/${(videoData.raw_video_path || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '').split('/').map(encodeURIComponent).join('/')}`}
+                      controls
+                      className="max-w-full max-h-full block rounded-lg shadow-lg"
+                      onLoadedMetadata={(e) => setAspectRatio(e.target.videoWidth / e.target.videoHeight)}
+                    />
+                  </InteractiveVideoPreview>
+                ) : (
+                  <div className="w-full h-full bg-bg-secondary flex items-center justify-center text-text-secondary">
+                    Không tìm thấy file video
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
 
           <div className="bg-bg-primary border border-border-subtle rounded-2xl p-6">

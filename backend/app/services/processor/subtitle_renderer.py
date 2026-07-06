@@ -25,7 +25,7 @@ class SubtitleRenderer:
         self.style = style
         
         # Scale parameters according to video height (reference 420p which matches the UI preview height)
-        self.scale_factor = video_height / 420.0
+        self.scale_factor = (video_height / 420.0)
         self.font_size = max(1, int(font_size * self.scale_factor))
         self.bg_padding_x = max(0, int(bg_padding * self.scale_factor * 5))
         self.bg_padding_y = max(0, int(bg_padding * self.scale_factor * 3))
@@ -43,7 +43,10 @@ class SubtitleRenderer:
             for f in os.listdir(fonts_dir):
                 if os.path.splitext(f)[0] == font_name:
                     return os.path.join(fonts_dir, f)
-        # Default Linux font fallback
+        # Default OS-specific font fallback
+        import platform
+        if platform.system() == "Windows":
+            return "C:/Windows/Fonts/arial.ttf"
         return "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
 
     def _format_time(self, t) -> str:
@@ -65,6 +68,49 @@ class SubtitleRenderer:
         draw.pieslice([x2 - radius * 2, y1, x2, y1 + radius * 2], 270, 360, fill=fill)
         draw.pieslice([x1, y2 - radius * 2, x1 + radius * 2, y2], 90, 180, fill=fill)
         draw.pieslice([x2 - radius * 2, y2 - radius * 2, x2, y2], 0, 90, fill=fill)
+
+    def _wrap_and_split_text(self, text: str, max_width: int) -> list[str]:
+        """Split text into lines that fit within max_width pixels."""
+        img = Image.new('RGBA', (1, 1))
+        draw = ImageDraw.Draw(img)
+        
+        def get_width(line_text: str) -> int:
+            try:
+                bbox = draw.textbbox((0, 0), line_text, font=self.font)
+                return bbox[2] - bbox[0]
+            except AttributeError:
+                w, _ = draw.textsize(line_text, font=self.font)
+                return w
+                
+        words = text.split()
+        lines = []
+        current_line = []
+        
+        for word in words:
+            test_line = " ".join(current_line + [word])
+            w = get_width(test_line)
+                
+            if w > max_width and current_line:
+                lines.append(" ".join(current_line))
+                current_line = [word]
+            else:
+                current_line.append(word)
+                
+        if current_line:
+            lines.append(" ".join(current_line))
+            
+        # Post-processing: check if any trailing segment is too short (< 10% video width).
+        # If so, merge it back with the previous segment to avoid 1-word orphaned subtitles.
+        min_width = self.video_width * 0.10
+        i = len(lines) - 1
+        while i > 0:
+            w = get_width(lines[i])
+            if w < min_width:
+                # Merge with previous line
+                lines[i-1] = lines[i-1] + " " + lines.pop(i)
+            i -= 1
+            
+        return lines if lines else [text]
 
     def draw_cloud_background(self, draw, xy, fill):
         """Helper to draw wavy cloud background"""
@@ -120,12 +166,25 @@ class SubtitleRenderer:
                     f.write(f"duration {duration:.3f}\n")
                 
                 text = sub.text.replace("\n", " ")
-                png_path = os.path.join(output_dir, f"sub_{i:04d}.png")
-                self._create_subtitle_frame(text, png_path)
                 
-                duration = end_time - start_time
-                f.write(f"file '{png_path}'\n")
-                f.write(f"duration {duration:.3f}\n")
+                # Cắt đoạn text nếu nó vượt quá 80% chiều dài video
+                max_w = int(self.video_width * 0.8)
+                text_segments = self._wrap_and_split_text(text, max_w)
+                
+                total_duration = end_time - start_time
+                total_chars = sum(len(s) for s in text_segments)
+                
+                for j, segment_text in enumerate(text_segments):
+                    png_path = os.path.join(output_dir, f"sub_{i:04d}_{j:02d}.png")
+                    self._create_subtitle_frame(segment_text, png_path)
+                    
+                    if total_chars > 0:
+                        segment_duration = total_duration * (len(segment_text) / total_chars)
+                    else:
+                        segment_duration = total_duration / len(text_segments)
+                        
+                    f.write(f"file '{png_path}'\n")
+                    f.write(f"duration {segment_duration:.3f}\n")
                 
                 last_end_time = end_time
                 
@@ -152,16 +211,15 @@ class SubtitleRenderer:
         x_center = self.video_width / 2
         
         # Bottom margin is calculated from the bottom of the video
-        y_bottom = self.video_height - (self.video_height * self.margin_v / 100.0)
-        y_top = y_bottom - text_h
+        # In UI (CSS), `bottom: margin_v%` sets the bottom edge of the padded element.
+        box_y2 = self.video_height - (self.video_height * self.margin_v / 100.0)
         
         text_x = x_center - text_w / 2
-        text_y = y_top
+        text_y = box_y2 - self.bg_padding_y - text_h
         
         box_x1 = text_x - self.bg_padding_x
         box_y1 = text_y - self.bg_padding_y
         box_x2 = text_x + text_w + self.bg_padding_x
-        box_y2 = text_y + text_h + self.bg_padding_y
 
         xy = [box_x1, box_y1, box_x2, box_y2]
         

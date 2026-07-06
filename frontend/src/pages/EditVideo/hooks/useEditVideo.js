@@ -49,7 +49,7 @@ export const useEditVideo = (id) => {
   const fetchSubtitle = async (srtPath) => {
     setLoadingSubtitle(true);
     try {
-      const cleanPath = srtPath.replace(/^[/]?data[/]/, '');
+      const cleanPath = (srtPath || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '');
       const res = await fetch(`${API_BASE}/files/${cleanPath}`);
       if (res.ok) {
         const text = await res.text();
@@ -121,7 +121,15 @@ export const useEditVideo = (id) => {
         watermark_y: subtitleConfig.watermarkY,
         watermark_size: subtitleConfig.watermarkSize,
         watermark_color: subtitleConfig.watermarkColor,
-        watermark_opacity: subtitleConfig.watermarkOpacity
+        watermark_opacity: subtitleConfig.watermarkOpacity,
+        mask_enabled: subtitleConfig.maskEnabled,
+        mask_x: subtitleConfig.maskX || 10.0,
+        mask_y: subtitleConfig.maskY || 10.0,
+        mask_width: subtitleConfig.maskWidth || 20.0,
+        mask_height: subtitleConfig.maskHeight || 15.0,
+        mask_type: subtitleConfig.maskType || "color",
+        mask_color: subtitleConfig.maskColor || "#000000",
+        masks: subtitleConfig.masks || []
       };
 
       const res = await fetch(`${API_BASE}/processor/start`, {

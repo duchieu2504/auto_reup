@@ -86,7 +86,7 @@ export const ScheduleForm = ({ hook }) => {
                       >
                         <div className="w-12 h-16 shrink-0 rounded-lg overflow-hidden bg-black/50 border border-white/5 relative group/vid">
                           <video 
-                            src={`http://localhost:8000/api/files/${(v.final_video_path || v.raw_video_path).replace(/^[/]?data[/]/, '')}#t=2.0`}
+                            src={`http://localhost:8000/api/files/${(v.final_video_path || v.raw_video_path || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '').split('/').map(encodeURIComponent).join('/')}#t=2.0`}
                             className="w-full h-full object-cover opacity-90 group-hover/vid:opacity-100 transition-opacity"
                             muted loop playsInline preload="metadata"
                             onLoadedMetadata={(e) => { e.target.currentTime = 2; }}

@@ -29,12 +29,10 @@ anthropic>=0.18.0
 groq>=0.9.0
 
 
-numpy>=1.26.0
+numpy>=1.26.0,<2.0.0
 opencv-python-headless>=4.5.0
 Pillow>=10.0.0
-nvidia-cublas-cu12>=12.1.3.1
-nvidia-cudnn-cu12>=8.9.2.26
-onnxruntime-gpu>=1.17.0
+onnxruntime-gpu>=1.19.0
 vieneu>=1.0.0
 audio-separator==0.43.1
 transformers

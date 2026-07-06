@@ -51,6 +51,7 @@ export const useHistoryData = () => {
 
   // Config data
   const [voices, setVoices] = useState([]);
+  const [accounts, setAccounts] = useState([]);
 
   useEffect(() => {
     fetchHistory();
@@ -62,6 +63,11 @@ export const useHistoryData = () => {
       .then(data => {
         if(data.voices) setVoices(data.voices);
       })
+      .catch(err => console.error(err));
+
+    fetch(`${API_BASE}/social-accounts/`)
+      .then(res => res.json())
+      .then(data => setAccounts(data))
       .catch(err => console.error(err));
   }, []);
 
@@ -293,6 +299,10 @@ export const useHistoryData = () => {
 
   const submitProcessing = async (subtitleConfig) => {
     try {
+      if (subtitleConfig && typeof subtitleConfig.saveEditProfile === 'function') {
+        subtitleConfig.saveEditProfile(); // Save selected params as default for next time
+      }
+
       const res = await fetch(`${API_BASE}/processor/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -311,13 +321,30 @@ export const useHistoryData = () => {
           subtitle_font_size: subtitleConfig.subtitleFontSize,
           subtitle_margin_v: subtitleConfig.subtitleMarginV,
           subtitle_bg_padding: subtitleConfig.subtitleBgPadding,
-          subtitle_bg_opacity: subtitleConfig.subtitleBgOpacity
+          subtitle_bg_opacity: subtitleConfig.subtitleBgOpacity,
+          mask_enabled: subtitleConfig.maskEnabled,
+          mask_x: subtitleConfig.maskX || 10.0,
+          mask_y: subtitleConfig.maskY || 10.0,
+          mask_width: subtitleConfig.maskWidth || 20.0,
+          mask_height: subtitleConfig.maskHeight || 15.0,
+          mask_type: subtitleConfig.maskType || "color",
+          mask_color: subtitleConfig.maskColor || "#000000",
+          masks: subtitleConfig.masks || []
         })
       });
       const data = await res.json();
       if (data.status === 'started') {
         toast.success(`Đã gửi lệnh xử lý cho ${processingItems.length} video.`);
         setShowConfigModal(false);
+        
+        // Cập nhật Optimistic UI ngay lập tức thành "transcribing" (để đổi nút Play thành Pause)
+        setHistoryData(prev => prev.map(item => {
+          if (processingItems.includes(item.raw_video_path)) {
+            return { ...item, status: 'transcribing' };
+          }
+          return item;
+        }));
+        
         fetchHistory();
         setSelectedIds([]);
       } else {
@@ -355,7 +382,7 @@ export const useHistoryData = () => {
       toast.error("Không tìm thấy file.");
       return;
     }
-    const safePath = filePath.replace(/^[/]?data[/]/, '');
+    const safePath = (filePath || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '').split('/').map(encodeURIComponent).join('/');
     setPreviewFile(`http://localhost:8000/api/files/${safePath}`);
     setPreviewType(type);
   };

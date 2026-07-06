@@ -15,6 +15,7 @@ export const BulkConfigModal = ({ hook }) => {
 
   const subtitleConfig = useSubtitleState();
   const [activeTab, setActiveTab] = useState('basic'); // 'basic' | 'subtitle' | 'watermark'
+  const [aspectRatio, setAspectRatio] = useState(null);
 
   if (!showConfigModal) return null;
 
@@ -26,7 +27,7 @@ export const BulkConfigModal = ({ hook }) => {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 animate-in fade-in duration-200 p-4 overflow-y-auto">
-      <div className="glass-panel bg-bg-secondary/90 border border-white/10 p-6 rounded-2xl w-full max-w-6xl flex flex-col gap-5 shadow-2xl relative my-auto max-h-[90vh] overflow-hidden">
+      <div className="glass-panel bg-bg-secondary/90 border border-white/10 p-6 rounded-2xl w-[80vw] max-w-[80vw] flex flex-col gap-5 shadow-2xl relative my-auto max-h-[90vh] overflow-hidden">
 
         {/* Header */}
         <div className="flex justify-between items-center border-b border-white/5 pb-4">
@@ -46,9 +47,9 @@ export const BulkConfigModal = ({ hook }) => {
         </div>
 
         {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-[600px] min-h-0">
-          {/* Left Col: Tabs & Cấu hình (Chiếm 60% = 3/5 cột) */}
-          <div className="lg:col-span-3 glass-panel rounded-2xl flex flex-col overflow-hidden bg-bg-primary/20 h-full border border-white/5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[600px] min-h-0">
+          {/* Left Col: Tabs & Cấu hình (5/12 cột) */}
+          <div className="lg:col-span-5 glass-panel rounded-2xl flex flex-col overflow-hidden bg-bg-primary/20 h-full border border-white/5">
             {/* Profile Selector Banner - Elevated to always be accessible */}
             <div className="px-5 pt-5 pb-0">
               <ProfileSelector config={subtitleConfig} />
@@ -122,44 +123,46 @@ export const BulkConfigModal = ({ hook }) => {
             </div>
           </div>
 
-          {/* Right Col: Preview (Chiếm 40% = 2/5 cột) */}
-          <div className="lg:col-span-2 flex flex-col gap-4 bg-bg-primary/20 rounded-2xl border border-white/5 p-5 h-full min-h-0 glass-panel">
+          {/* Right Col: Preview (7/12 cột) */}
+          <div className="lg:col-span-7 flex flex-col gap-4 bg-bg-primary/20 rounded-2xl border border-white/5 p-5 h-full min-h-0 glass-panel">
             <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider flex justify-between items-center">
               <span className="flex items-center gap-1.5"><PlayCircle size={14} className="text-brand-primary animate-pulse" /> Preview</span>
               <span className="text-[10px] text-brand-primary normal-case font-semibold">Kéo thả ô phụ đề để thay đổi vị trí</span>
             </label>
 
-            <div className="flex-1 bg-black/40 rounded-xl overflow-hidden border border-white/5 flex items-center justify-center select-none relative min-h-0 shadow-inner">
-              {previewImageUrl ? (
-                <InteractiveVideoPreview config={subtitleConfig} className="max-w-full max-h-full h-auto">
-                  <img
-                    src={previewImageUrl}
-                    alt="Preview"
-                    className="max-w-full max-h-full object-contain pointer-events-none"
-                  />
-                </InteractiveVideoPreview>
-              ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary gap-2 bg-black/20">
-                  <Loader2 className="animate-spin text-brand-primary" size={24} />
-                  <span className="text-xs font-medium">Đang tải ảnh preview...</span>
-                </div>
-              )}
+            <div className="flex-1 bg-black/40 rounded-xl overflow-hidden border border-white/5 relative min-h-0 shadow-inner p-2">
+              <div className="absolute inset-2 flex items-center justify-center">
+                {previewImageUrl ? (
+                  <InteractiveVideoPreview config={subtitleConfig} aspectRatio={aspectRatio} className="max-w-full max-h-full">
+                    <img
+                      src={previewImageUrl}
+                      alt="Preview"
+                      className="max-w-full max-h-full block pointer-events-none object-contain"
+                      onLoad={(e) => setAspectRatio(e.target.naturalWidth / e.target.naturalHeight)}
+                    />
+                  </InteractiveVideoPreview>
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-text-secondary gap-2 bg-black/20 w-full h-full">
+                    <Loader2 className="animate-spin text-brand-primary" size={24} />
+                    <span className="text-xs font-medium">Đang tải ảnh preview...</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Slider chỉnh thời điểm Thumbnail */}
-            <div className="bg-bg-primary/40 border border-white/5 rounded-xl p-4 shrink-0">
-              <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2.5 flex justify-between items-center">
+            <div className="bg-bg-primary/40 border border-white/5 rounded-xl p-3 shrink-0">
+              <label className="block text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1.5 flex justify-between items-center">
                 <span>Thời điểm ảnh mẫu</span>
-                <span className="text-brand-primary font-mono bg-brand-primary/10 px-2 py-0.5 rounded border border-brand-primary/20 text-[11px] font-bold">{previewTime}s</span>
+                <span className="text-brand-primary font-mono bg-brand-primary/10 px-1.5 py-0.5 rounded border border-brand-primary/20 text-[10px] font-bold">{previewTime}s</span>
               </label>
               <input
                 type="range"
                 min="0" max="60"
                 value={previewTime}
                 onChange={e => setPreviewTime(Number(e.target.value))}
-                className="w-full h-1.5 bg-border-subtle rounded-lg appearance-none cursor-pointer accent-brand-primary"
+                className="w-full h-1 bg-border-subtle rounded-lg appearance-none cursor-pointer accent-brand-primary"
               />
-              <p className="text-[10px] text-text-secondary opacity-60 mt-2 leading-relaxed">Kéo thanh trượt để thay đổi thời điểm trích xuất ảnh nền.</p>
             </div>
           </div>
         </div>

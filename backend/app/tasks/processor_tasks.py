@@ -3,6 +3,15 @@ import json
 import threading
 import concurrent.futures
 
+# --- FIX CUDNN DLL CONFLICT ---
+# Import torch BEFORE faster_whisper/ctranslate2 (imported via pipeline)
+# so PyTorch loads its own full cudnn64_9.dll instead of ctranslate2's stripped version.
+import torch
+import torch.nn as nn
+torch.backends.cuda.enable_cudnn_sdp(False)
+torch.backends.cuda.enable_flash_sdp(False)
+torch.backends.cuda.enable_mem_efficient_sdp(False)
+
 from app.core.celery_app import celery_app
 from app.services.processor.pipeline import ProcessorPipeline
 from app.core.logger import get_logger
@@ -25,8 +34,6 @@ def _get_pipeline(log_callback=None):
             if _pipeline_instance is None:
                 # --- PYTORCH 2.3.1 POLYFILL: nn.RMSNorm (added in PyTorch 2.4) ---
                 # Required by VieNeu TTS model on legacy GPU (GTX 1050 / sm_61)
-                import torch
-                import torch.nn as nn
                 if not hasattr(nn, 'RMSNorm'):
                     class _RMSNorm(nn.Module):
                         def __init__(self, normalized_shape, eps=1e-6):

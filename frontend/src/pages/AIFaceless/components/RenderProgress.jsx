@@ -30,7 +30,7 @@ const RenderProgress = ({ taskId, onReset }) => {
           
           if (data.result && data.result.data && data.result.data.video_path) {
             // Chuyển /data/faceless/... thành /api/files/faceless/...
-            const url = `http://localhost:8000/api/files` + data.result.data.video_path.replace('/data', '');
+            const url = `http://localhost:8000/api/files/${(data.result.data.video_path || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '').split('/').map(encodeURIComponent).join('/')}`;
             setVideoUrl(url);
           }
         } else if (data.status === "FAILURE") {

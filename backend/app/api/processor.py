@@ -202,7 +202,7 @@ async def start_processor(request: ProcessRequest):
                                 except Exception as e:
                                     logger.error(f"Lỗi khi xóa file TTS cũ: {e}")
 
-                    record.status = ProcessStatus.PENDING
+                    record.status = ProcessStatus.TRANSCRIBING
                     record.process_config = json.dumps(new_config)
             db.commit()
     except Exception as e:
