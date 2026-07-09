@@ -1,8 +1,13 @@
 import os
 import subprocess
+import threading
 import imageio_ffmpeg
 
 ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+
+# Cache for UVR5 Separator
+_separator_instance = None
+_separator_lock = threading.Lock()
 
 def extract_audio(video_path: str, output_audio_path: str):
     """
@@ -38,37 +43,150 @@ def separate_audio_with_ai(audio_path: str, output_dir: str, log_callback=None):
         log_callback(f"[*] Đang tách giọng nói bằng AI (UVR5), quá trình này mất khoảng 15-30s...\n")
 
     try:
-        # Cấu hình Separator sử dụng CPU hoặc ONNX GPU
-        separator = Separator(
-            output_dir=output_dir, 
-            output_format="wav"
-        )
+        global _separator_instance
         
-        # Tải mô hình mặc định chất lượng cao cho việc bóc tách
-        separator.load_model(model_filename="UVR-MDX-NET-Inst_HQ_3.onnx")
-        
-        # Thực hiện tách (trả về danh sách file output, thường là [Inst, Vocals])
-        output_files = separator.separate(audio_path)
-        
-        vocal_file = None
-        instrumental_file = None
-        for f in output_files:
-            if "Vocals" in f or "vocals" in f.lower():
-                vocal_file = os.path.join(output_dir, f)
-            elif "Instrumental" in f or "instrumental" in f.lower() or "Other" in f:
-                instrumental_file = os.path.join(output_dir, f)
+        with _separator_lock:
+            if _separator_instance is None:
+                if log_callback:
+                    log_callback(f"[*] Đang nạp model AI (UVR5) vào bộ nhớ lần đầu tiên...\n")
                 
-        if not vocal_file and len(output_files) >= 2:
-            vocal_file = os.path.join(output_dir, output_files[1])
-        if not instrumental_file and len(output_files) >= 1:
-            instrumental_file = os.path.join(output_dir, output_files[0])
+                # Cấu hình Separator sử dụng CPU hoặc ONNX GPU
+                _separator_instance = Separator(
+                    output_dir=output_dir, 
+                    output_format="wav"
+                )
+                
+                # Tải mô hình Kim_Vocal_2 chuyên tách Giọng nói để giữ nguyên vẹn Hiệu ứng SFX cho Nhạc nền
+                _separator_instance.load_model(model_filename="Kim_Vocal_2.onnx")
+            else:
+                # Đảm bảo output_dir được cập nhật theo thư mục mới
+                _separator_instance.output_dir = output_dir
+                
+        # Chunking logic for long audio (VRAM optimization)
+        import pydub
+        from pydub import AudioSegment
+        import tempfile
+        import shutil
+        
+        # AudioSegment.converter was already set in tts_generator.py, but just in case:
+        AudioSegment.converter = imageio_ffmpeg.get_ffmpeg_exe()
+        
+        audio = AudioSegment.from_file(audio_path)
+        chunk_length_ms = 60 * 1000 # 60 seconds
+        
+        if len(audio) <= chunk_length_ms:
+            # Process directly if short enough
+            output_files = _separator_instance.separate(audio_path)
             
-        if vocal_file and os.path.exists(vocal_file):
+            vocal_file = None
+            instrumental_file = None
+            for f in output_files:
+                if "Vocals" in f or "vocals" in f.lower():
+                    vocal_file = os.path.join(output_dir, f)
+                elif "Instrumental" in f or "instrumental" in f.lower() or "Other" in f:
+                    instrumental_file = os.path.join(output_dir, f)
+                    
+            if not vocal_file and len(output_files) >= 2:
+                vocal_file = os.path.join(output_dir, output_files[1])
+            if not instrumental_file and len(output_files) >= 1:
+                instrumental_file = os.path.join(output_dir, output_files[0])
+                
+            if vocal_file and os.path.exists(vocal_file):
+                if log_callback:
+                    log_callback(f"[*] Đã tách giọng nói bằng AI thành công.\n")
+                return vocal_file, instrumental_file
+                
+            return audio_path, None
+        else:
             if log_callback:
-                log_callback(f"[*] Đã tách giọng nói bằng AI thành công.\n")
-            return vocal_file, instrumental_file
+                log_callback(f"[*] File audio dài ({len(audio)/1000:.1f}s), đang chia nhỏ (chunking) để tránh tràn VRAM...\n")
+                
+            import math
+            total_ms = len(audio)
+            num_chunks = math.ceil(total_ms / chunk_length_ms)
+            even_chunk_length = total_ms // num_chunks
             
-        return audio_path, None
+            chunks = []
+            for i in range(num_chunks):
+                start = i * even_chunk_length
+                end = (i + 1) * even_chunk_length if i < num_chunks - 1 else total_ms
+                chunks.append(audio[start:end])
+            
+            tmp_dir = tempfile.mkdtemp(prefix="audio_chunks_")
+            
+            vocal_chunks = []
+            inst_chunks = []
+            
+            import gc
+            
+            for idx, chunk in enumerate(chunks):
+                if log_callback:
+                    log_callback(f"[*] Tách âm AI: Đang xử lý phần {idx+1}/{len(chunks)}...\n")
+                    
+                chunk_path = os.path.join(tmp_dir, f"chunk_{idx}.wav")
+                chunk.export(chunk_path, format="wav")
+                
+                # We do not change _separator_instance.output_dir dynamically,
+                # because the library caches it or ignores changes.
+                # Instead, we just let it output to its initial output_dir (which is output_dir).
+                
+                out_files = _separator_instance.separate(chunk_path)
+                
+                v_file = None
+                i_file = None
+                for f in out_files:
+                    if "Vocals" in f or "vocals" in f.lower():
+                        v_file = os.path.join(output_dir, f)
+                    elif "Instrumental" in f or "instrumental" in f.lower() or "Other" in f:
+                        i_file = os.path.join(output_dir, f)
+                
+                if not v_file and len(out_files) >= 2:
+                    v_file = os.path.join(output_dir, out_files[1])
+                if not i_file and len(out_files) >= 1:
+                    i_file = os.path.join(output_dir, out_files[0])
+                    
+                if v_file and os.path.exists(v_file):
+                    vocal_chunks.append(AudioSegment.from_file(v_file))
+                    # Cleanup the separated chunk file to save disk space
+                    try: os.remove(v_file)
+                    except: pass
+                if i_file and os.path.exists(i_file):
+                    inst_chunks.append(AudioSegment.from_file(i_file))
+                    # Cleanup the separated chunk file
+                    try: os.remove(i_file)
+                    except: pass
+                    
+                    
+                # Free VRAM/RAM reference for garbage collector
+                gc.collect()
+            
+            if log_callback:
+                log_callback(f"[*] Đang ghép các phân đoạn âm thanh lại...\n")
+                
+            final_vocal = AudioSegment.empty()
+            for vc in vocal_chunks: final_vocal += vc
+            
+            final_inst = AudioSegment.empty()
+            for ic in inst_chunks: final_inst += ic
+            
+            import uuid
+            base_name = os.path.basename(audio_path).split('_audio')[0]
+            base_id = uuid.uuid4().hex[:4]
+            final_v_path = os.path.join(output_dir, f"{base_name}_audio_Vocals_{base_id}.wav")
+            final_i_path = os.path.join(output_dir, f"{base_name}_audio_Instrumental_{base_id}.wav")
+            
+            final_vocal.export(final_v_path, format="wav")
+            final_inst.export(final_i_path, format="wav")
+            
+            try:
+                shutil.rmtree(tmp_dir)
+            except:
+                pass
+                
+            if log_callback:
+                log_callback(f"[*] Đã tách giọng nói bằng AI thành công (Chunking).\n")
+                
+            return final_v_path, final_i_path
         
     except Exception as e:
         if log_callback:

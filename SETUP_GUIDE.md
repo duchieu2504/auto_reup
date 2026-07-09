@@ -74,6 +74,11 @@ Vì phần Backend chứa các công cụ AI (PyTorch, Whisper, VieNeu) rất n�
 
    *(Quá trình tải PyTorch 2.5GB và thư viện CUDA có thể mất 10-15 phút tùy cấu hình mạng).*
 
+4. Cài đặt trình duyệt lõi cho Playwright (Bắt buộc để Crawler và Upload hoạt động):
+   ```cmd
+   .venv\Scripts\playwright.exe install chromium
+   ```
+
 ---
 
 ## 🚀 BƯỚC 4: Kích Hoạt Hệ Thống

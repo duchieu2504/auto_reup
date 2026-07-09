@@ -882,7 +882,6 @@ const Phase2Processor = () => {
                 )}
               </div>
             </div>
-            </div>
           </div>
         </div>
       </div>

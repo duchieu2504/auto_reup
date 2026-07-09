@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
   const [voice, setVoice] = useState(initialConfig.voice || 'edge_auto');
@@ -98,7 +98,38 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
 
   // Load from backend API if initialConfig is empty
   useEffect(() => {
-    if (Object.keys(initialConfig).length === 0 && videoId) {
+    if (Object.keys(initialConfig).length === 0 && videoId && videoId !== 'default') {
+      // Reset state to defaults on video change before fetching
+      setVoice('edge_auto');
+      setVolume(10);
+      setPreviewSubtitleText('Đây là phụ đề mẫu tự động sinh...');
+      setFlipVideo(false);
+      setOptZoom(false);
+      setOptColor(false);
+      setOptNoise(false);
+      setOptPitch(false);
+      setSubtitleFont('Liberation Sans');
+      setSubtitleStyle('black_white');
+      setSubtitleTextColor('#000000');
+      setSubtitleBgColor('#ffffff');
+      setSubtitleFontSize(8);
+      setSubtitleMarginV(40);
+      setSubtitleBgPadding(2);
+      setSubtitleBgOpacity(100);
+      setWatermarkType('none');
+      setWatermarkText('');
+      setWatermarkImagePreview('');
+      setWatermarkX(50);
+      setWatermarkY(50);
+      setWatermarkSize(20);
+      setWatermarkColor('#FFFFFF');
+      setWatermarkOpacity(50);
+      setEnableSubtitles(true);
+      setMaskEnabled(false);
+      setMasks([]);
+      setActiveMaskId(null);
+      setLoadedProfileConfig(null);
+
       fetch(`http://localhost:8000/api/settings/edit_profile/${videoId}`)
         .then(res => res.json())
         .then(data => {
@@ -148,7 +179,13 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
     setOptPitch(newState);
   };
 
+  const lastMoveRef = useRef(0);
+  
   const handleMouseMove = (e) => {
+    // Throttle to ~30fps to prevent React re-render flooding
+    const now = performance.now();
+    if (now - lastMoveRef.current < 30) return;
+    lastMoveRef.current = now;
     // Find the actual media element (video or img) inside the container
     // to get accurate dimensions for coordinate mapping
     const container = e.currentTarget;
@@ -215,7 +252,7 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
   
   // Auto-save to backend when config changes (with debounce/effect logic implemented where called)
   const saveEditProfile = () => {
-    if (!videoId) return;
+    if (!videoId || videoId === 'default') return;
     fetch(`http://localhost:8000/api/settings/edit_profile/${videoId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

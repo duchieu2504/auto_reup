@@ -134,14 +134,88 @@ class SubtitleRenderer:
         for bx, by, br in bumps:
             draw.ellipse([bx - br, by - br, bx + br, by + br], fill=fill)
 
+    def generate_ass_subtitle(self, srt_file: str, output_dir: str) -> str:
+        subs = pysrt.open(srt_file, encoding='utf-8')
+        ass_file_path = os.path.join(output_dir, "subs.ass")
+        
+        margin_v_px = int(self.video_height * (self.margin_v / 100.0))
+        
+        def rgba_to_ass_color(r, g, b, a=255):
+            ass_a = 255 - a
+            return f"&H{ass_a:02X}{b:02X}{g:02X}{r:02X}"
+
+        tr, tg, tb, ta = self.text_color
+        ass_text_color = rgba_to_ass_color(tr, tg, tb, ta)
+        
+        br, bg, bb, ba = self.bg_color
+        ass_bg_color = rgba_to_ass_color(br, bg, bb, ba)
+
+        border_style = 3 if self.style in ["classic", "rounded"] else 1
+        outline = self.bg_padding_x if self.style == "rounded" else int(self.bg_padding_x * 0.8) 
+
+        ass_header = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {self.video_width}
+PlayResY: {self.video_height}
+WrapStyle: 1
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,{self.font_family},{self.font_size},{ass_text_color},{ass_text_color},{ass_bg_color},{ass_bg_color},0,0,0,0,100,100,0,0,{border_style},{outline},0,2,10,10,{margin_v_px},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+        with open(ass_file_path, "w", encoding="utf-8") as f:
+            f.write(ass_header)
+            for sub in subs:
+                max_w = int(self.video_width * 0.8)
+                text = sub.text.replace("\n", " ")
+                text_segments = self._wrap_and_split_text(text, max_w)
+                
+                total_duration_ms = (sub.end.hours * 3600000 + sub.end.minutes * 60000 + sub.end.seconds * 1000 + sub.end.milliseconds) - \
+                                    (sub.start.hours * 3600000 + sub.start.minutes * 60000 + sub.start.seconds * 1000 + sub.start.milliseconds)
+                total_chars = sum(len(s) for s in text_segments)
+                
+                current_start_ms = (sub.start.hours * 3600000 + sub.start.minutes * 60000 + sub.start.seconds * 1000 + sub.start.milliseconds)
+                
+                for j, segment_text in enumerate(text_segments):
+                    if total_chars > 0:
+                        segment_duration_ms = total_duration_ms * (len(segment_text) / total_chars)
+                    else:
+                        segment_duration_ms = total_duration_ms / len(text_segments)
+                        
+                    current_end_ms = current_start_ms + segment_duration_ms
+                    
+                    s_h, current_start_rem = divmod(current_start_ms, 3600000)
+                    s_m, current_start_rem = divmod(current_start_rem, 60000)
+                    s_s, s_ms = divmod(current_start_rem, 1000)
+                    seg_start_ass = f"{int(s_h)}:{int(s_m):02d}:{int(s_s):02d}.{int(s_ms/10):02d}"
+                    
+                    e_h, current_end_rem = divmod(current_end_ms, 3600000)
+                    e_m, current_end_rem = divmod(current_end_rem, 60000)
+                    e_s, e_ms = divmod(current_end_rem, 1000)
+                    seg_end_ass = f"{int(e_h)}:{int(e_m):02d}:{int(e_s):02d}.{int(e_ms/10):02d}"
+                    
+                    ass_text = segment_text.replace('\n', '\\N')
+                    f.write(f"Dialogue: 0,{seg_start_ass},{seg_end_ass},Default,,0,0,0,,{ass_text}\n")
+                    
+                    current_start_ms = current_end_ms
+        
+        return ass_file_path
+
     def generate_subtitle_sequence(self, srt_file: str, output_dir: str) -> str:
         """
-        Parses SRT, generates PNGs, creates FFmpeg concat file.
-        Returns the path to the concat.txt file.
+        Parses SRT, generates ASS file or PNG sequence depending on style.
+        Returns the path to the ass or concat.txt file.
         """
         if not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
             
+        if self.style in ["classic", "rounded"]:
+            return self.generate_ass_subtitle(srt_file, output_dir)
+            
+
         subs = pysrt.open(srt_file, encoding='utf-8')
         concat_file_path = os.path.join(output_dir, "subs_concat.txt")
         
@@ -155,19 +229,17 @@ class SubtitleRenderer:
                 # If there's a gap before this subtitle, add a transparent placeholder duration
                 if start_time > last_end_time:
                     duration = start_time - last_end_time
-                    # We can use a 1x1 transparent PNG or simply missing file in some cases, but FFmpeg concat needs a file.
-                    # We will create a single empty transparent frame
                     empty_png = os.path.join(output_dir, "empty.png")
                     if not os.path.exists(empty_png):
                         img = Image.new('RGBA', (self.video_width, self.video_height), (0, 0, 0, 0))
-                        img.save(empty_png, format="PNG")
+                        img.save(empty_png, format="PNG", optimize=True)
                     
-                    f.write(f"file '{empty_png}'\n")
+                    empty_png_escaped = empty_png.replace('\\', '/')
+                    f.write(f"file '{empty_png_escaped}'\n")
                     f.write(f"duration {duration:.3f}\n")
                 
                 text = sub.text.replace("\n", " ")
                 
-                # Cắt đoạn text nếu nó vượt quá 80% chiều dài video
                 max_w = int(self.video_width * 0.8)
                 text_segments = self._wrap_and_split_text(text, max_w)
                 
@@ -183,14 +255,15 @@ class SubtitleRenderer:
                     else:
                         segment_duration = total_duration / len(text_segments)
                         
-                    f.write(f"file '{png_path}'\n")
+                    png_path_escaped = png_path.replace('\\', '/')
+                    f.write(f"file '{png_path_escaped}'\n")
                     f.write(f"duration {segment_duration:.3f}\n")
                 
                 last_end_time = end_time
                 
-            # Final empty frame to clear the last subtitle
             empty_png = os.path.join(output_dir, "empty.png")
-            f.write(f"file '{empty_png}'\n")
+            empty_png_escaped = empty_png.replace('\\', '/')
+            f.write(f"file '{empty_png_escaped}'\n")
             
         return concat_file_path
 
@@ -258,4 +331,4 @@ class SubtitleRenderer:
             draw.text((text_x + shadow_offset, text_y + shadow_offset), text, font=self.font, fill=(0,0,0,150))
             draw.text((text_x, text_y), text, font=self.font, fill=self.text_color)
             
-        img.save(output_path, format="PNG")
+        img.save(output_path, format="PNG", optimize=True)

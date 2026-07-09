@@ -91,6 +91,11 @@ async def get_edit_profile(video_id: str, db: Session = Depends(get_db)):
             if record and record.process_config:
                 try:
                     p_config = json.loads(record.process_config)
+                    print("TESTING GET PROFILE", p_config)
+                    if not p_config or len(p_config.keys()) == 0:
+                        print("RETURNING EMPTY")
+                        return {}
+                    
                     camel_config = {
                         "voice": p_config.get("voice_mode"),
                         "volume": p_config.get("bg_volume"),
@@ -128,10 +133,7 @@ async def get_edit_profile(video_id: str, db: Session = Depends(get_db)):
                 except Exception as e:
                     print(f"Error parsing process_config for {video_id}: {e}")
                     
-        # Fallback to default if exists
-        if os.path.exists(default_path):
-            with open(default_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+        # Removed fallback to default.json to prevent new videos from inheriting the last bulk config
     except Exception as e:
         print(f"Error reading edit profile: {e}")
         

@@ -63,6 +63,20 @@ def get_safe_boxblur_params(crop_w: float, crop_h: float, target_radius: int) ->
     return f"{luma_r}:5:{chroma_r}:5"
 
 class VideoEditor:
+    def _get_gpu_vram_mb(self) -> int:
+        """Query NVIDIA GPU VRAM in MB. Returns 0 if no GPU or query fails."""
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                vram_mb = int(result.stdout.strip().split('\n')[0])
+                return vram_mb
+        except Exception:
+            pass
+        return 0
+
     def get_optimal_video_encoder(self, use_gpu: bool = False) -> str:
         if not use_gpu:
             return "libx264"
@@ -73,6 +87,7 @@ class VideoEditor:
             
             # Kiểm tra NVENC (NVIDIA)
             if "h264_nvenc" in output and shutil.which("nvidia-smi"):
+                print("[*] Phát hiện GPU NVIDIA. Sử dụng NVENC encoder.")
                 return "h264_nvenc"
             
             # Kiểm tra QSV (Intel)
@@ -83,7 +98,6 @@ class VideoEditor:
             print(f"Lỗi khi kiểm tra encoder, tự động fallback về CPU: {e}")
             
         return "libx264"
-        return "libx264"
 
     def burn_subtitles(self, input_video: str, srt_file: str, output_video: str, tts_audio: str = None, bg_volume: int = 10, bgm_audio: str = None, flip_video: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False, subtitle_text_color: str = "#000000", subtitle_bg_color: str = "#FFFFFF", subtitle_font_size: int = 8, subtitle_margin_v: int = 40, subtitle_bg_padding: int = 2, subtitle_bg_opacity: int = 100, watermark_type: str = "none", watermark_text: str = None, watermark_image_path: str = None, watermark_x: float = 50.0, watermark_y: float = 50.0, watermark_size: float = 20.0, watermark_color: str = "#FFFFFF", watermark_opacity: float = 50.0, subtitle_font_family: str = "Liberation Sans", enable_subtitles: bool = True, mask_enabled: bool = False, mask_x: float = 10.0, mask_y: float = 10.0, mask_width: float = 20.0, mask_height: float = 15.0, mask_type: str = "color", mask_color: str = "#000000", masks: list = None, log_callback=None, force_cpu: bool = False):
         load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/.env")), override=True)
@@ -91,7 +105,12 @@ class VideoEditor:
         vcodec = self.get_optimal_video_encoder(use_gpu)
         print(f"[*] Sử dụng Video Encoder: {vcodec} (GPU={use_gpu})")
 
-        cmd = [ffmpeg_exe, "-y", "-i", input_video]
+        cmd = [ffmpeg_exe, "-y", "-threads", "0"]
+        
+        # KHÔNG SỬ DỤNG -hwaccel cuda ở đây vì các filter (overlay, drawtext, blur) là CPU filters.
+        # Sử dụng decode bằng GPU rồi ném vào CPU filter mà không qua hwdownload sẽ gây lỗi STATUS_HEAP_CORRUPTION (Crash).
+            
+        cmd.extend(["-i", input_video])
         input_count = 1
         video_w, video_h = get_video_resolution(input_video)
         
@@ -114,12 +133,15 @@ class VideoEditor:
         real_margin_v = int(video_h * float(subtitle_margin_v) / 100.0)
         real_bg_padding = max(0, int(float(subtitle_bg_padding) * scale_factor))
         
+        subs_dir = None  # Track for cleanup in finally block
+        wm_file = None   # Track watermark temp file for cleanup
+        
         subs_input_idx = -1
+        ass_file = None
         if enable_subtitles and srt_file:
             from app.services.processor.subtitle_renderer import SubtitleRenderer
             import tempfile
             
-            # Use /tmp directly on Linux (Docker), but fallback to system temp on Windows
             subs_dir = tempfile.mkdtemp(prefix="subs_")
             
             renderer = SubtitleRenderer(
@@ -135,14 +157,15 @@ class VideoEditor:
                 style=subtitle_style
             )
             
-            concat_file = renderer.generate_subtitle_sequence(srt_file, subs_dir)
+            subtitle_output = renderer.generate_subtitle_sequence(srt_file, subs_dir)
             
-            # Format path for FFmpeg on Windows if needed
-            concat_escaped = concat_file.replace('\\', '/')
-            
-            cmd.extend(["-f", "concat", "-safe", "0", "-i", concat_escaped])
-            subs_input_idx = input_count
-            input_count += 1
+            if subtitle_output.endswith('.ass'):
+                ass_file = subtitle_output
+            else:
+                concat_escaped = subtitle_output.replace('\\', '/')
+                cmd.extend(["-f", "concat", "-safe", "0", "-i", concat_escaped])
+                subs_input_idx = input_count
+                input_count += 1
         
         # Add watermark filter if applicable
         if watermark_type == "text" and watermark_text:
@@ -167,7 +190,6 @@ class VideoEditor:
             # Write watermark text to a temp file to avoid all FFmpeg quoting/escaping hell
             import uuid
             import tempfile
-            # Use system temp directory and escape colons/slashes for FFmpeg drawtext
             wm_file = os.path.join(tempfile.gettempdir(), f"wm_{uuid.uuid4().hex}.txt")
             with open(wm_file, "w", encoding="utf-8") as f:
                 f.write(watermark_text)
@@ -244,6 +266,11 @@ class VideoEditor:
         if subs_input_idx != -1:
             v_filter_complex += f";[vbase][{subs_input_idx}:v]overlay=x=0:y=0[vsub_out]"
             vbase_label = "[vsub_out]"
+        elif ass_file is not None:
+            # Escape absolute path for Windows
+            ass_path_esc = ass_file.replace('\\', '/').replace(':', '\\:')
+            v_filter_complex += f";[vbase]ass='{ass_path_esc}'[vsub_out]"
+            vbase_label = "[vsub_out]"
         else:
             vbase_label = "[vbase]"
         
@@ -280,9 +307,9 @@ class VideoEditor:
         if tts_idx != -1:
             bg_vol_float = bg_volume / 100.0
             if opt_pitch:
-                audio_filter = f"{bg_audio_label}volume={bg_vol_float},asetrate=44100*1.02,atempo=1/1.02[bg];[{tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                audio_filter = f"{bg_audio_label}volume={bg_vol_float},asetrate=44100*1.02,atempo=1/1.02[bg];[{tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
             else:
-                audio_filter = f"{bg_audio_label}volume={bg_vol_float}[bg];[{tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                audio_filter = f"{bg_audio_label}volume={bg_vol_float}[bg];[{tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
             
             filter_complex_str += ";" + audio_filter
             a_map = "[aout]"
@@ -307,8 +334,8 @@ class VideoEditor:
             ])
         else:
             cmd.extend([
-                "-crf", "28",
-                "-preset", "faster",
+                "-crf", "23",
+                "-preset", "ultrafast",
                 "-pix_fmt", "yuv420p"
             ])
         
@@ -319,7 +346,8 @@ class VideoEditor:
             ])
         else:
             cmd.extend(["-c:a", "copy"])
-            
+        
+        cmd.extend(["-shortest"])
         cmd.append(output_video)
         
         total_duration = get_video_duration(input_video)
@@ -331,14 +359,21 @@ class VideoEditor:
             base_name = os.path.basename(input_video).split('.')[0]
  
             stderr_lines = []
+            import time
+            last_redis_check = 0
+            
             process = subprocess.Popen(cmd, stderr=subprocess.PIPE, universal_newlines=True, encoding='utf-8', errors='replace')
             for line in process.stderr:
                 stderr_lines.append(line)
-                # Periodically check pause/cancellation flag to cancel render early
-                if sync_redis.get(f"pause_video_{base_name}") == "1":
-                    log_callback(f"[System] Phát hiện lệnh dừng từ người dùng. Đang hủy tiến trình FFmpeg cho {base_name}...\n")
-                    process.kill()
-                    raise Exception("Tiến trình bị hủy bởi người dùng.")
+                
+                # Periodically check pause/cancellation flag (throttle to every 2 seconds)
+                current_time = time.time()
+                if current_time - last_redis_check > 2.0:
+                    last_redis_check = current_time
+                    if sync_redis.get(f"pause_video_{base_name}") == "1":
+                        log_callback(f"[System] Phát hiện lệnh dừng từ người dùng. Đang hủy tiến trình FFmpeg cho {base_name}...\n")
+                        process.kill()
+                        raise Exception("Tiến trình bị hủy bởi người dùng.")
  
                 if log_callback and total_duration > 0:
                     match = re.search(r"time=(\d{2}):(\d{2}):(\d{2}\.\d{2})", line)
@@ -354,12 +389,14 @@ class VideoEditor:
                 if sync_redis.get(f"pause_video_{base_name}") == "1":
                     raise Exception("Tiến trình bị hủy bởi người dùng.")
                 ffmpeg_err = "".join(stderr_lines[-15:])
+                cmd_str = " ".join(cmd)
                 print(f"FFmpeg Error Output:\n{ffmpeg_err}")
-                raise Exception(f"FFmpeg exited with code {process.returncode}. Log: {ffmpeg_err.strip()}")
+                raise Exception(f"FFmpeg exited with code {process.returncode}.\nCommand: {cmd_str}\nLog: {ffmpeg_err.strip()}")
             return output_video
         except Exception as e:
-            # Tự động fallback về CPU nếu gặp lỗi do GPU encoder
-            is_gpu_err = any(x in str(e).lower() for x in ["nvenc", "libnvidia", "driver", "encoder", "cuda"])
+            # Tự động fallback về CPU nếu gặp lỗi do GPU encoder hoặc crash phần cứng
+            err_str = str(e).lower()
+            is_gpu_err = any(x in err_str for x in ["nvenc", "libnvidia", "driver", "encoder", "cuda", "3199971767", "3221225477", "0xc0000005"])
             if use_gpu and is_gpu_err:
                 print(f"[!] Lỗi GPU Encoder: {e}. Tự động fallback về CPU (libx264)...")
                 if log_callback:
@@ -375,3 +412,16 @@ class VideoEditor:
                 )
             else:
                 raise Exception(f"Lỗi FFmpeg khi burn sub: {e}")
+        finally:
+            # Cleanup: dọn dẹp thư mục subtitle PNGs tạm và file watermark temp
+            if subs_dir and os.path.exists(subs_dir):
+                try:
+                    import shutil as _shutil
+                    _shutil.rmtree(subs_dir, ignore_errors=True)
+                except Exception:
+                    pass
+            if wm_file and os.path.exists(wm_file):
+                try:
+                    os.remove(wm_file)
+                except Exception:
+                    pass

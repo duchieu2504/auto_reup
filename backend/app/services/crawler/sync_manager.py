@@ -37,10 +37,11 @@ class SyncManager:
                         vid_id = file.replace(".mp4", "")
                         self.downloaded_ids.add(vid_id)
                         
-        # Lưu ngược lại vào JSON để cache cho lần sau
-        self.save_history()
+        # Không lưu ngược lại vào JSON ở đây để tránh ghi đè (race condition)
+        # với các tiến trình khác đang chạy.
 
     def save_history(self):
+        # Hàm này được giữ lại để tương thích ngược nếu có, nhưng không nên dùng để ghi toàn bộ set.
         try:
             with open(self.history_file, 'w', encoding='utf-8') as f:
                 json.dump(list(self.downloaded_ids), f, indent=4)
@@ -52,4 +53,37 @@ class SyncManager:
 
     def mark_as_downloaded(self, video_id: str):
         self.downloaded_ids.add(video_id)
-        self.save_history()
+        
+        # Cập nhật trực tiếp vào file JSON một cách an toàn
+        try:
+            with open(self.history_file, 'r', encoding='utf-8') as f:
+                data = set(json.load(f))
+        except:
+            data = set()
+            
+        data.add(video_id)
+        
+        try:
+            with open(self.history_file, 'w', encoding='utf-8') as f:
+                json.dump(list(data), f, indent=4)
+        except Exception as e:
+            print(f"Lỗi khi lưu file lịch sử: {e}")
+
+    def remove_from_history(self, video_id: str):
+        if video_id in self.downloaded_ids:
+            self.downloaded_ids.remove(video_id)
+            
+        # Cập nhật trực tiếp vào file JSON một cách an toàn
+        try:
+            with open(self.history_file, 'r', encoding='utf-8') as f:
+                data = set(json.load(f))
+        except:
+            data = set()
+            
+        if video_id in data:
+            data.remove(video_id)
+            try:
+                with open(self.history_file, 'w', encoding='utf-8') as f:
+                    json.dump(list(data), f, indent=4)
+            except Exception as e:
+                print(f"Lỗi khi lưu file lịch sử: {e}")

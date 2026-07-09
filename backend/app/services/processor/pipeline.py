@@ -61,6 +61,28 @@ class ProcessorPipeline:
         output_video = os.path.join(processed_dir, f"{base_name}_processed.mp4")
         audio_tmp = os.path.join(audio_dir, f"{base_name}_audio.mp3")
         audio_tts_path = os.path.join(audio_dir, f"{base_name}_tts.mp3")
+        tts_meta_path = os.path.join(audio_dir, f"{base_name}_tts_meta.json")
+        
+        import json
+        need_tts_regen = True
+        if os.path.exists(tts_meta_path):
+            try:
+                with open(tts_meta_path, 'r', encoding='utf-8') as f:
+                    meta = json.load(f)
+                    if meta.get("voice_mode") == voice_mode:
+                        need_tts_regen = False
+            except Exception:
+                pass
+        
+        # Cập nhật cache phụ đề và TTS nếu có thay đổi voice_mode
+        if need_tts_regen:
+            if os.path.exists(audio_tts_path):
+                try: os.remove(audio_tts_path)
+                except: pass
+            if os.path.exists(vi_srt) and voice_mode == "edge_auto":
+                # Xóa phụ đề cũ để dịch lại và có tag [M]/[F]
+                try: os.remove(vi_srt)
+                except: pass
         
         # Nếu cờ force_render bật, chỉ xóa file video output cũ để tiết kiệm thời gian dịch thuật cho các bước sau
         if force_render:
@@ -92,8 +114,15 @@ class ProcessorPipeline:
                 db.commit()
                 return
 
-            vocal_ref_path = None
-            instrumental_audio_path = None
+            import glob
+            
+            # Tự động tìm lại file âm thanh đã bóc tách (nhạc nền và vocal) nếu tiến trình bị gián đoạn và chạy lại
+            inst_files = glob.glob(os.path.join(audio_dir, f"{base_name}_audio*Instrumental*.wav"))
+            instrumental_audio_path = inst_files[0] if inst_files else None
+            
+            voc_files = glob.glob(os.path.join(audio_dir, f"{base_name}_audio*Vocals*.wav"))
+            vocal_ref_path = voc_files[0] if voc_files else None
+            
             need_subtitles_data = enable_subtitles or (voice_mode != "none")
 
             if need_subtitles_data:
@@ -152,6 +181,8 @@ class ProcessorPipeline:
                     db.commit()
                     return
 
+                tts_audio = os.path.join(audio_dir, f"{base_name}_tts.mp3") if voice_mode != "none" else None
+                
                 if os.path.exists(vi_srt) and os.path.getsize(vi_srt) > 0:
                     log_callback(f"[*] Bước 2: Tìm thấy phụ đề dịch sẵn, bỏ qua dịch thuật Gemini...\n", progress=25.0)
                     record.srt_translated_path = vi_srt
@@ -162,11 +193,62 @@ class ProcessorPipeline:
                         record.status = ProcessStatus.TRANSLATING
                         db.commit()
                         extract_audio(video_path, audio_tmp)
+                        
+                        import queue
+                        import threading
+                        tts_queue = queue.Queue()
+                        tts_thread = None
+                        
+                        # Start Parallel TTS if needed
+                        if voice_mode != "none" and (not tts_audio or not os.path.exists(tts_audio) or os.path.getsize(tts_audio) == 0):
+                            log_callback(f"[*] Bước 3: Tạo âm thanh lồng tiếng AI (Chạy song song)...\n", progress=25.0)
+                            auto_clone_enabled = os.getenv("ENABLE_AUTO_VOICE_CLONE", "False").lower() == "true"
+                            vocal_path_to_clone = vocal_ref_path if auto_clone_enabled else None
+                            
+                            if vocal_path_to_clone and os.path.exists(vocal_path_to_clone):
+                                short_vocal_path = os.path.join(audio_dir, f"{base_name}_vocal_short.wav")
+                                if not os.path.exists(short_vocal_path):
+                                    try:
+                                        import subprocess
+                                        import imageio_ffmpeg
+                                        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+                                        subprocess.run([
+                                            ffmpeg_exe, "-y", "-i", vocal_path_to_clone,
+                                            "-t", "10", short_vocal_path
+                                        ], check=True, capture_output=True)
+                                    except Exception as e:
+                                        log_callback(f"[!] Cảnh báo: Lỗi khi cắt ngắn vocal mẫu: {e}. Có thể gây tràn RAM.\n")
+                                        short_vocal_path = vocal_path_to_clone
+                                vocal_path_to_clone = short_vocal_path
+                                
+                            tts_thread = threading.Thread(
+                                target=self.tts.generate_tts_from_queue,
+                                args=(tts_queue, vi_srt, tts_audio, voice_mode, video_path, log_callback, vocal_path_to_clone)
+                            )
+                            tts_thread.start()
+                            
+                        def on_chunk(chunk_text):
+                            if tts_thread:
+                                tts_queue.put(chunk_text)
                     
-                        self.translator.translate_srt(orig_srt, vi_srt, voice_mode, audio_tmp)
+                        self.translator.translate_srt(orig_srt, vi_srt, voice_mode, audio_tmp, on_chunk_translated=on_chunk)
+                        
+                        if tts_thread:
+                            tts_queue.put(None)
+                            tts_thread.join()
+                            record.audio_tts_path = tts_audio
+                            
+                            # Lưu meta data cho TTS cache
+                            if os.path.exists(tts_audio):
+                                try:
+                                    with open(tts_meta_path, 'w', encoding='utf-8') as f:
+                                        json.dump({"voice_mode": voice_mode}, f)
+                                except Exception:
+                                    pass
+                                    
                         record.srt_translated_path = vi_srt
                         db.commit()
-                        log_callback(f"[*] Dịch thuật thành công.\n", progress=25.0)
+                        log_callback(f"[*] Dịch thuật và lồng tiếng song song thành công.\n", progress=35.0)
                     
                         # Chỉ xóa audio_tmp nếu không được dùng làm vocal clone
                         auto_clone_enabled = os.getenv("ENABLE_AUTO_VOICE_CLONE", "False").lower() == "true"
@@ -174,10 +256,13 @@ class ProcessorPipeline:
                         if os.path.exists(audio_tmp) and not (auto_clone_enabled and vocal_tmp == audio_tmp):
                             os.remove(audio_tmp)
                     except Exception as e:
-                        record.status = ProcessStatus.FAILED
-                        record.error_message = clean_error_message(f"Dịch thuật: {str(e)}")
+                        import traceback
+                        traceback.print_exc()
+                        is_canceled = "bị hủy bởi người dùng" in str(e) or sync_redis.get(f"pause_video_{base_name}") == "1"
+                        record.status = ProcessStatus.PAUSED if is_canceled else ProcessStatus.FAILED
+                        record.error_message = clean_error_message(f"Dịch/TTS: {str(e)}")
                         db.commit()
-                        log_callback(f"[!] Lỗi Dịch thuật: {e}\n")
+                        log_callback(f"[!] Lỗi Dịch/TTS: {e}\n")
                         return
 
                 tts_audio = os.path.join(audio_dir, f"{base_name}_tts.mp3") if voice_mode != "none" else None
@@ -200,9 +285,36 @@ class ProcessorPipeline:
                             auto_clone_enabled = os.getenv("ENABLE_AUTO_VOICE_CLONE", "False").lower() == "true"
                             vocal_path_to_clone = vocal_ref_path if auto_clone_enabled else None
                             
+                            # Trim the vocal reference to maximum 10 seconds to prevent TTS CUDA OOM
+                            if vocal_path_to_clone and os.path.exists(vocal_path_to_clone):
+                                short_vocal_path = os.path.join(audio_dir, f"{base_name}_vocal_short.wav")
+                                if not os.path.exists(short_vocal_path):
+                                    try:
+                                        import subprocess
+                                        import imageio_ffmpeg
+                                        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+                                        subprocess.run([
+                                            ffmpeg_exe, "-y",
+                                            "-i", vocal_path_to_clone,
+                                            "-t", "10",
+                                            short_vocal_path
+                                        ], check=True, capture_output=True)
+                                    except Exception as e:
+                                        log_callback(f"[!] Cảnh báo: Lỗi khi cắt ngắn vocal mẫu: {e}. Có thể gây tràn RAM.\n")
+                                        short_vocal_path = vocal_path_to_clone
+                                vocal_path_to_clone = short_vocal_path
+                                
                             self.tts.generate_tts_track(vi_srt, tts_audio, voice_mode, video_path, log_callback, vocal_path_to_clone)
                             record.audio_tts_path = tts_audio
                             db.commit()
+                            
+                            # Lưu meta data cho TTS cache
+                            try:
+                                with open(tts_meta_path, 'w', encoding='utf-8') as f:
+                                    json.dump({"voice_mode": voice_mode}, f)
+                            except Exception:
+                                pass
+                                
                             log_callback(f"[*] Sinh audio lồng tiếng thành công.\n", progress=35.0)
                         except Exception as e:
                             import traceback
@@ -241,8 +353,8 @@ class ProcessorPipeline:
                     record.status = ProcessStatus.RENDERING
                     db.commit()
                     
-                    # Truy xuất biến môi trường BGM VOLUME
-                    env_bg_volume = int(os.getenv("BGM_VOLUME", str(bg_volume)))
+                    # Truy xuất biến bg_volume trực tiếp từ UI payload (bỏ qua override từ .env để tránh lỗi to tiếng)
+                    env_bg_volume = bg_volume
                     bgm_audio = instrumental_audio_path
                     
                     self.editor.burn_subtitles(

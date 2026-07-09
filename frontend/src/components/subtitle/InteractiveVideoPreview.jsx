@@ -18,7 +18,13 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
     const container = e.currentTarget.parentElement;
     const rect = container.getBoundingClientRect();
     
+    let lastMoveTime = 0;
+    
     const handleMouseMove = (moveEvent) => {
+      const now = performance.now();
+      if (now - lastMoveTime < 30) return; // ~30fps throttle
+      lastMoveTime = now;
+      
       const deltaX = ((moveEvent.clientX - startX) / rect.width) * 100;
       const deltaY = ((moveEvent.clientY - startY) / rect.height) * 100;
       
@@ -59,7 +65,13 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
     const container = e.currentTarget.parentElement.parentElement;
     const rect = container.getBoundingClientRect();
     
+    let lastMoveTime = 0;
+    
     const handleMouseMove = (moveEvent) => {
+      const now = performance.now();
+      if (now - lastMoveTime < 30) return; // ~30fps throttle
+      lastMoveTime = now;
+      
       const deltaWidth = ((moveEvent.clientX - startX) / rect.width) * 100;
       const deltaHeight = ((moveEvent.clientY - startY) / rect.height) * 100;
       

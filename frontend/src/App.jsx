@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation, useParams } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -20,6 +20,13 @@ const Proxies = lazy(() => import('./pages/Proxies'));
 const AIFaceless = lazy(() => import('./pages/AIFaceless'));
 const LiveRestream = lazy(() => import('./pages/LiveRestream'));
 const VieneuSettings = lazy(() => import('./pages/VieneuSettings'));
+
+// Wrapper to force full remount of EditVideo when video ID changes,
+// ensuring all hook state (useSubtitleState, useEditVideo) is completely reset
+const EditVideoWrapper = () => {
+  const { id } = useParams();
+  return <EditVideo key={id} />;
+};
 
 const MainLayout = () => {
   const location = useLocation();
@@ -57,7 +64,7 @@ const MainLayout = () => {
               <Route path="/discovery" element={<Discovery />} />
               <Route path="/processor" element={<Processor />} />
               <Route path="/history" element={<History />} />
-              <Route path="/edit/:id" element={<EditVideo />} />
+              <Route path="/edit/:id" element={<EditVideoWrapper />} />
               <Route path="/social-accounts" element={<SocialAccounts />} />
               <Route path="/upload-schedule" element={<UploadSchedule />} />
               <Route path="/proxies" element={<Proxies />} />

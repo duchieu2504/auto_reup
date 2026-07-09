@@ -266,6 +266,14 @@ def delete_video_files(video_id: int, db: Session = Depends(get_db)):
                 print(f"Error deleting final file: {e}")
         record.final_video_path = f"deleted:{path}"
         
+    # 3. Remove from SyncManager history
+    try:
+        from app.services.crawler.sync_manager import SyncManager
+        vid_id = record.original_name.split('.')[0]
+        SyncManager().remove_from_history(vid_id)
+    except Exception as e:
+        print(f"Error removing from sync history: {e}")
+        
     db.commit()
     return {"status": "success", "deleted_files": deleted_files}
 
@@ -283,6 +291,9 @@ class BulkDeleteRequest(BaseModel):
 
 @router.delete("/bulk")
 def bulk_delete_history(request: BulkDeleteRequest, db: Session = Depends(get_db)):
+    from app.services.crawler.sync_manager import SyncManager
+    sync_manager = SyncManager()
+    
     records = db.query(VideoHistory).filter(VideoHistory.id.in_(request.ids)).all()
     
     for record in records:
@@ -294,11 +305,18 @@ def bulk_delete_history(request: BulkDeleteRequest, db: Session = Depends(get_db
             record.audio_tts_path,
             record.final_video_path
         ]:
-            if path and os.path.exists(path):
+            if path and not path.startswith("deleted:") and os.path.exists(path):
                 try:
                     os.remove(path)
                 except Exception as e:
                     print(f"Error deleting file {path}: {e}")
+                    
+        # Remove from SyncManager history
+        try:
+            vid_id = record.original_name.split('.')[0]
+            sync_manager.remove_from_history(vid_id)
+        except Exception as e:
+            print(f"Error removing from sync history: {e}")
         
         db.delete(record)
     

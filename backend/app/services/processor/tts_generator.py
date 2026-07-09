@@ -10,6 +10,7 @@ import unicodedata
 from app.core.security import decrypt_data
 from dotenv import load_dotenv
 import imageio_ffmpeg
+import threading
 
 # Chỉ định đường dẫn FFmpeg cho pydub để tránh lỗi WinError 2
 AudioSegment.converter = imageio_ffmpeg.get_ffmpeg_exe()
@@ -19,6 +20,7 @@ ENV_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../
 class TTSGenerator:
     def __init__(self):
         self._vieneu = None
+        self._vieneu_lock = threading.Lock()
         
     def _get_fpt_audio(self, text: str, voice: str) -> str:
         load_dotenv(ENV_PATH, override=True)
@@ -55,6 +57,8 @@ class TTSGenerator:
             raise Exception(f"Lỗi FPT API: {response.text}")
 
     async def _generate_edge_audio(self, text: str, voice: str, output_path: str, rate: str = "+0%", log_callback=None):
+        import random
+        import asyncio
         max_retries = 5
         for attempt in range(max_retries):
             try:
@@ -65,7 +69,7 @@ class TTSGenerator:
                 if log_callback:
                     log_callback(f"[*] Gặp sự cố kết nối với Microsoft TTS (Lần thử {attempt + 1}/{max_retries}): {e}. Đang thử lại...\n")
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(2 + attempt * 2) # Nghỉ 2s, 4s, 6s... tránh bị Microsoft block IP
+                    await asyncio.sleep(1 + attempt * 1.5 + random.uniform(0, 1))
                     continue
                 raise e
 
@@ -127,12 +131,14 @@ class TTSGenerator:
 
     def _get_vieneu_client(self):
         if self._vieneu is None:
-            try:
-                from vieneu import Vieneu
-                # Khởi tạo mô hình VieNeu-TTS
-                self._vieneu = Vieneu(emotion="natural")
-            except Exception as e:
-                raise Exception(f"Lỗi khởi tạo VieNeu-TTS (Vui lòng cài đặt eSpeak NG và pip install vieneu): {str(e)}")
+            with self._vieneu_lock:
+                if self._vieneu is None:  # Double-checked locking
+                    try:
+                        from vieneu import Vieneu
+                        # Khởi tạo mô hình VieNeu-TTS
+                        self._vieneu = Vieneu(emotion="natural")
+                    except Exception as e:
+                        raise Exception(f"Lỗi khởi tạo VieNeu-TTS (Vui lòng cài đặt eSpeak NG và pip install vieneu): {str(e)}")
         return self._vieneu
 
     def _generate_vieneu_audio(self, text: str, voice: str, output_path: str, reference_audio: str = None):
@@ -188,23 +194,45 @@ class TTSGenerator:
         audio = client.infer(text=text, voice=voice_data)
         client.save(audio, output_path)
 
-    def generate_tts_track(self, srt_path: str, output_audio_path: str, voice_mode: str, video_path: str, log_callback, vocal_path_to_clone: str = None):
-        subs = pysrt.open(srt_path, encoding='utf-8')
+    @staticmethod
+    def _estimate_tts_rate(tts_text: str, target_duration_ms: int) -> str:
+        """
+        Hybrid Layer 1: Estimate optimal TTS speaking rate based on
+        character density vs available subtitle duration.
+        Vietnamese averages ~70-80ms per character at normal speed.
+        Returns Edge TTS rate string like '+0%', '+8%', '+15%'.
+        """
+        if target_duration_ms <= 0:
+            return "+0%"
         
+        # Estimated TTS duration at normal speed (~75ms per Vietnamese character)
+        MS_PER_CHAR = 75
+        estimated_tts_ms = len(tts_text) * MS_PER_CHAR
+        overflow_ratio = estimated_tts_ms / target_duration_ms
+        
+        if overflow_ratio > 1.25:
+            return "+18%"
+        elif overflow_ratio > 1.15:
+            return "+12%"
+        elif overflow_ratio > 1.05:
+            return "+6%"
+        else:
+            return "+0%"
+
+    def generate_tts_from_queue(self, srt_queue, srt_path: str, output_audio_path: str, voice_mode: str, video_path: str, log_callback, vocal_path_to_clone: str = None):
         import subprocess
-        # Get duration using ffmpeg_exe to avoid ffprobe dependency
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
         cmd = [ffmpeg_exe, "-i", video_path]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        # Parse Duration: 00:00:15.12
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
         import re
-        match = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+)", result.stderr)
+        stderr_output = result.stderr or ''
+        match = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+)", stderr_output)
         total_duration_ms = 60000
         if match:
             h, m, s = match.groups()
             total_duration_ms = int((float(h) * 3600 + float(m) * 60 + float(s)) * 1000)
             
-        base_audio = AudioSegment.silent(duration=total_duration_ms)
+        base_audio = AudioSegment.empty()
         
         import tempfile
         tmp_dir = tempfile.gettempdir()
@@ -213,15 +241,12 @@ class TTSGenerator:
         sync_redis = get_sync_redis(decode_responses=True)
         base_name = os.path.basename(video_path).split('.')[0]
 
-        for i, sub in enumerate(subs):
-            # Periodically check pause/cancellation flag to cancel TTS early
+        def process_single_sub(i, sub, next_sub_start_ms=None):
             if sync_redis.get(f"pause_video_{base_name}") == "1":
-                log_callback(f"[System] Phát hiện lệnh dừng từ người dùng. Hủy sinh TTS cho {base_name}...\n")
+                if log_callback: log_callback(f"[System] Phát hiện lệnh dừng từ người dùng. Hủy sinh TTS cho {base_name}...\n")
                 raise Exception("Tiến trình bị hủy bởi người dùng.")
 
-            text = sub.text.replace('\n', ' ').strip()
-            
-            # Detect [M] or [F] tag
+            text = (sub.text or '').replace('\n', ' ').strip()
             tag = None
             if text.startswith("[M]"):
                 tag = "M"
@@ -230,79 +255,278 @@ class TTSGenerator:
                 tag = "F"
                 text = text[3:].strip()
                 
-            # Cập nhật lại text vào srt để video_editor không hiển thị chữ [M] [F] lên màn hình
             sub.text = text 
-            
-            if not text:
-                continue
+            if not text: return None
                 
-            # Tạo chuỗi sạch để đọc TTS (loại bỏ ký tự đặc biệt làm hỏng SSML)
             tts_text = re.sub(r'[<>\*\[\]\~_\|\^\-\+]', ' ', text).strip()
-            
-            # Chuẩn hóa Unicode sang dạng NFC (Dựng Sẵn) để tránh lỗi máy chủ TTS không nhận dạng được ký tự tổ hợp
             tts_text = unicodedata.normalize('NFC', tts_text)
+            if not re.search(r'[a-zA-Z0-9À-ỹ]', tts_text): return None
                 
-            # Kiểm tra nếu text chỉ toàn dấu câu thì bỏ qua (tránh lỗi No audio was received)
-            if not re.search(r'[a-zA-Z0-9\u00C0-\u1EF9]', tts_text):
-                continue
-                
-            # Xác định giọng đọc dựa trên voice_mode
+            local_voice_mode = voice_mode
             voice_to_use = None
             is_fpt = False
             is_openai = False
             is_elevenlabs = False
             
-            # Handle Auto mode
-            if voice_mode in ["auto", "edge_auto"]:
+            if local_voice_mode in ["auto", "edge_auto"]:
+                load_dotenv(ENV_PATH, override=True)
+                active_tts = os.getenv("ACTIVE_TTS_PROVIDER", "edge")
+                if active_tts == "fpt": local_voice_mode = "fpt_minhquang" if tag == "M" else "fpt_banmai"
+                elif active_tts == "openai": local_voice_mode = "openai_onyx" if tag == "M" else "openai_nova"
+                elif active_tts == "elevenlabs": local_voice_mode = "elevenlabs_drew" if tag == "M" else "elevenlabs_rachel"
+                elif active_tts == "vieneu": local_voice_mode = "vieneu_male" if tag == "M" else "vieneu_female"
+                else: local_voice_mode = "edge_namminh" if tag == "M" else "edge_hoaimy"
+            
+            is_vieneu = False
+            if local_voice_mode.startswith("edge_"): voice_to_use = "vi-VN-NamMinhNeural" if "namminh" in local_voice_mode else "vi-VN-HoaiMyNeural"
+            elif local_voice_mode.startswith("fpt_"): voice_to_use = local_voice_mode.replace("fpt_", ""); is_fpt = True
+            elif local_voice_mode.startswith("openai_"): voice_to_use = local_voice_mode; is_openai = True
+            elif local_voice_mode.startswith("elevenlabs_"): voice_to_use = local_voice_mode; is_elevenlabs = True
+            elif local_voice_mode.startswith("vieneu_"): voice_to_use = local_voice_mode.replace("vieneu_", ""); is_vieneu = True
+            else: voice_to_use = "vi-VN-HoaiMyNeural"
+                
+            start_ms = (sub.start.hours * 3600 + sub.start.minutes * 60 + sub.start.seconds) * 1000 + sub.start.milliseconds
+            end_ms = (sub.end.hours * 3600 + sub.end.minutes * 60 + sub.end.seconds) * 1000 + sub.end.milliseconds
+            duration_ms = max(end_ms - start_ms, 100)
+            
+            # Hybrid Layer 1: Pre-speed TTS rate estimation
+            rate = self._estimate_tts_rate(tts_text, duration_ms)
+            
+            clip_path = os.path.join(tmp_dir, f"clip_{i}.mp3")
+            clip_wav_path = os.path.join(tmp_dir, f"clip_{i}.wav")
+            
+            try:
+                if is_vieneu:
+                    raw_vieneu_path = os.path.join(tmp_dir, f"raw_vieneu_{i}.wav")
+                    ref_audio = vocal_path_to_clone
+                    self._generate_vieneu_audio(tts_text, voice_to_use, raw_vieneu_path, reference_audio=ref_audio)
+                    subprocess.run([
+                        imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", raw_vieneu_path,
+                        "-acodec", "pcm_s16le", "-ar", "44100", clip_wav_path
+                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                    if os.path.exists(raw_vieneu_path): os.remove(raw_vieneu_path)
+                else:
+                    if is_fpt: clip_path = self._get_fpt_audio(tts_text, voice_to_use)
+                    elif is_openai: self._generate_openai_audio(tts_text, voice_to_use, clip_path)
+                    elif is_elevenlabs: self._generate_elevenlabs_audio(tts_text, voice_to_use, clip_path)
+                    else:
+                        import asyncio
+                        asyncio.run(self._generate_edge_audio(tts_text, voice_to_use, clip_path, rate=rate, log_callback=log_callback))
+                        
+                    subprocess.run([
+                        imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", clip_path, clip_wav_path
+                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                
+                clip_audio = AudioSegment.from_wav(clip_wav_path)
+                audio_duration_ms = len(clip_audio)
+                
+                # Hybrid Layer 2: Smart Spillover & Capped Fast-Forward
+                target_duration_ms = max(end_ms - start_ms, 100)
+                overlap = audio_duration_ms - target_duration_ms
+                if overlap > 0:
+                    max_allowed_duration = target_duration_ms
+                    if next_sub_start_ms is not None:
+                        gap = next_sub_start_ms - end_ms
+                        if gap > 0:
+                            max_allowed_duration += gap
+                    else:
+                        max_allowed_duration += 2000
+                        
+                    if audio_duration_ms <= max_allowed_duration:
+                        pass  # Spillover safe zone
+                    else:
+                        needed_ratio = audio_duration_ms / max_allowed_duration
+                        safe_ratio = min(needed_ratio, 1.4)
+                        
+                        stretched_wav_path = os.path.join(tmp_dir, f"clip_{i}_stretched.wav")
+                        try:
+                            subprocess.run([
+                                imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", clip_wav_path,
+                                "-filter:a", f"atempo={safe_ratio}", stretched_wav_path
+                            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                            
+                            clip_audio = AudioSegment.from_wav(stretched_wav_path)
+                            if os.path.exists(stretched_wav_path):
+                                os.remove(stretched_wav_path)
+                        except Exception as speed_err:
+                            if log_callback:
+                                log_callback(f"[!] Lỗi ép tốc dòng {i}: {speed_err}\n")
+                        
+                        # Soft Trimming
+                        if len(clip_audio) > max_allowed_duration:
+                            clip_audio = clip_audio[:max_allowed_duration].fade_out(50)
+                
+                if os.path.exists(clip_path):
+                    os.remove(clip_path)
+                if os.path.exists(clip_wav_path):
+                    os.remove(clip_wav_path)
+                
+                actual_end_ms = start_ms + len(clip_audio)
+                return (start_ms, clip_audio, actual_end_ms, sub.index)
+            except Exception as e:
+                if log_callback: log_callback(f"[!] Lỗi tạo audio cho dòng {idx} ('{text}'): {e}\n")
+                return None
+
+        import concurrent.futures
+        max_workers = 5
+        results = []
+        if log_callback: log_callback(f"[*] Bắt đầu sinh âm thanh Pipeline bằng {max_workers} luồng xử lý song song...\n")
+        
+        all_subs = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {}
+            while True:
+                chunk = srt_queue.get()
+                if chunk is None: # EOF signal
+                    break
+                
+                # Parse the chunk text into SubRipItems
+                subs = pysrt.from_string(chunk)
+                all_subs.extend(subs)
+                for idx_sub, sub in enumerate(subs):
+                    # Calculate next_sub_start_ms for Spillover logic
+                    next_sub_start_ms = None
+                    if idx_sub + 1 < len(subs):
+                        n_s = subs[idx_sub + 1].start
+                        next_sub_start_ms = (n_s.hours * 3600 + n_s.minutes * 60 + n_s.seconds) * 1000 + n_s.milliseconds
+                    future = executor.submit(process_single_sub, sub.index, sub, next_sub_start_ms)
+                    futures[future] = sub.index
+                    
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    res = future.result()
+                    if res:
+                        results.append(res)
+                except Exception as exc:
+                    idx = futures[future]
+                    if log_callback: log_callback(f"[!] Lỗi luồng xử lý câu {idx}: {exc}\n")
+        
+        results.sort(key=lambda x: x[0])
+        
+        from pysrt.srttime import SubRipTime
+        
+        for start_ms, clip_audio, actual_end_ms, sub_idx in results:
+            clip_end_ms = start_ms + len(clip_audio)
+            if len(base_audio) < clip_end_ms:
+                extension = clip_end_ms - len(base_audio)
+                base_audio += AudioSegment.silent(duration=extension)
+            base_audio = base_audio.overlay(clip_audio, position=start_ms)
+            
+            # Sync subtitle timing with actual TTS duration
+            sub_item = next((s for s in all_subs if s.index == sub_idx), None)
+            if sub_item:
+                sub_item.end = SubRipTime(milliseconds=actual_end_ms)
+            
+        full_srt = pysrt.SubRipFile(items=all_subs)
+        full_srt.save(srt_path, encoding='utf-8')
+        
+        if len(base_audio) == 0:
+            if log_callback: log_callback("[!] Cảnh báo: Không sinh được audio TTS nào (hoặc lỗi toàn bộ). Tạo audio trống để tránh crash FFmpeg.\n")
+            base_audio = AudioSegment.silent(duration=total_duration_ms if total_duration_ms > 0 else 5000)
+            
+        base_audio.export(output_audio_path, format="mp3")
+        return output_audio_path
+
+    def generate_tts_track(self, srt_path: str, output_audio_path: str, voice_mode: str, video_path: str, log_callback, vocal_path_to_clone: str = None):
+        subs = pysrt.open(srt_path, encoding='utf-8')
+        
+        import subprocess
+        # Get duration using ffmpeg_exe to avoid ffprobe dependency
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        cmd = [ffmpeg_exe, "-i", video_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        # Parse Duration: 00:00:15.12
+        import re
+        stderr_output = result.stderr or ''
+        match = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+)", stderr_output)
+        total_duration_ms = 60000
+        if match:
+            h, m, s = match.groups()
+            total_duration_ms = int((float(h) * 3600 + float(m) * 60 + float(s)) * 1000)
+            
+        # Tối ưu RAM: Khởi tạo mảng audio rỗng thay vì mảng khổng lồ bằng total_duration_ms
+        base_audio = AudioSegment.empty()
+        
+        import tempfile
+        tmp_dir = tempfile.gettempdir()
+
+        from app.core.redis_pool import get_sync_redis
+        sync_redis = get_sync_redis(decode_responses=True)
+        base_name = os.path.basename(video_path).split('.')[0]
+
+
+        def process_single_sub(i, sub, next_sub_start_ms=None):
+            # Periodically check pause/cancellation flag to cancel TTS early
+            if sync_redis.get(f"pause_video_{base_name}") == "1":
+                if log_callback: log_callback(f"[System] Phát hiện lệnh dừng từ người dùng. Hủy sinh TTS cho {base_name}...\n")
+                raise Exception("Tiến trình bị hủy bởi người dùng.")
+
+            text = (sub.text or '').replace('\n', ' ').strip()
+            
+            tag = None
+            if text.startswith("[M]"):
+                tag = "M"
+                text = text[3:].strip()
+            elif text.startswith("[F]"):
+                tag = "F"
+                text = text[3:].strip()
+                
+            sub.text = text 
+            
+            if not text:
+                return None
+                
+            tts_text = re.sub(r'[<>\*\[\]\~_\|\^\-\+]', ' ', text).strip()
+            tts_text = unicodedata.normalize('NFC', tts_text)
+                
+            if not re.search(r'[a-zA-Z0-9À-ỹ]', tts_text):
+                return None
+                
+            local_voice_mode = voice_mode
+            voice_to_use = None
+            is_fpt = False
+            is_openai = False
+            is_elevenlabs = False
+            
+            if local_voice_mode in ["auto", "edge_auto"]:
                 load_dotenv(ENV_PATH, override=True)
                 active_tts = os.getenv("ACTIVE_TTS_PROVIDER", "edge")
                 
                 if active_tts == "fpt":
-                    voice_mode = "fpt_minhquang" if tag == "M" else "fpt_banmai"
+                    local_voice_mode = "fpt_minhquang" if tag == "M" else "fpt_banmai"
                 elif active_tts == "openai":
-                    voice_mode = "openai_onyx" if tag == "M" else "openai_nova"
+                    local_voice_mode = "openai_onyx" if tag == "M" else "openai_nova"
                 elif active_tts == "elevenlabs":
-                    voice_mode = "elevenlabs_drew" if tag == "M" else "elevenlabs_rachel"
+                    local_voice_mode = "elevenlabs_drew" if tag == "M" else "elevenlabs_rachel"
                 elif active_tts == "vieneu":
-                    voice_mode = "vieneu_male" if tag == "M" else "vieneu_female"
+                    local_voice_mode = "vieneu_male" if tag == "M" else "vieneu_female"
                 else:
-                    voice_mode = "edge_namminh" if tag == "M" else "edge_hoaimy"
+                    local_voice_mode = "edge_namminh" if tag == "M" else "edge_hoaimy"
             
-            # Resolve actual voice
             is_vieneu = False
-            if voice_mode.startswith("edge_"):
-                voice_to_use = "vi-VN-NamMinhNeural" if "namminh" in voice_mode else "vi-VN-HoaiMyNeural"
-            elif voice_mode.startswith("fpt_"):
-                voice_to_use = voice_mode.replace("fpt_", "")
+            if local_voice_mode.startswith("edge_"):
+                voice_to_use = "vi-VN-NamMinhNeural" if "namminh" in local_voice_mode else "vi-VN-HoaiMyNeural"
+            elif local_voice_mode.startswith("fpt_"):
+                voice_to_use = local_voice_mode.replace("fpt_", "")
                 is_fpt = True
-            elif voice_mode.startswith("openai_"):
-                voice_to_use = voice_mode
+            elif local_voice_mode.startswith("openai_"):
+                voice_to_use = local_voice_mode
                 is_openai = True
-            elif voice_mode.startswith("elevenlabs_"):
-                voice_to_use = voice_mode
+            elif local_voice_mode.startswith("elevenlabs_"):
+                voice_to_use = local_voice_mode
                 is_elevenlabs = True
-            elif voice_mode.startswith("vieneu_"):
-                voice_to_use = voice_mode.replace("vieneu_", "")
+            elif local_voice_mode.startswith("vieneu_"):
+                voice_to_use = local_voice_mode.replace("vieneu_", "")
                 is_vieneu = True
             else:
-                voice_to_use = "vi-VN-HoaiMyNeural" # default Edge
+                voice_to_use = "vi-VN-HoaiMyNeural"
                 
             start_ms = (sub.start.hours * 3600 + sub.start.minutes * 60 + sub.start.seconds) * 1000 + sub.start.milliseconds
             end_ms = (sub.end.hours * 3600 + sub.end.minutes * 60 + sub.end.seconds) * 1000 + sub.end.milliseconds
-            duration_ms = max(end_ms - start_ms, 100) # Đảm bảo > 0
+            target_duration_ms = max(end_ms - start_ms, 100)
             
-            # Tính toán Characters Per Second (CPS) để điều chỉnh tốc độ nói (tạo điểm nhấn)
-            cps = len(tts_text) / (duration_ms / 1000.0)
-            if cps > 20:
-                rate = "+25%"
-            elif cps > 16:
-                rate = "+15%"
-            elif cps > 13:
-                rate = "+5%"
-            elif cps < 7:
-                rate = "-10%"
-            else:
-                rate = "+0%"
+            # Hybrid Layer 1: Pre-speed TTS rate estimation
+            rate = self._estimate_tts_rate(tts_text, target_duration_ms)
             
             clip_path = os.path.join(tmp_dir, f"clip_{i}.mp3")
             clip_wav_path = os.path.join(tmp_dir, f"clip_{i}.wav")
@@ -311,10 +535,8 @@ class TTSGenerator:
                 if is_vieneu:
                     raw_vieneu_path = os.path.join(tmp_dir, f"raw_vieneu_{i}.wav")
                     
-                    # Ưu tiên vocal path tự động từ Demucs nếu có, nếu không thì dùng clone có sẵn
                     ref_audio = vocal_path_to_clone
                     self._generate_vieneu_audio(tts_text, voice_to_use, raw_vieneu_path, reference_audio=ref_audio)
-                    # Convert to standard 16-bit PCM WAV so Pydub's wave module can read it safely
                     subprocess.run([
                         imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", raw_vieneu_path,
                         "-acodec", "pcm_s16le", "-ar", "44100", clip_wav_path
@@ -329,12 +551,13 @@ class TTSGenerator:
                     elif is_elevenlabs:
                         self._generate_elevenlabs_audio(tts_text, voice_to_use, clip_path)
                     else:
+                        import asyncio
                         asyncio.run(self._generate_edge_audio(tts_text, voice_to_use, clip_path, rate=rate, log_callback=log_callback))
                         
                     import time
-                    time.sleep(0.5) # Nghỉ 0.5s giữa các request để tránh bị Microsoft Rate Limit
+                    if "edge" in local_voice_mode:
+                        time.sleep(0.2)
                         
-                    # Convert MP3 to WAV using FFmpeg to avoid Pydub needing ffprobe
                     subprocess.run([
                         imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", clip_path, clip_wav_path
                     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
@@ -342,48 +565,113 @@ class TTSGenerator:
                 clip_audio = AudioSegment.from_wav(clip_wav_path)
                 audio_duration_ms = len(clip_audio)
                 
-                # Áp dụng thuật toán FFmpeg ATempo để ép tốc độ (cả tua nhanh và tua chậm)
-                target_duration_ms = max(end_ms - start_ms, 100)
-                ratio = audio_duration_ms / target_duration_ms
-                
-                # Áp dụng nếu sai lệch > 5%
-                if ratio > 1.05 or ratio < 0.95:
-                    # Thiết lập biên độ an toàn: Tua chậm tối đa 0.8x, tua nhanh tối đa 1.75x
-                    # Tránh méo giọng (chipmunk effect) hoặc giọng robot rề rà
-                    safe_ratio = max(0.8, min(ratio, 1.75))
-                    
-                    stretched_wav_path = os.path.join(tmp_dir, f"clip_{i}_stretched.wav")
-                    
-                    try:
-                        subprocess.run([
-                            imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", clip_wav_path,
-                            "-filter:a", f"atempo={safe_ratio}", stretched_wav_path
-                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                # Hybrid Layer 2: Smart Spillover & Capped Fast-Forward
+                overlap = audio_duration_ms - target_duration_ms
+                if overlap > 0:
+                    max_allowed_duration = target_duration_ms
+                    if next_sub_start_ms is not None:
+                        # Tính khoảng trống (gap) tới câu tiếp theo
+                        gap = next_sub_start_ms - end_ms
+                        if gap > 0:
+                            max_allowed_duration += gap
+                    else:
+                        # Câu cuối cùng, cho phép dài hơn một chút
+                        max_allowed_duration += 2000
                         
-                        clip_audio = AudioSegment.from_wav(stretched_wav_path)
-                        if os.path.exists(stretched_wav_path):
-                            os.remove(stretched_wav_path)
+                    if audio_duration_ms <= max_allowed_duration:
+                        # Nằm trong vùng an toàn (Spillover hợp lệ) -> Không cần FFmpeg
+                        pass
+                    else:
+                        # Vượt qua mức an toàn -> Dùng FFmpeg tua nhanh (Cap at 1.4x)
+                        needed_ratio = audio_duration_ms / max_allowed_duration
+                        safe_ratio = min(needed_ratio, 1.4)
+                        
+                        stretched_wav_path = os.path.join(tmp_dir, f"clip_{i}_stretched.wav")
+                        try:
+                            subprocess.run([
+                                imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", clip_wav_path,
+                                "-filter:a", f"atempo={safe_ratio}", stretched_wav_path
+                            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
                             
-                        action = "Tăng tốc" if safe_ratio > 1 else "Tua chậm"
-                        if log_callback:
-                            log_callback(f"[*] Đồng bộ âm thanh dòng {i}: {action} {safe_ratio:.2f}x (Phụ đề: {target_duration_ms}ms, TTS gốc: {audio_duration_ms}ms)\n")
-                    except Exception as speed_err:
-                        if log_callback:
-                            log_callback(f"[!] Lỗi khi ép tốc độ audio dòng {i}: {speed_err}. Tiếp tục sử dụng audio gốc.\n")
+                            clip_audio = AudioSegment.from_wav(stretched_wav_path)
+                            if os.path.exists(stretched_wav_path):
+                                os.remove(stretched_wav_path)
+                                
+                            if log_callback:
+                                log_callback(f"[*] Dòng {i}: Ép tốc {safe_ratio:.2f}x (Max allowed: {max_allowed_duration}ms)\n")
+                        except Exception as speed_err:
+                            if log_callback:
+                                log_callback(f"[!] Lỗi ép tốc dòng {i}: {speed_err}\n")
+                        
+                        # Soft Trimming nếu sau khi ép tốc (1.25x) vẫn thừa (Fade out mượt 50ms)
+                        if len(clip_audio) > max_allowed_duration:
+                            clip_audio = clip_audio[:max_allowed_duration].fade_out(50)
+                            if log_callback:
+                                log_callback(f"[*] Dòng {i}: Đã cắt gọt (Soft Trimming) phần dư thừa.\n")
                 
-                # Overlay audio clip at exact start time
-                base_audio = base_audio.overlay(clip_audio, position=start_ms)
-                
-                # Xoá file tạm
                 if os.path.exists(clip_path):
                     os.remove(clip_path)
                 if os.path.exists(clip_wav_path):
                     os.remove(clip_wav_path)
+                    
+                return (start_ms, clip_audio)
             except Exception as e:
-                log_callback(f"[!] Lỗi tạo audio cho dòng {i} ('{text}'): {e}\n")
+                if log_callback: log_callback(f"[!] Lỗi tạo audio cho dòng {i} ('{text}'): {e}\n")
+                return None
+
+        import concurrent.futures
+        
+        # Chạy đa luồng! Limit số worker tránh rate limit (đặc biệt là Edge TTS)
+        max_workers = 5
+        results = []
+        
+        if log_callback: log_callback(f"[*] Bắt đầu sinh âm thanh bằng {max_workers} luồng xử lý song song...\n")
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {}
+            for i, sub in enumerate(subs):
+                next_sub_start_ms = None
+                if i + 1 < len(subs):
+                    n_s = subs[i+1].start
+                    next_sub_start_ms = (n_s.hours * 3600 + n_s.minutes * 60 + n_s.seconds) * 1000 + n_s.milliseconds
+                futures[executor.submit(process_single_sub, i, sub, next_sub_start_ms)] = i
+                
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    res = future.result()
+                    if res:
+                        results.append(res)
+                except Exception as exc:
+                    idx = futures[future]
+                    if log_callback: log_callback(f"[!] Lỗi luồng xử lý câu {idx}: {exc}\n")
+        
+        # Lắp ghép các đoạn âm thanh đã thu được theo đúng timestamp 
+        results.sort(key=lambda x: x[0])
+        
+        from pysrt.srttime import SubRipTime
+        
+        for start_ms, clip_audio, actual_end_ms, sub_idx in results:
+            clip_end_ms = start_ms + len(clip_audio)
+            # Nếu base_audio hiện tại chưa đủ dài để chứa clip mới, ta chèn thêm khoảng im lặng (silence)
+            if len(base_audio) < clip_end_ms:
+                extension = clip_end_ms - len(base_audio)
+                base_audio += AudioSegment.silent(duration=extension)
+                
+            base_audio = base_audio.overlay(clip_audio, position=start_ms)
+            
+            # Sync subtitle timing with actual TTS duration
+            sub_item = next((s for s in subs if s.index == sub_idx), None)
+            if sub_item:
+                sub_item.end = SubRipTime(milliseconds=actual_end_ms)
+            
+        # Đảm bảo track lồng tiếng có một chút padding ở cuối (nếu cần thiết, FFmpeg amix duration=first sẽ lo phần còn lại)
         
         # Save clean srt
         subs.save(srt_path, encoding='utf-8')
         
+        if len(base_audio) == 0:
+            if log_callback: log_callback("[!] Cảnh báo: Không sinh được audio TTS nào (hoặc lỗi toàn bộ). Tạo audio trống để tránh crash FFmpeg.\n")
+            base_audio = AudioSegment.silent(duration=total_duration_ms if total_duration_ms > 0 else 5000)
+            
         base_audio.export(output_audio_path, format="mp3")
         return output_audio_path

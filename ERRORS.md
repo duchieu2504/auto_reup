@@ -55,3 +55,21 @@
 - **Prevention**: Luôn gộp cookie thay vì ghi đè khi tự động làm mới signature bằng Playwright để giữ phiên đăng nhập. Xử lý các mã phản hồi đặc thù của API Douyin một cách tường minh.
 - **Status**: Fixed
 ---
+
+## [2026-07-08 08:18] - Syntax Error: IndentationError in cookie_fetcher.py
+
+- **Type**: Syntax
+- **Severity**: Critical
+- **File**: ackend/app/services/crawler/cookie_fetcher.py
+- **Agent**: fox
+- **Root Cause**: Lỗi thụt lề (IndentationError) sau khi thêm with _env_file_lock: vào hàm update_env_file và 	ry: ở hàm worker nhưng quên lùi đầu dòng cho khối code bên trong.
+- **Error Message**: 
+  `
+  IndentationError: expected an indented block after \'with\' statement on line 20
+  IndentationError: expected an indented block after function definition on line 104
+  `
+- **Fix Applied**: Thụt lề lại toàn bộ khối code bên trong hàm update_env_file và hàm worker bằng Python script để đảm bảo đúng syntax.
+- **Prevention**: Sau khi dùng regex hoặc thay thế string khối code Python lớn, luôn chạy python -m py_compile để kiểm tra lỗi cú pháp trước khi kết thúc tác vụ.
+- **Status**: Fixed
+
+---
