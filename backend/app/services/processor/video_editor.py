@@ -307,9 +307,9 @@ class VideoEditor:
         if tts_idx != -1:
             bg_vol_float = bg_volume / 100.0
             if opt_pitch:
-                audio_filter = f"{bg_audio_label}volume={bg_vol_float},asetrate=44100*1.02,atempo=1/1.02[bg];[{tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
+                audio_filter = f"{bg_audio_label}volume={bg_vol_float},asetrate=44100*1.02,atempo=1/1.02[bg];[{tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0[aout]"
             else:
-                audio_filter = f"{bg_audio_label}volume={bg_vol_float}[bg];[{tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
+                audio_filter = f"{bg_audio_label}volume={bg_vol_float}[bg];[{tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0[aout]"
             
             filter_complex_str += ";" + audio_filter
             a_map = "[aout]"
@@ -347,7 +347,7 @@ class VideoEditor:
         else:
             cmd.extend(["-c:a", "copy"])
         
-        cmd.extend(["-shortest"])
+        # Removed -shortest to allow video to freeze on last frame if TTS voice is longer than original video
         cmd.append(output_video)
         
         total_duration = get_video_duration(input_video)
