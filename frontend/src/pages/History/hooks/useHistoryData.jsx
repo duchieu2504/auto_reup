@@ -31,9 +31,15 @@ export const useHistoryData = () => {
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [filterSource, setFilterSource] = useState('');
   const [filterDate, setFilterDate] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  
+  // Pagination States
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
+  const [totalPages, setTotalPages] = useState(1);
   
   // UI States
   const [previewFile, setPreviewFile] = useState(null);
@@ -54,8 +60,15 @@ export const useHistoryData = () => {
   const [accounts, setAccounts] = useState([]);
 
   useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  useEffect(() => {
     fetchHistory();
-  }, [filterSource, filterDate, filterStatus]);
+  }, [filterSource, filterDate, filterStatus, currentPage, itemsPerPage, debouncedSearchQuery]);
 
   useEffect(() => {
     fetch(`${API_BASE}/settings/voices`)
@@ -82,17 +95,22 @@ export const useHistoryData = () => {
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      let url = `${API_BASE}/history/?limit=100`;
+      let url = `${API_BASE}/history/`;
       const params = new URLSearchParams();
+      if (debouncedSearchQuery) params.append('search', debouncedSearchQuery);
       if (filterSource) params.append('source', filterSource);
       if (filterDate) params.append('date', filterDate);
       if (filterStatus) params.append('status', filterStatus);
+      params.append('page', currentPage);
+      params.append('limit', itemsPerPage);
+
       if (params.toString()) {
-        url += `&${params.toString()}`;
+        url += `?${params.toString()}`;
       }
       const res = await fetch(url);
       const data = await res.json();
-      setHistoryData(data);
+      setHistoryData(data.data || []);
+      setTotalPages(data.pages || 1);
     } catch (err) {
       console.error('Lỗi khi lấy lịch sử:', err);
     } finally {
@@ -416,11 +434,12 @@ export const useHistoryData = () => {
   return {
     historyData, loading, selectedIds, searchQuery, filterSource, filterDate, filterStatus,
     setSearchQuery, setFilterSource, setFilterDate, setFilterStatus,
+    currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages,
     showConfigModal, setShowConfigModal, processingItems, setProcessingItems,
     showGroqFallbackModal, setShowGroqFallbackModal, fallbackItem, setFallbackItem,
     previewFile, setPreviewFile, previewType, setPreviewType,
     previewTime, setPreviewTime, previewImageUrl,
-    voices,
+    voices, accounts,
     handleSyncData, handleBulkDelete, handleSelectAll, handleSelect,
     handleResumeProcessing, handleGroqFallback, handleBulkProcess,
     submitProcessing, handlePauseProcessing, handlePreview,

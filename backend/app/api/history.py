@@ -140,14 +140,22 @@ class VideoHistoryResponse(BaseModel):
     class Config:
         from_attributes = True
 
-@router.get("/", response_model=List[VideoHistoryResponse])
+class PaginatedHistoryResponse(BaseModel):
+    data: List[VideoHistoryResponse]
+    total: int
+    page: int
+    pages: int
+    limit: int
+
+@router.get("/", response_model=PaginatedHistoryResponse)
 def get_history(
     db: Session = Depends(get_db),
+    search: Optional[str] = None,
     source: Optional[str] = None,
     status: Optional[str] = None,
     date: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 100
+    page: int = 1,
+    limit: int = 20
 ):
     from sqlalchemy.orm import selectinload, defer
 
@@ -159,6 +167,13 @@ def get_history(
     if date:
         # Lọc theo ngày (YYYY-MM-DD)
         query = query.filter(func.date(VideoHistory.created_at) == date)
+    
+    if search:
+        query = query.filter(VideoHistory.original_name.ilike(f"%{search}%"))
+        
+    total = query.count()
+    pages = (total + limit - 1) // limit
+    skip = (page - 1) * limit
     
     # Eager load schedules + account, defer heavy columns not needed for listing
     records = (
@@ -173,7 +188,13 @@ def get_history(
         .all()
     )
     
-    return records
+    return {
+        "data": records,
+        "total": total,
+        "page": page,
+        "pages": pages,
+        "limit": limit
+    }
 
 class StatusResponse(BaseModel):
     id: int

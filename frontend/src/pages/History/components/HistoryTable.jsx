@@ -28,24 +28,15 @@ export const HistoryTable = ({ hook }) => {
   const {
     historyData, loading, selectedIds, searchQuery, filterSource, filterDate, filterStatus,
     setSearchQuery, setFilterSource, setFilterDate, setFilterStatus,
+    currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages,
     handleSyncData, handleBulkDelete, handleSelectAll, handleSelect,
     handlePreview, handleDeleteFiles,
     setProcessingItems, setShowConfigModal, handleResumeProcessing, handlePauseProcessing
   } = hook;
 
-  const filteredData = historyData.filter(item => 
-    item.original_name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(20);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, filterSource, filterDate, filterStatus, historyData.length]);
-
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-  const currentData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  // The backend already handles search, filtering, and pagination.
+  // historyData contains exactly the items for the current page.
+  const currentData = historyData;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -419,7 +410,7 @@ export const HistoryTable = ({ hook }) => {
                     </td>
                   </tr>
                 ))}
-                {filteredData.length === 0 && (
+                {currentData.length === 0 && (
                   <tr>
                     <td colSpan="9" className="p-8 text-center text-text-secondary">
                       Không tìm thấy dữ liệu nào phù hợp
