@@ -137,7 +137,7 @@ const Phase1Crawler = () => {
       </div>
 
       {/* Terminal Log Panel */}
-      <div className="lg:col-span-3 glass-panel p-6 rounded-2xl border border-white/5 relative overflow-hidden flex flex-col justify-between gap-5">
+      <div className="lg:col-span-3 glass-panel p-6 rounded-2xl border border-white/5 relative overflow-hidden flex flex-col justify-between gap-5 min-h-0">
         <div>
           <h3 className="text-xl font-bold tracking-tight font-display bg-gradient-to-r from-white to-text-secondary bg-clip-text text-transparent flex items-center gap-2">
             <Terminal className="text-neon-cyan" size={20} />
@@ -146,7 +146,7 @@ const Phase1Crawler = () => {
         </div>
 
         {/* Terminal Window style */}
-        <div className="relative rounded-xl overflow-hidden border border-border-subtle shadow-2xl flex-1 flex flex-col">
+        <div className="relative rounded-xl overflow-hidden border border-border-subtle shadow-2xl flex-1 flex flex-col min-h-0">
           {/* Mac-like Header dots */}
           <div className="bg-[#0b0f17] px-4 py-2.5 flex items-center gap-1.5 border-b border-border-subtle/50">
             <span className="w-2.5 h-2.5 rounded-full bg-neon-pink/70"></span>
@@ -157,7 +157,7 @@ const Phase1Crawler = () => {
 
           <div
             ref={logContainerRef}
-            className="bg-[#04060a] p-6 font-mono text-[13px] h-[350px] lg:h-[380px] overflow-y-auto leading-relaxed shadow-inner text-neon-cyan/90 selection:bg-neon-purple/20 selection:text-white flex-1"
+            className="bg-[#04060a] p-6 font-mono text-[13px] h-[350px] lg:h-[380px] overflow-y-auto leading-relaxed shadow-inner text-neon-cyan/90 selection:bg-neon-purple/20 selection:text-white flex-1 min-h-0"
           >
             {logs.length === 0 ? (
               <div className="text-text-secondary/50 italic flex items-center gap-2">
