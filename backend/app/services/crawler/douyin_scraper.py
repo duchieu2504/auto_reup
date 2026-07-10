@@ -64,7 +64,7 @@ class DouyinScraper:
         
         return clean_caption, hashtags
 
-    def scrape_profile_generator(self, profile_url: str):
+    def scrape_profile_generator(self, profile_url: str, check_cancel=None):
         logger.info(f"Bắt đầu quét profile: {profile_url}")
         yield f"[*] Bắt đầu quét profile: {profile_url}\n"
         
@@ -161,7 +161,7 @@ class DouyinScraper:
             desc = aweme.get("desc", "")
             clean_caption, tags = self.split_caption_and_hashtags(desc)
             yield f"[+] Đang tải video: {video_id_match} từ {uploader}\n"
-            for dl_log in self._download_video_generator(client, video_urls, video_id_match, uploader, clean_caption, tags, author_sec_uid):
+            for dl_log in self._download_video_generator(client, video_urls, video_id_match, uploader, clean_caption, tags, author_sec_uid, check_cancel):
                 yield dl_log
                 
             return
@@ -235,6 +235,10 @@ class DouyinScraper:
         force_stop = False
         
         while has_more and not force_stop:
+            if check_cancel and check_cancel():
+                yield "[!] Tiến trình cào đã bị hủy bởi người dùng.\n"
+                break
+                
             data = client.get_user_post(sec_uid, max_cursor=cursor, count=18)
             aweme_list = data.get("aweme_list", [])
             if not aweme_list:
@@ -301,7 +305,7 @@ class DouyinScraper:
                 yield f"[+] Đang tải video mới: {video_id}\n"
                 
                 download_success = False
-                for dl_log in self._download_video_generator(client, video_urls, video_id, uploader, clean_caption, tags, sec_uid):
+                for dl_log in self._download_video_generator(client, video_urls, video_id, uploader, clean_caption, tags, sec_uid, check_cancel):
                     yield dl_log
                     if isinstance(dl_log, dict) and dl_log.get("progress") == 100:
                         download_success = True
@@ -312,7 +316,7 @@ class DouyinScraper:
             cursor = data.get("max_cursor", 0)
             has_more = data.get("has_more", False)
 
-    def _download_video_generator(self, client, video_urls: list, video_id: str, uploader: str, original_caption: str = "", original_hashtags: str = "", author_sec_uid: str = None):
+    def _download_video_generator(self, client, video_urls: list, video_id: str, uploader: str, original_caption: str = "", original_hashtags: str = "", author_sec_uid: str = None, check_cancel=None):
         import httpx
         user_folder = "".join(c for c in uploader if c.isalnum() or c in (' ', '_', '-')).strip()
         if not user_folder:
@@ -350,6 +354,8 @@ class DouyinScraper:
                             with open(temp_file, 'wb') as f:
                                 for chunk in response.iter_bytes(chunk_size=8192*8):
                                     if chunk:
+                                        if check_cancel and check_cancel():
+                                            raise InterruptedError("Download cancelled by user")
                                         f.write(chunk)
                                         downloaded += len(chunk)
                                         if total_size > 0:

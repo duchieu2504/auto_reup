@@ -23,18 +23,29 @@ def scrape_profile_task(self, urls: list):
             payload["progress"] = progress
         redis_client.rpush(channel, json.dumps(payload))
 
+    def check_cancel():
+        return redis_client.exists(f"cancel_task_{task_id}")
+
     try:
         scraper_instance = DouyinScraper()
             
         for url in urls:
+            if check_cancel():
+                log_callback("[!] Tiến trình cào đã bị hủy bởi người dùng.\n")
+                break
+                
             log_callback(f"[System] Bắt đầu xử lý URL: {url}\n")
             try:
-                for log_item in scraper_instance.scrape_profile_generator(url):
+                for log_item in scraper_instance.scrape_profile_generator(url, check_cancel):
                     if isinstance(log_item, dict):
                         log_callback(log_item["log"], log_item.get("progress"))
                     else:
                         log_callback(log_item)
             except Exception as e:
+                if isinstance(e, InterruptedError) or "cancelled" in str(e).lower():
+                    log_callback("[!] Tiến trình cào đã bị hủy.\n")
+                    return {"status": "cancelled"}
+                    
                 error_msg = str(e).lower()
                 fatal_keywords = ["không tồn tại", "đã xóa", "xóa khỏi", "bị khóa", "bị chết", "chặn"]
                 is_fatal = any(kw in error_msg for kw in fatal_keywords)

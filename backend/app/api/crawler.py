@@ -71,8 +71,12 @@ async def stop_crawler(task_id: str):
     try:
         celery_app.control.revoke(task_id, terminate=True)
         
-        # Gửi thông điệp hủy tới kênh log stream Redis để đóng kết nối và cập nhật UI phía Client
         redis_client = get_async_redis()
+        
+        # Đặt cờ hủy trong Redis để crawler_tasks bắt được và ngắt gracefully
+        await redis_client.setex(f"cancel_task_{task_id}", 3600, "1")
+        
+        # Gửi thông điệp hủy tới kênh log stream Redis để đóng kết nối và cập nhật UI phía Client
         channel = f"task_log_{task_id}"
         await redis_client.rpush(channel, json.dumps({"log": "[System] Tiến trình cào video đã bị hủy bởi người dùng.\n[DONE]\n"}))
         
