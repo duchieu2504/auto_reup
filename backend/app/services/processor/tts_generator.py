@@ -364,7 +364,7 @@ class TTSGenerator:
                 actual_end_ms = start_ms + len(clip_audio)
                 return (start_ms, clip_audio, actual_end_ms, sub.index)
             except Exception as e:
-                if log_callback: log_callback(f"[!] Lỗi tạo audio cho dòng {idx} ('{text}'): {e}\n")
+                if log_callback: log_callback(f"[!] Lỗi tạo audio cho dòng {i} ('{text}'): {e}\n")
                 return None
 
         import concurrent.futures
@@ -400,6 +400,15 @@ class TTSGenerator:
                 except Exception as exc:
                     idx = futures[future]
                     if log_callback: log_callback(f"[!] Lỗi luồng xử lý câu {idx}: {exc}\n")
+
+        total_subs = len(all_subs)
+        success_count = len(results)
+        fail_count = total_subs - success_count
+        if log_callback:
+            log_callback(f"[*] Kết quả TTS Pipeline: {success_count}/{total_subs} câu thành công.")
+            if fail_count > 0:
+                log_callback(f" ({fail_count} câu bị bỏ qua hoặc lỗi)")
+            log_callback("\n")
         
         results.sort(key=lambda x: x[0])
         
@@ -614,15 +623,16 @@ class TTSGenerator:
                 if os.path.exists(clip_wav_path):
                     os.remove(clip_wav_path)
                     
-                return (start_ms, clip_audio)
+                actual_end_ms = start_ms + len(clip_audio)
+                return (start_ms, clip_audio, actual_end_ms, sub.index)
             except Exception as e:
                 if log_callback: log_callback(f"[!] Lỗi tạo audio cho dòng {i} ('{text}'): {e}\n")
                 return None
 
         import concurrent.futures
         
-        # Chạy đa luồng! Limit số worker tránh rate limit (đặc biệt là Edge TTS)
-        max_workers = 5
+        # Chạy đa luồng! Giữ 3 worker cho nhánh Edit (sequential) để tránh rate limit
+        max_workers = 3
         results = []
         
         if log_callback: log_callback(f"[*] Bắt đầu sinh âm thanh bằng {max_workers} luồng xử lý song song...\n")
@@ -644,6 +654,15 @@ class TTSGenerator:
                 except Exception as exc:
                     idx = futures[future]
                     if log_callback: log_callback(f"[!] Lỗi luồng xử lý câu {idx}: {exc}\n")
+        
+        total_subs = len(subs)
+        success_count = len(results)
+        fail_count = total_subs - success_count
+        if log_callback:
+            log_callback(f"[*] Kết quả TTS Track: {success_count}/{total_subs} câu thành công.")
+            if fail_count > 0:
+                log_callback(f" ({fail_count} câu bị bỏ qua hoặc lỗi)")
+            log_callback("\n")
         
         # Lắp ghép các đoạn âm thanh đã thu được theo đúng timestamp 
         results.sort(key=lambda x: x[0])
