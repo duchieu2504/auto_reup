@@ -33,5 +33,19 @@ services:
       - ./frontend:/app
       - /app/node_modules
 
+  9router:
+    image: decolua/9router:latest
+    container_name: autoreup_9router
+    restart: always
+    ports:
+      - "20128:20128"
+    volumes:
+      - 9router_data:/app/data
+    environment:
+      - DATA_DIR=/app/data
+      - PORT=20128
+      - HOSTNAME=0.0.0.0
+
 volumes:
   postgres_data:
+  9router_data:
