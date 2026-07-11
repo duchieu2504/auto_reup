@@ -84,7 +84,7 @@ const Phase2Processor = () => {
       const res = await fetch('http://localhost:8000/api/history/?limit=200');
       if (res.ok) {
         const data = await res.json();
-        setCrawlerVideos(data);
+        setCrawlerVideos(data.data || []);
       }
     } catch (err) {
       console.error("Lỗi lấy danh sách video crawler:", err);

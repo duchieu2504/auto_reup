@@ -29,13 +29,13 @@ class FacelessEngine:
         
     def generate_script(self, prompt: str, style: str) -> List[Dict[str, Any]]:
         """
-        Dùng Gemini sinh kịch bản JSON từ Prompt
+        Dùng Gemini hoặc Custom AI sinh kịch bản JSON từ Prompt
         """
-        if not self.gemini_key:
-            raise Exception("Vui lòng cấu hình Gemini API Key trong phần Cài đặt hệ thống.")
-            
-        client = genai.Client(api_key=self.gemini_key)
-        
+        custom_endpoint = os.getenv("CUSTOM_AI_ENDPOINT", "http://localhost:20128/v1")
+        from app.core.security import decrypt_data
+        custom_key = decrypt_data(os.getenv("CUSTOM_AI_KEY", ""))
+        custom_model = os.getenv("CUSTOM_AI_MODEL", "kr/claude-sonnet-4.5")
+
         sys_prompt = f"""
         Bạn là một đạo diễn và biên kịch video ngắn tài năng trên TikTok.
         Dựa vào ý tưởng: "{prompt}" và Phong cách: "{style}".
@@ -53,13 +53,26 @@ class FacelessEngine:
         - Số lượng scene (phân cảnh) từ 4 đến 8 cảnh.
         - Text phải tự nhiên, cuốn hút.
         """
-        
-        response = client.models.generate_content(
-            model=self.gemini_model,
-            contents=sys_prompt
-        )
-        
-        raw_text = response.text
+
+        if custom_endpoint and custom_key:
+            from openai import OpenAI
+            client = OpenAI(api_key=custom_key, base_url=custom_endpoint)
+            response = client.chat.completions.create(
+                model=custom_model,
+                messages=[{"role": "user", "content": sys_prompt}],
+                temperature=0.7
+            )
+            raw_text = response.choices[0].message.content
+        else:
+            if not self.gemini_key:
+                raise Exception("Vui lòng cấu hình Gemini API Key hoặc Custom AI trong phần Cài đặt hệ thống.")
+                
+            client = genai.Client(api_key=self.gemini_key)
+            response = client.models.generate_content(
+                model=self.gemini_model,
+                contents=sys_prompt
+            )
+            raw_text = response.text
         
         # Parse JSON
         try:

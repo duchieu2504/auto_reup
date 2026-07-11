@@ -41,3 +41,13 @@ celerybeat-schedule*
 *.mp3
 scratch/
 
+# Executables and installers
+*.msi
+
+# Local agent session data and temp data
+local_agent/
+local_agent/user_session_data/
+
+# Build and version artifacts
+backend/1.0.6
+

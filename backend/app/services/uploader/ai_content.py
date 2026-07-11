@@ -17,6 +17,13 @@ class AIContentGenerator:
         self.anthropic_key = decrypt_data(os.getenv("ANTHROPIC_API_KEY", ""))
         self.xai_key = decrypt_data(os.getenv("XAI_API_KEY", ""))
         
+        self.custom_ai_endpoint = os.getenv("CUSTOM_AI_ENDPOINT", "http://localhost:20128/v1")
+        self.custom_ai_key = decrypt_data(os.getenv("CUSTOM_AI_KEY", ""))
+        self.custom_ai_model = os.getenv("CUSTOM_AI_MODEL", "kr/claude-sonnet-4.5")
+        
+        if self.custom_ai_endpoint and self.custom_ai_key:
+            self.active_provider = "custom"
+        
         self.is_configured = False
         if self.active_provider == "gemini" and self.gemini_key:
             self.gemini_client = genai.Client(api_key=self.gemini_key)
@@ -32,6 +39,10 @@ class AIContentGenerator:
         elif self.active_provider == "xai" and self.xai_key:
             from openai import OpenAI
             self.xai_client = OpenAI(api_key=self.xai_key, base_url="https://api.x.ai/v1")
+            self.is_configured = True
+        elif self.active_provider == "custom" and self.custom_ai_key:
+            from openai import OpenAI
+            self.custom_client = OpenAI(api_key=self.custom_ai_key, base_url=self.custom_ai_endpoint)
             self.is_configured = True
 
     def generate_viral_content(self, video_title: str, translated_text: str = "") -> Dict[str, str]:
@@ -86,6 +97,13 @@ class AIContentGenerator:
             elif self.active_provider == "xai":
                 response = self.xai_client.chat.completions.create(
                     model="grok-beta",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=200
+                )
+                result_text = response.choices[0].message.content.strip()
+            elif self.active_provider == "custom":
+                response = self.custom_client.chat.completions.create(
+                    model=self.custom_ai_model,
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=200
                 )

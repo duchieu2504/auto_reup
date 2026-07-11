@@ -39,6 +39,9 @@ class KeysUpdate(BaseModel):
     enable_auto_voice_clone: bool = False
     enable_diarization: bool = False
     bgm_volume: int = 50
+    custom_ai_endpoint: str = "http://localhost:20128/v1"
+    custom_ai_key: str = ""
+    custom_ai_model: str = "kr/claude-sonnet-4.5"
 
 @router.get("/fonts")
 async def get_available_fonts():
@@ -285,7 +288,10 @@ async def get_keys():
         "enable_demucs": os.getenv("ENABLE_DEMUCS", "False").lower() == "true",
         "enable_auto_voice_clone": os.getenv("ENABLE_AUTO_VOICE_CLONE", "False").lower() == "true",
         "enable_diarization": os.getenv("ENABLE_DIARIZATION", "False").lower() == "true",
-        "bgm_volume": int(os.getenv("BGM_VOLUME", 50))
+        "bgm_volume": int(os.getenv("BGM_VOLUME", 50)),
+        "custom_ai_endpoint": os.getenv("CUSTOM_AI_ENDPOINT", "http://localhost:20128/v1"),
+        "custom_ai_key": decrypt_data(os.getenv("CUSTOM_AI_KEY", "")),
+        "custom_ai_model": os.getenv("CUSTOM_AI_MODEL", "kr/claude-sonnet-4.5")
     }
 
 @router.post("/keys")
@@ -321,6 +327,9 @@ async def update_keys(data: KeysUpdate):
     set_key(ENV_PATH, "ENABLE_AUTO_VOICE_CLONE", str(data.enable_auto_voice_clone))
     set_key(ENV_PATH, "ENABLE_DIARIZATION", str(data.enable_diarization))
     set_key(ENV_PATH, "BGM_VOLUME", str(data.bgm_volume))
+    set_key(ENV_PATH, "CUSTOM_AI_ENDPOINT", data.custom_ai_endpoint)
+    set_key(ENV_PATH, "CUSTOM_AI_KEY", encrypt_data(data.custom_ai_key))
+    set_key(ENV_PATH, "CUSTOM_AI_MODEL", data.custom_ai_model)
     
     # Invalidate voices cache when TTS provider might have changed
     global _voices_cache
@@ -354,7 +363,8 @@ def validate_keys(data: KeysUpdate):
         "groq_api_key": "unknown",
         "pexels_api_key": "unknown",
         "douyin_cookie": "unknown",
-        "gpm_api_url": "unknown"
+        "gpm_api_url": "unknown",
+        "custom_ai_key": "unknown"
     }
     
     # 1. Test FPT API Key
@@ -541,6 +551,17 @@ def validate_keys(data: KeysUpdate):
             results["gpm_api_url"] = "valid"
         except requests.exceptions.RequestException:
             results["gpm_api_url"] = "invalid"
+            
+    # Test Custom AI API Key
+    if data.custom_ai_endpoint and data.custom_ai_key and data.custom_ai_key.strip():
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=data.custom_ai_key, base_url=data.custom_ai_endpoint)
+            client.models.list()
+            results["custom_ai_key"] = "valid"
+        except Exception as e:
+            print("Custom AI Test Error:", e)
+            results["custom_ai_key"] = "invalid"
             
     return results
 

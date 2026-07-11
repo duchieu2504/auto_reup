@@ -73,3 +73,16 @@
 - **Status**: Fixed
 
 ---
+
+## [2026-07-11 07:35] - Lỗi crash giao diện trang Processor khi bật Backend do gán dữ liệu phân trang sai kiểu dữ liệu (Logic Error)
+
+- **Type**: Logic Error
+- **Severity**: High
+- **File**: `frontend/src/pages/Processor/index.jsx:87`
+- **Agent**: fox
+- **Root Cause**: API lấy lịch sử video `/api/history/?limit=200` trả về dữ liệu phân trang dạng object `{ data: [...], total: ... }`. Tuy nhiên, trong hàm `fetchCrawlerVideos`, frontend gán trực tiếp dữ liệu này vào state `crawlerVideos` bằng `setCrawlerVideos(data)`. Khi backend bật và trả về dữ liệu, component render và thực hiện `crawlerVideos.filter(...)`. Do `crawlerVideos` là một object chứ không phải mảng, React đã ném ngoại lệ crash giao diện, khiến trang chỉ hiển thị hình nền. Khi backend tắt, fetch thất bại nên state `crawlerVideos` vẫn giữ nguyên giá trị khởi tạo là mảng rỗng `[]`, giao diện không bị crash.
+- **Fix Applied**: Sửa `setCrawlerVideos(data)` thành `setCrawlerVideos(data.data || [])` trong hàm `fetchCrawlerVideos`.
+- **Prevention**: Luôn kiểm tra cấu trúc dữ liệu trả về từ API và xử lý fallback an toàn (ví dụ: `data.data || []`) trước khi gán vào các state dạng mảng được sử dụng để `.filter`, `.map`, `.forEach`.
+- **Status**: Fixed
+
+---

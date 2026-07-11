@@ -54,6 +54,13 @@ class Translator:
         anthropic_key = decrypt_data(os.getenv("ANTHROPIC_API_KEY", ""))
         xai_key = decrypt_data(os.getenv("XAI_API_KEY", ""))
         
+        custom_ai_endpoint = os.getenv("CUSTOM_AI_ENDPOINT", "http://localhost:20128/v1")
+        custom_ai_key = decrypt_data(os.getenv("CUSTOM_AI_KEY", ""))
+        custom_ai_model = os.getenv("CUSTOM_AI_MODEL", "kr/claude-sonnet-4.5")
+        
+        if custom_ai_endpoint and custom_ai_key:
+            active_provider = "custom"
+        
         with open(input_srt, "r", encoding="utf-8") as f:
             content = f.read()
             
@@ -63,7 +70,7 @@ class Translator:
             
             # Khởi tạo Gemini Audio nếu cần
             audio_file = None
-            if audio_path and voice_mode == "edge_auto":
+            if audio_path and voice_mode == "edge_auto" and active_provider != "custom":
                 if not gemini_key:
                     raise Exception("Tính năng Phân vai Nam/Nữ qua âm thanh yêu cầu phải cấu hình Gemini API Key.")
                 client = genai.Client(api_key=gemini_key)
@@ -78,8 +85,8 @@ class Translator:
                 for sub in chunk_subs:
                     chunk_content += f"{sub.index}\n{sub.start} --> {sub.end}\n{sub.text}\n\n"
                 
-                # Phân luồng đặc biệt: Nếu cần nghe Audio (edge_auto), LUÔN LUÔN dùng Gemini
-                if audio_path and voice_mode == "edge_auto":
+                # Phân luồng đặc biệt: Nếu cần nghe Audio (edge_auto) và không dùng Custom AI, dùng Gemini
+                if audio_path and voice_mode == "edge_auto" and active_provider != "custom":
                     prompt = f"""
 Bạn là chuyên gia dịch thuật tiếng Trung sang tiếng Việt.
 Dưới đây là một phần nội dung file phụ đề định dạng SRT (Từ dòng {chunk_subs[0].index} đến {chunk_subs[-1].index}). Hãy dịch CÁC DÒNG VĂN BẢN sang tiếng Việt tự nhiên, phù hợp ngữ cảnh TikTok.
@@ -155,6 +162,17 @@ SRT Gốc (Phần {i//chunk_size + 1}):
                         )
                         translated_text = response.choices[0].message.content
 
+                    elif active_provider == "custom":
+                        if not custom_ai_key: raise Exception("Chưa cấu hình Custom AI API Key")
+                        from openai import OpenAI
+                        client = OpenAI(api_key=custom_ai_key, base_url=custom_ai_endpoint)
+                        response = client.chat.completions.create(
+                            model=custom_ai_model,
+                            messages=[{"role": "user", "content": prompt}],
+                            temperature=0.3
+                        )
+                        translated_text = response.choices[0].message.content
+
                 if not translated_text or not translated_text.strip():
                     raise Exception("Phản hồi dịch thuật từ AI bị rỗng hoặc không hợp lệ (Empty response)")
 
@@ -175,6 +193,19 @@ SRT Gốc (Phần {i//chunk_size + 1}):
 
             with open(output_srt, "w", encoding="utf-8") as f:
                 f.write(translated_full_text.strip())
+                
+            # Nếu dùng chế độ tự động phân vai giọng nói nhưng dịch bằng dịch vụ khác Gemini, mặc định thêm tiền tố [F]
+            if voice_mode == "edge_auto" and active_provider != "gemini":
+                try:
+                    import pysrt
+                    output_subs = pysrt.open(output_srt, encoding='utf-8')
+                    for sub in output_subs:
+                        text_stripped = sub.text.strip()
+                        if not text_stripped.startswith("[F]") and not text_stripped.startswith("[M]"):
+                            sub.text = f"[F] {text_stripped}"
+                    output_subs.save(output_srt, encoding='utf-8')
+                except Exception as e_sub:
+                    print("Lỗi khi thêm tiền tố [F] cho sub:", e_sub)
                 
             return output_srt
             

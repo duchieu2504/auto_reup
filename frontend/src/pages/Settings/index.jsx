@@ -11,6 +11,9 @@ import ThemeTab from './components/ThemeTab';const Settings = () => {
   const [openaiKey, setOpenaiKey] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
   const [xaiKey, setXaiKey] = useState("");
+  const [customAiEndpoint, setCustomAiEndpoint] = useState("http://localhost:20128/v1");
+  const [customAiKey, setCustomAiKey] = useState("");
+  const [customAiModel, setCustomAiModel] = useState("kr/claude-sonnet-4.5");
   const [groqKey, setGroqKey] = useState("");
   const [pexelsKey, setPexelsKey] = useState("");
   const [useGroq, setUseGroq] = useState(false);
@@ -32,7 +35,7 @@ import ThemeTab from './components/ThemeTab';const Settings = () => {
   const [bgmVolume, setBgmVolume] = useState(50);
   const [uploadBgStatus, setUploadBgStatus] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
-  const [validateStatus, setValidateStatus] = useState({ fpt: "", elevenlabs: "", gemini: "", openai: "", anthropic: "", xai: "", groq: "", pexels: "", douyin: "", gpm: "" });
+  const [validateStatus, setValidateStatus] = useState({ fpt: "", elevenlabs: "", gemini: "", openai: "", anthropic: "", xai: "", groq: "", pexels: "", douyin: "", gpm: "", custom: "" });
   const [activeTab, setActiveTab] = useState("ai");
   const [gpuStatus, setGpuStatus] = useState(null);
   const [checkingGpu, setCheckingGpu] = useState(false);
@@ -91,6 +94,9 @@ import ThemeTab from './components/ThemeTab';const Settings = () => {
         if (data.theme_bg_type) setThemeBgType(data.theme_bg_type);
         if (data.theme_bg_custom_path) setThemeBgCustomPath(data.theme_bg_custom_path);
         if (data.hf_token) setHfToken(data.hf_token);
+        if (data.custom_ai_endpoint) setCustomAiEndpoint(data.custom_ai_endpoint);
+        if (data.custom_ai_key) setCustomAiKey(data.custom_ai_key);
+        if (data.custom_ai_model) setCustomAiModel(data.custom_ai_model);
         if (data.enable_demucs !== undefined) setEnableDemucs(data.enable_demucs);
         if (data.enable_auto_voice_clone !== undefined) setEnableAutoVoiceClone(data.enable_auto_voice_clone);
         if (data.enable_diarization !== undefined) setEnableDiarization(data.enable_diarization);
@@ -116,7 +122,10 @@ import ThemeTab from './components/ThemeTab';const Settings = () => {
               ai_concurrency_limit: data.ai_concurrency_limit || 1,
               douyin_cookie: data.douyin_cookie || "",
               anti_detect_provider: data.anti_detect_provider || "none",
-              gpm_api_url: data.gpm_api_url || ""
+              gpm_api_url: data.gpm_api_url || "",
+              custom_ai_endpoint: data.custom_ai_endpoint || "http://localhost:20128/v1",
+              custom_ai_key: data.custom_ai_key || "",
+              custom_ai_model: data.custom_ai_model || "kr/claude-sonnet-4.5"
             })
           })
             .then(vRes => vRes.json())
@@ -132,6 +141,7 @@ import ThemeTab from './components/ThemeTab';const Settings = () => {
                 pexels: vData.pexels_api_key,
                 douyin: vData.douyin_cookie,
                 gpm: vData.gpm_api_url,
+                custom: vData.custom_ai_key,
                 douyin_details: vData.douyin_details || null
               });
             })
@@ -172,7 +182,10 @@ import ThemeTab from './components/ThemeTab';const Settings = () => {
           enable_demucs: enableDemucs,
           enable_auto_voice_clone: enableAutoVoiceClone,
           enable_diarization: enableDiarization,
-          bgm_volume: Number(bgmVolume)
+          bgm_volume: Number(bgmVolume),
+          custom_ai_endpoint: customAiEndpoint,
+          custom_ai_key: customAiKey,
+          custom_ai_model: customAiModel
         })
       });
       if (res.ok) {
@@ -218,7 +231,10 @@ import ThemeTab from './components/ThemeTab';const Settings = () => {
             enable_health_check: enableHealthCheck,
             health_check_interval_hours: Number(healthCheckInterval),
             theme_bg_type: themeBgType,
-            theme_bg_custom_path: themeBgCustomPath
+            theme_bg_custom_path: themeBgCustomPath,
+            custom_ai_endpoint: customAiEndpoint,
+            custom_ai_key: customAiKey,
+            custom_ai_model: customAiModel
           })
         });
 
@@ -235,6 +251,7 @@ import ThemeTab from './components/ThemeTab';const Settings = () => {
             pexels: valData.pexels_api_key,
             douyin: valData.douyin_cookie,
             gpm: valData.gpm_api_url,
+            custom: valData.custom_ai_key,
             douyin_details: valData.douyin_details || null
           });
         }
@@ -332,6 +349,9 @@ import ThemeTab from './components/ThemeTab';const Settings = () => {
                 useGroq={useGroq} setUseGroq={setUseGroq}
                 groqKey={groqKey} setGroqKey={setGroqKey}
                 pexelsKey={pexelsKey} setPexelsKey={setPexelsKey}
+                customAiEndpoint={customAiEndpoint} setCustomAiEndpoint={setCustomAiEndpoint}
+                customAiKey={customAiKey} setCustomAiKey={setCustomAiKey}
+                customAiModel={customAiModel} setCustomAiModel={setCustomAiModel}
               />
             )}
 

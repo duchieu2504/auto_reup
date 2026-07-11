@@ -34,7 +34,7 @@ opencv-python-headless>=4.5.0
 Pillow>=10.0.0
 onnxruntime-gpu>=1.19.0
 vieneu>=1.0.0
-audio-separator==0.43.1
+audio-separator<0.40.0
 transformers
 accelerate>=1.0.0
 pyannote.audio>=3.1.0
