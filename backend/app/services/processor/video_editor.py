@@ -19,7 +19,7 @@ def get_video_duration(video_path: str) -> float:
     try:
         import re
         cmd = [ffmpeg_exe, "-i", video_path]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
         match = re.search(r"Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})", result.stderr)
         if match:
             h, m, s = match.groups()
@@ -32,7 +32,7 @@ def get_video_resolution(video_path: str) -> tuple[int, int]:
     try:
         import re
         cmd = [ffmpeg_exe, "-i", video_path]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
         match = re.search(r", (\d{3,5})x(\d{3,5})\b", result.stderr)
         if match:
             w, h = match.groups()
@@ -68,7 +68,7 @@ class VideoEditor:
         try:
             result = subprocess.run(
                 ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
-                capture_output=True, text=True, timeout=5
+                capture_output=True, text=True, timeout=5, encoding='utf-8', errors='replace'
             )
             if result.returncode == 0:
                 vram_mb = int(result.stdout.strip().split('\n')[0])
@@ -82,7 +82,7 @@ class VideoEditor:
             return "libx264"
         
         try:
-            result = subprocess.run([ffmpeg_exe, "-encoders"], capture_output=True, text=True, check=True)
+            result = subprocess.run([ffmpeg_exe, "-encoders"], capture_output=True, text=True, check=True, encoding='utf-8', errors='replace')
             output = result.stdout.lower()
             
             # Kiểm tra NVENC (NVIDIA)

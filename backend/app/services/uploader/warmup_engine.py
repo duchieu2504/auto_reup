@@ -152,7 +152,7 @@ class AdbWarmupEngine(BaseWarmupEngine):
             subprocess.run(f"adb connect {device_id}", shell=True, capture_output=True)
             
         # Kiểm tra thiết bị có thực sự online không
-        devices = subprocess.run(["adb", "devices"], capture_output=True, text=True).stdout
+        devices = subprocess.run(["adb", "devices"], capture_output=True, text=True, encoding='utf-8', errors='replace').stdout
         is_online = False
         for line in devices.splitlines():
             if device_id in line and "device" in line and "offline" not in line and "unauthorized" not in line:
@@ -170,7 +170,7 @@ class AdbWarmupEngine(BaseWarmupEngine):
         app_launched = False
         
         for pkg in packages:
-            res = subprocess.run(adb_cmd + ["shell", "monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1"], capture_output=True, text=True)
+            res = subprocess.run(adb_cmd + ["shell", "monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1"], capture_output=True, text=True, encoding='utf-8', errors='replace')
             output = res.stdout + res.stderr
             if "No activities found to run" not in output and "error:" not in output and "device offline" not in output and "not found" not in output:
                 logger.info(f"[Warmup-ADB] Đã gửi lệnh khởi chạy package {pkg}")
@@ -204,7 +204,7 @@ class AdbWarmupEngine(BaseWarmupEngine):
         adb_cmd_str = f"adb -s {device_id}"
         
         # Tính toán kích thước màn hình động để vuốt cho chuẩn xác
-        res_wm = subprocess.run(f"{adb_cmd_str} shell wm size", shell=True, capture_output=True, text=True)
+        res_wm = subprocess.run(f"{adb_cmd_str} shell wm size", shell=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
         width, height = 720, 1280
         if "Physical size:" in res_wm.stdout:
             size_str = res_wm.stdout.split("Physical size:")[1].strip()
@@ -247,7 +247,7 @@ class AdbWarmupEngine(BaseWarmupEngine):
             start_y = int(height * 0.8)
             end_x = int(width * 0.5)
             end_y = int(height * 0.2)
-            swipe_res = subprocess.run(f"{adb_cmd_str} shell input swipe {start_x} {start_y} {end_x} {end_y} 300", shell=True, capture_output=True, text=True)
+            swipe_res = subprocess.run(f"{adb_cmd_str} shell input swipe {start_x} {start_y} {end_x} {end_y} 300", shell=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
             
             # Nếu thiết bị đột ngột bị ngắt kết nối giữa chừng
             if "device offline" in swipe_res.stdout or "not found" in swipe_res.stdout or "device offline" in swipe_res.stderr or "not found" in swipe_res.stderr:

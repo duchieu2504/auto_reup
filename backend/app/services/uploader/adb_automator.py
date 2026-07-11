@@ -15,7 +15,7 @@ class ADBAutomator:
     def _run_adb(self, args: list, timeout: int = 60) -> str:
         cmd = ["adb", "-s", self.adb_ip] + args
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, encoding='utf-8', errors='replace')
             return result.stdout
         except Exception as e:
             logger.error(f"[ADBAutomator] Lỗi chạy lệnh {cmd}: {e}")

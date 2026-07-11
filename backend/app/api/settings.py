@@ -606,14 +606,14 @@ def check_gpu_status():
         if shutil.which("nvidia-smi"):
             # Lấy tên GPU
             result = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], 
-                                    capture_output=True, text=True, check=True)
+                                    capture_output=True, text=True, check=True, encoding='utf-8', errors='replace')
             gpu_name = result.stdout.strip()
             if gpu_name:
                 status["gpu_available"] = True
                 status["gpu_name"] = gpu_name
                 
             # Lấy phiên bản CUDA được driver hỗ trợ
-            cuda_res = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
+            cuda_res = subprocess.run(["nvidia-smi"], capture_output=True, text=True, encoding='utf-8', errors='replace')
             match = re.search(r"CUDA Version:\s*([\d\.]+)", cuda_res.stdout)
             if match:
                 status["cuda_version"] = match.group(1)
@@ -625,7 +625,7 @@ def check_gpu_status():
         system_ffmpeg = shutil.which("ffmpeg")
         ffmpeg_exe_path = system_ffmpeg if system_ffmpeg else imageio_ffmpeg.get_ffmpeg_exe()
         
-        encoder_res = subprocess.run([ffmpeg_exe_path, "-encoders"], capture_output=True, text=True)
+        encoder_res = subprocess.run([ffmpeg_exe_path, "-encoders"], capture_output=True, text=True, encoding='utf-8', errors='replace')
         if "h264_nvenc" in encoder_res.stdout.lower():
             status["ffmpeg_nvenc_available"] = True
     except Exception as e:

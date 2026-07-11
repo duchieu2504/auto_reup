@@ -84,7 +84,7 @@ class ADBUploader(BaseUploaderEngine):
         """Chạy lệnh adb tới thiết bị cụ thể"""
         cmd = ["adb", "-s", self.adb_ip] + args
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, encoding='utf-8', errors='replace')
             if result.returncode != 0:
                 logger.error(f"[ADB] Lỗi khi chạy lệnh {cmd}: {result.stderr}")
             return result.stdout.strip()
@@ -107,7 +107,7 @@ class ADBUploader(BaseUploaderEngine):
             subprocess.run(["adb", "connect", self.adb_ip], capture_output=True)
             
         # Kiểm tra trạng thái
-        devices = subprocess.run(["adb", "devices"], capture_output=True, text=True).stdout
+        devices = subprocess.run(["adb", "devices"], capture_output=True, text=True, encoding='utf-8', errors='replace').stdout
         for line in devices.splitlines():
             if self.adb_ip in line:
                 if "device" in line and "offline" not in line and "unauthorized" not in line:
@@ -337,7 +337,7 @@ class ADBUploader(BaseUploaderEngine):
             logger.info(f"[ADB] Lướt {swipes} video để tăng độ trust trước khi đăng...")
             
             # Tính toán kích thước màn hình
-            res_wm = subprocess.run(f"adb -s {self.adb_ip} shell wm size", shell=True, capture_output=True, text=True)
+            res_wm = subprocess.run(f"adb -s {self.adb_ip} shell wm size", shell=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
             width, height = 720, 1280
             if res_wm.stdout:
                 try:

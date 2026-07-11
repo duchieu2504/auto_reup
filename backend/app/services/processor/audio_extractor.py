@@ -22,7 +22,7 @@ def extract_audio(video_path: str, output_audio_path: str):
         output_audio_path
     ]
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
         return output_audio_path
     except subprocess.CalledProcessError as e:
         raise Exception(f"Lỗi FFmpeg khi trích xuất âm thanh: {e.stderr}")
