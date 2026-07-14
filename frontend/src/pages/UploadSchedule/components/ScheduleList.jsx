@@ -116,7 +116,7 @@ export const ScheduleList = ({ hook }) => {
                   })()}
                 </td>
                 <td className="p-4 text-sm">
-                  {sch.engine_type === 'playwright' ? <span className="text-blue-400">Web</span> : <span className="text-purple-400">ADB</span>}
+                  {sch.engine_type === 'playwright' ? <span className="text-orange-400">GPM</span> : <span className="text-blue-400">ADB</span>}
                 </td>
                 <td className="p-4 text-sm font-mono text-text-secondary">
                   {sch.status === 'completed' && sch.updated_at
