@@ -177,47 +177,147 @@ export const ScheduleForm = ({ hook }) => {
               }
 
               return (
-                <div className="flex flex-col gap-2">
-                  {filteredAccounts.map(acc => {
-                    const isSelected = selectedAccounts.includes(acc.id);
-                    const hasDuplicate = selectedVideos.some(vidId => postedMap[String(vidId)]?.has(String(acc.id)));
+                <div className="flex flex-col gap-5">
+                  {['tiktok', 'youtube', 'facebook', 'instagram'].map(platform => {
+                    const platformAccounts = filteredAccounts.filter(a => (a.platform || '').toLowerCase() === platform);
+                    if (platformAccounts.length === 0) return null;
+                    
                     return (
-                      <label 
-                        key={acc.id} 
-                        className={`flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all border ${isSelected ? 'bg-brand-primary/10 border-brand-primary shadow-[0_0_10px_rgba(var(--color-brand-primary),0.2)]' : 'bg-bg-secondary border-border-subtle hover:border-brand-primary/50'} ${hasDuplicate && !isSelected ? 'opacity-60' : ''}`}
-                        title={hasDuplicate ? "Video đã chọn từng được đăng trên tài khoản này!" : ""}
-                      >
-                        <input 
-                          type="checkbox" 
-                          className="hidden"
-                          checked={isSelected}
-                          onChange={() => handleAccountToggle(acc.id)}
-                        />
-                        {acc.avatar_url ? (
-                          <img src={acc.avatar_url} alt="avt" referrerPolicy="no-referrer" className="w-6 h-6 rounded-full object-cover border border-white/10 shrink-0" />
-                        ) : (
-                          <div className="w-6 h-6 rounded-full bg-brand-primary/20 flex items-center justify-center text-[10px] font-bold text-brand-primary uppercase border border-white/5 shrink-0">
-                            {acc.platform.charAt(0)}
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0 flex items-center gap-2">
-                          <div className="font-medium text-sm text-text-primary truncate">{acc.username || "No name"}</div>
-                          {hasDuplicate && (
-                            <div className="text-yellow-500 bg-yellow-500/10 p-0.5 rounded shrink-0" title="Cảnh báo: Video đã đăng">
-                              <AlertTriangle size={12} />
-                            </div>
-                          )}
-                          <div className="text-[9px] px-1.5 py-0.5 rounded bg-bg-primary border border-border-subtle text-text-secondary uppercase tracking-wider shrink-0">{acc.platform}</div>
-                          {acc.connection_type === 'gpm_login' && (
-                            <div className="text-[9px] px-1.5 py-0.5 rounded bg-green-500/20 border border-green-500/30 text-green-400 font-medium shrink-0">GPM</div>
-                          )}
+                      <div key={platform}>
+                        <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-2 flex items-center gap-1.5 border-b border-border-subtle/50 pb-1">
+                          {platform === 'tiktok' && <div className="w-2 h-2 rounded-full bg-black"></div>}
+                          {platform === 'youtube' && <div className="w-2 h-2 rounded-full bg-red-500"></div>}
+                          {platform === 'facebook' && <div className="w-2 h-2 rounded-full bg-blue-500"></div>}
+                          {platform === 'instagram' && <div className="w-2 h-2 rounded-full bg-pink-500"></div>}
+                          {platform} <span className="text-[10px] bg-bg-secondary px-1.5 py-0.5 rounded-md border border-border-subtle">{platformAccounts.length}</span>
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          {platformAccounts.map(acc => {
+                            const isSelected = selectedAccounts.includes(acc.id);
+                            const hasDuplicate = selectedVideos.some(vidId => postedMap[String(vidId)]?.has(String(acc.id)));
+                            return (
+                              <label 
+                                key={acc.id} 
+                                className={`relative flex flex-col p-3 rounded-xl cursor-pointer transition-all border ${isSelected ? 'bg-brand-primary/10 border-brand-primary shadow-[0_0_15px_rgba(var(--color-brand-primary),0.15)]' : 'bg-bg-secondary border-border-subtle hover:border-brand-primary/50'} ${hasDuplicate && !isSelected ? 'opacity-60' : ''}`}
+                                title={hasDuplicate ? "Video đã chọn từng được đăng trên tài khoản này!" : ""}
+                              >
+                                <input 
+                                  type="checkbox" 
+                                  className="hidden"
+                                  checked={isSelected}
+                                  onChange={() => handleAccountToggle(acc.id)}
+                                />
+                                
+                                <div className="flex justify-between items-start mb-2">
+                                  {acc.avatar_url ? (
+                                    <img src={acc.avatar_url} alt="avt" referrerPolicy="no-referrer" className="w-10 h-10 rounded-full object-cover border-2 border-bg-primary shadow-sm" />
+                                  ) : (
+                                    <div className="w-10 h-10 rounded-full bg-brand-primary/20 flex items-center justify-center text-sm font-bold text-brand-primary uppercase border-2 border-bg-primary shadow-sm">
+                                      {acc.username ? acc.username.charAt(0) : '?'}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Selection Checkbox */}
+                                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'bg-brand-primary border-brand-primary scale-110' : 'border-border-subtle bg-bg-primary'}`}>
+                                    {isSelected && <CheckSquare size={12} className="text-white" />}
+                                  </div>
+                                </div>
+                                
+                                <div className="mt-1 flex-1 flex flex-col justify-end">
+                                  <div className="font-bold text-sm text-text-primary truncate mb-0.5" title={acc.username || "No name"}>
+                                    {acc.username || "No name"}
+                                  </div>
+                                  
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {acc.connection_type === 'gpm_login' ? (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 font-medium border border-green-500/20">GPM Login</span>
+                                    ) : acc.connection_type === 'adb_device' ? (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium border border-purple-500/20">ADB Device</span>
+                                    ) : (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-medium border border-blue-500/20">Web Native</span>
+                                    )}
+                                  </div>
+                                </div>
+                                
+                                {hasDuplicate && (
+                                  <div className="absolute top-2 right-8 text-yellow-500 bg-yellow-500/10 p-1 rounded-md border border-yellow-500/20 backdrop-blur-md shadow-sm" title="Cảnh báo: Video đã đăng">
+                                    <AlertTriangle size={12} />
+                                  </div>
+                                )}
+                              </label>
+                            );
+                          })}
                         </div>
-                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'border-brand-primary' : 'border-border-subtle'}`}>
-                          {isSelected && <div className="w-2 h-2 bg-brand-primary rounded-full" />}
-                        </div>
-                      </label>
+                      </div>
                     );
                   })}
+                  
+                  {/* Other platforms catch-all */}
+                  {(() => {
+                    const knownPlatforms = ['tiktok', 'youtube', 'facebook', 'instagram'];
+                    const otherAccounts = filteredAccounts.filter(a => !knownPlatforms.includes((a.platform || '').toLowerCase()));
+                    if (otherAccounts.length === 0) return null;
+                    
+                    return (
+                      <div key="other">
+                        <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-2 flex items-center gap-1.5 border-b border-border-subtle/50 pb-1">
+                          <div className="w-2 h-2 rounded-full bg-gray-500"></div>
+                          Khác <span className="text-[10px] bg-bg-secondary px-1.5 py-0.5 rounded-md border border-border-subtle">{otherAccounts.length}</span>
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          {otherAccounts.map(acc => {
+                            const isSelected = selectedAccounts.includes(acc.id);
+                            const hasDuplicate = selectedVideos.some(vidId => postedMap[String(vidId)]?.has(String(acc.id)));
+                            return (
+                              <label 
+                                key={acc.id} 
+                                className={`relative flex flex-col p-3 rounded-xl cursor-pointer transition-all border ${isSelected ? 'bg-brand-primary/10 border-brand-primary shadow-[0_0_15px_rgba(var(--color-brand-primary),0.15)]' : 'bg-bg-secondary border-border-subtle hover:border-brand-primary/50'} ${hasDuplicate && !isSelected ? 'opacity-60' : ''}`}
+                                title={hasDuplicate ? "Video đã chọn từng được đăng trên tài khoản này!" : ""}
+                              >
+                                <input 
+                                  type="checkbox" 
+                                  className="hidden"
+                                  checked={isSelected}
+                                  onChange={() => handleAccountToggle(acc.id)}
+                                />
+                                
+                                <div className="flex justify-between items-start mb-2">
+                                  {acc.avatar_url ? (
+                                    <img src={acc.avatar_url} alt="avt" referrerPolicy="no-referrer" className="w-10 h-10 rounded-full object-cover border-2 border-bg-primary shadow-sm" />
+                                  ) : (
+                                    <div className="w-10 h-10 rounded-full bg-brand-primary/20 flex items-center justify-center text-sm font-bold text-brand-primary uppercase border-2 border-bg-primary shadow-sm">
+                                      {acc.username ? acc.username.charAt(0) : '?'}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Selection Checkbox */}
+                                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'bg-brand-primary border-brand-primary scale-110' : 'border-border-subtle bg-bg-primary'}`}>
+                                    {isSelected && <CheckSquare size={12} className="text-white" />}
+                                  </div>
+                                </div>
+                                
+                                <div className="mt-1 flex-1 flex flex-col justify-end">
+                                  <div className="font-bold text-sm text-text-primary truncate mb-0.5" title={acc.username || "No name"}>
+                                    {acc.username || "No name"}
+                                  </div>
+                                  
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-400 font-medium border border-gray-500/20 uppercase">{acc.platform || 'Unknown'}</span>
+                                  </div>
+                                </div>
+                                
+                                {hasDuplicate && (
+                                  <div className="absolute top-2 right-8 text-yellow-500 bg-yellow-500/10 p-1 rounded-md border border-yellow-500/20 backdrop-blur-md shadow-sm" title="Cảnh báo: Video đã đăng">
+                                    <AlertTriangle size={12} />
+                                  </div>
+                                )}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}
