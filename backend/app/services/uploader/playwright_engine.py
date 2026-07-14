@@ -209,15 +209,26 @@ class PlaywrightUploader(BaseUploaderEngine):
                 
             try:
                 # BYPASS 50MB LIMIT OVER CDP
-                # Gán ID tạm cho element để tìm qua CDP
+                # Gán ID tạm cho element để tìm qua CDP (kể cả trong iframe)
                 file_input.first.evaluate("el => el.id = 'gpm-upload-bypass'")
                 client = page.context.new_cdp_session(page)
-                doc = client.send("DOM.getDocument")
-                node = client.send("DOM.querySelector", {"nodeId": doc["root"]["nodeId"], "selector": "#gpm-upload-bypass"})
+                
+                # Sử dụng DOM.performSearch để tìm xuyên qua các iframe
+                search_res = client.send("DOM.performSearch", {"query": "#gpm-upload-bypass"})
+                results = client.send("DOM.getSearchResults", {
+                    "searchId": search_res["searchId"], 
+                    "fromIndex": 0, 
+                    "toIndex": 1
+                })
+                
+                if not results.get("nodeIds"):
+                    raise Exception("Không tìm thấy node qua performSearch")
+                    
+                node_id = results["nodeIds"][0]
                 
                 # Truyền trực tiếp đường dẫn file nội bộ qua CDP thay vì để Playwright gửi buffer qua websocket
                 client.send("DOM.setFileInputFiles", {
-                    "nodeId": node["nodeId"],
+                    "nodeId": node_id,
                     "files": [os.path.abspath(video_path)]
                 })
                 logger.info(f"[Playwright] Đã upload qua CDP Bypass (không giới hạn 50MB).")
@@ -230,14 +241,19 @@ class PlaywrightUploader(BaseUploaderEngine):
             try:
                 page.locator('input[type="file"]').first.evaluate("el => el.id = 'gpm-upload-bypass-fallback'")
                 client = page.context.new_cdp_session(page)
-                doc = client.send("DOM.getDocument")
-                node = client.send("DOM.querySelector", {"nodeId": doc["root"]["nodeId"], "selector": "#gpm-upload-bypass-fallback"})
+                search_res = client.send("DOM.performSearch", {"query": "#gpm-upload-bypass-fallback"})
+                results = client.send("DOM.getSearchResults", {
+                    "searchId": search_res["searchId"], 
+                    "fromIndex": 0, 
+                    "toIndex": 1
+                })
                 client.send("DOM.setFileInputFiles", {
-                    "nodeId": node["nodeId"],
+                    "nodeId": results["nodeIds"][0],
                     "files": [os.path.abspath(video_path)]
                 })
-            except:
-                page.locator('input[type="file"]').set_input_files(video_path)
+            except Exception as fallback_err:
+                logger.warning(f"[Playwright] Fallback CDP cũng thất bại, dùng API mặc định: {fallback_err}")
+                page.locator('input[type="file"]').first.set_input_files(video_path)
             
         logger.info("[Playwright] Đã tải video lên, chờ hệ thống xử lý nội bộ...")
         page.wait_for_timeout(10000)
@@ -334,17 +350,24 @@ class PlaywrightUploader(BaseUploaderEngine):
                 # BYPASS 50MB LIMIT OVER CDP
                 page.locator('input[type="file"]').first.evaluate("el => el.id = 'gpm-yt-upload-bypass'")
                 client = page.context.new_cdp_session(page)
-                doc = client.send("DOM.getDocument")
-                node = client.send("DOM.querySelector", {"nodeId": doc["root"]["nodeId"], "selector": "#gpm-yt-upload-bypass"})
+                search_res = client.send("DOM.performSearch", {"query": "#gpm-yt-upload-bypass"})
+                results = client.send("DOM.getSearchResults", {
+                    "searchId": search_res["searchId"], 
+                    "fromIndex": 0, 
+                    "toIndex": 1
+                })
                 
+                if not results.get("nodeIds"):
+                    raise Exception("Không tìm thấy node qua performSearch")
+                    
                 client.send("DOM.setFileInputFiles", {
-                    "nodeId": node["nodeId"],
+                    "nodeId": results["nodeIds"][0],
                     "files": [os.path.abspath(video_path)]
                 })
                 logger.info(f"[Playwright] Đã upload Youtube qua CDP Bypass.")
             except Exception as cdp_err:
                 logger.warning(f"[Playwright] Youtube CDP bypass thất bại: {cdp_err}")
-                page.locator('input[type="file"]').set_input_files(video_path)
+                page.locator('input[type="file"]').first.set_input_files(video_path)
             
             # 3. Nhập chi tiết (Đợi dialog hiện lên)
             page.wait_for_timeout(8000)
