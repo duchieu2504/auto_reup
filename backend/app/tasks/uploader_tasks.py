@@ -130,7 +130,8 @@ def execute_upload(self, schedule_id: int):
                 "avatar_url": account.avatar_url,
                 "status": "COMPLETED",
                 "uploaded_at": video_history.uploaded_at.isoformat(),
-                "video_url": post_url
+                "video_url": post_url,
+                "engine_type": schedule.engine_type
             })
             video_history.upload_history = json.dumps(uh)
             

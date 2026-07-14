@@ -316,21 +316,28 @@ export const HistoryTable = ({ hook }) => {
                               );
                             })}
                             {historyEntries.map((hist, i) => {
+                              // Tránh hiển thị trùng lặp nếu record đã có trong schedules (UploadSchedule mới)
+                              const alreadyInSchedules = item.schedules?.some(sch => 
+                                sch.account_id === hist.account_id && (sch.status === 'success' || sch.status === 'completed')
+                              );
+                              if (alreadyInSchedules) return null;
+                              
                               const borderColor = hist.status === 'COMPLETED' ? 'border-green-500' : hist.status === 'FAILED' ? 'border-red-500' : 'border-blue-500';
                               const account = hook.accounts?.find(a => a.id === hist.account_id);
                               const avatarUrl = hist.avatar_url || account?.avatar_url;
+                              const enginePrefix = hist.engine_type === 'playwright' ? 'GPM' : 'ADB';
                               
                               return (
                                 <a 
                                   key={`hist-${i}`} href={hist.video_url || '#'} target="_blank" rel="noreferrer"
-                                  title={`ADB [${hist.platform}]: ${hist.account_name} - ${hist.status}`}
+                                  title={`${enginePrefix} [${hist.platform}]: ${hist.account_name} - ${hist.status}`}
                                   className={`block p-0.5 rounded-full border-2 ${borderColor} transition-transform hover:scale-110 bg-bg-primary`}
                                   onClick={(e) => { if(!hist.video_url) e.preventDefault(); }}
                                 >
                                   {avatarUrl ? (
                                     <img src={avatarUrl} alt="avt" referrerPolicy="no-referrer" className="w-6 h-6 rounded-full object-cover" />
                                   ) : (
-                                    <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-[10px] font-bold text-blue-500 uppercase" title="ADB Sync">
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold uppercase ${hist.engine_type === 'playwright' ? 'bg-orange-500/20 text-orange-500' : 'bg-blue-500/20 text-blue-500'}`} title={`${enginePrefix} Sync`}>
                                       {hist.platform?.charAt(0) || 'A'}
                                     </div>
                                   )}
