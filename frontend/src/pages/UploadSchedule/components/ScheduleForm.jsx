@@ -33,99 +33,115 @@ export const ScheduleForm = ({ hook }) => {
           </div>
           
           <div className="bg-bg-primary border border-border-subtle rounded-xl p-4 h-[500px] overflow-y-auto">
-            {!selectedAuthor ? (
-              <div className="flex flex-col gap-2">
-                {Object.entries(groupedVideos).map(([author, authorVideos]) => (
-                  <div 
-                    key={author}
-                    onClick={() => setSelectedAuthor(author)}
-                    className="flex items-center justify-between gap-3 p-3 rounded-xl cursor-pointer transition-all border bg-bg-secondary border-border-subtle hover:border-brand-primary/50 hover:bg-glass-hover group"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Folder size={24} className="text-brand-secondary group-hover:text-brand-primary transition-colors shrink-0" />
-                      <div className="font-bold text-sm text-text-primary truncate" title={author}>{author}</div>
-                    </div>
-                    <div className="text-[10px] text-text-secondary px-2 py-0.5 bg-bg-primary rounded-md border border-border-subtle shrink-0">
-                      {authorVideos.length} video
-                    </div>
-                  </div>
-                ))}
-                {Object.keys(groupedVideos).length === 0 && (
-                  <div className="col-span-2 text-center py-10 text-text-tertiary">
+              <div className="flex flex-col gap-3">
+                {Object.entries(groupedVideos).length === 0 && (
+                  <div className="text-center py-10 text-text-tertiary">
                     <ImageIcon size={32} className="mx-auto mb-2 opacity-20" />
                     <p className="text-sm">Chưa có video nào khả dụng (Đã tải về/Đã render).</p>
                   </div>
                 )}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between sticky top-0 bg-bg-primary pb-2 z-10 border-b border-border-subtle">
-                  <button 
-                    type="button"
-                    onClick={() => setSelectedAuthor(null)}
-                    className="flex items-center gap-1 text-sm text-text-secondary hover:text-white transition-colors"
-                  >
-                    <ChevronLeft size={16} /> Trở lại
-                  </button>
-                  <h3 className="text-sm font-bold text-brand-primary truncate max-w-[150px]">{selectedAuthor}</h3>
-                  <button 
-                    type="button"
-                    onClick={() => toggleAllAuthorVideos(groupedVideos[selectedAuthor])}
-                    className="flex items-center gap-1 text-xs text-brand-secondary hover:text-brand-primary transition-colors bg-brand-primary/10 px-2 py-1 rounded-md"
-                  >
-                    <CheckSquare size={14} /> Chọn tất cả
-                  </button>
-                </div>
-                
-                <div className="flex flex-col gap-2">
-                  {groupedVideos[selectedAuthor]?.map(v => {
-                    const isSelected = selectedVideos.includes(v.id);
-                    return (
-                      <div 
-                        key={v.id}
-                        onClick={() => handleVideoToggle(v.id)}
-                        className={`flex items-center gap-3 p-2 rounded-xl cursor-pointer border transition-all ${isSelected ? 'border-brand-primary bg-brand-primary/10 shadow-[0_0_10px_rgba(var(--color-brand-primary),0.1)]' : 'border-border-subtle bg-bg-secondary hover:border-brand-primary/50'}`}
-                      >
-                        <div className="w-12 h-16 shrink-0 rounded-lg overflow-hidden bg-black/50 border border-white/5 relative group/vid">
-                          <video 
-                            src={`http://localhost:8000/api/files/${(v.final_video_path || v.raw_video_path || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '').split('/').map(encodeURIComponent).join('/')}#t=2.0`}
-                            className="w-full h-full object-cover opacity-90 group-hover/vid:opacity-100 transition-opacity"
-                            muted loop playsInline preload="metadata"
-                            onLoadedMetadata={(e) => { e.target.currentTime = 2; }}
-                            onMouseEnter={(e) => { e.target.play().catch(()=>{}); }}
-                            onMouseLeave={(e) => { e.target.pause(); e.target.currentTime = 2; }}
-                          />
-                        </div>
-                        
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm text-text-primary font-medium truncate cursor-help" title={v.original_name}>{truncateFilename(v.original_name)}</p>
-                            {(() => {
-                              const hasDuplicate = selectedAccounts.some(accId => postedMap[String(v.id)]?.has(String(accId)));
-                              return hasDuplicate ? (
-                                <div className="text-yellow-500 bg-yellow-500/10 p-0.5 rounded shrink-0" title="Đã đăng lên tài khoản đang chọn">
-                                  <AlertTriangle size={12} />
-                                </div>
-                              ) : null;
-                            })()}
-                          </div>
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${v.final_video_path || v.status === 'completed' || v.status === 'processed' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                              {v.final_video_path || v.status === 'completed' || v.status === 'processed' ? 'Đã render (Edit xong)' : 'Bản gốc (Chưa edit)'}
-                            </span>
-                            <span className="text-[10px] text-text-tertiary font-mono">#{v.id}</span>
-                          </div>
-                        </div>
+                {Object.entries(groupedVideos).map(([author, authorVideos]) => {
+                  const isOpen = selectedAuthor === author;
+                  // Tính số video đã chọn trong thư mục này
+                  const selectedCountInAuthor = authorVideos.filter(v => selectedVideos.includes(v.id)).length;
+                  const isAllSelected = selectedCountInAuthor > 0 && selectedCountInAuthor === authorVideos.length;
 
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors mr-1 ${isSelected ? 'bg-brand-primary border-brand-primary' : 'bg-black/20 border-border-subtle'}`}>
-                          {isSelected && <div className="w-2 h-2 bg-brand-primary rounded-full" />}
+                  return (
+                    <div key={author} className={`border rounded-xl overflow-hidden transition-all ${isOpen ? 'border-brand-primary/50 shadow-[0_0_15px_rgba(var(--color-brand-primary),0.05)] bg-bg-secondary' : 'border-border-subtle bg-bg-primary hover:border-brand-primary/30'}`}>
+                      {/* Accordion Header */}
+                      <div 
+                        onClick={() => setSelectedAuthor(isOpen ? null : author)}
+                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-glass-hover transition-colors"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Folder size={20} className={`${isOpen ? 'text-brand-primary' : 'text-brand-secondary'} shrink-0 transition-colors`} />
+                          <div className={`font-bold text-sm truncate transition-colors ${isOpen ? 'text-brand-primary' : 'text-text-primary'}`} title={author}>{author}</div>
+                          <div className="text-[10px] text-text-secondary px-2 py-0.5 bg-black/20 rounded-md border border-white/5 shrink-0">
+                            {authorVideos.length} vid
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {selectedCountInAuthor > 0 && (
+                            <div className="text-[10px] font-bold text-white bg-brand-primary px-2 py-0.5 rounded-md shadow-sm">
+                              Đã chọn {selectedCountInAuthor}
+                            </div>
+                          )}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+                      
+                      {/* Accordion Content */}
+                      {isOpen && (
+                        <div className="p-3 border-t border-border-subtle/50 bg-bg-primary/50">
+                          <div className="flex items-center justify-between mb-3 pb-2 border-b border-border-subtle/30">
+                            <span className="text-xs text-text-secondary">Click vào video để chọn</span>
+                            <button 
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); toggleAllAuthorVideos(authorVideos); }}
+                              className="flex items-center gap-1 text-xs text-brand-primary hover:text-brand-secondary transition-colors bg-brand-primary/10 hover:bg-brand-primary/20 px-2 py-1 rounded-md font-medium"
+                            >
+                              <CheckSquare size={14} /> {isAllSelected ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+                            </button>
+                          </div>
+                          
+                          {/* Grid Thumbnails */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {authorVideos.map(v => {
+                              const isSelected = selectedVideos.includes(v.id);
+                              const hasDuplicate = selectedAccounts.some(accId => postedMap[String(v.id)]?.has(String(accId)));
+                              
+                              return (
+                                <div 
+                                  key={v.id}
+                                  onClick={(e) => { e.stopPropagation(); handleVideoToggle(v.id); }}
+                                  className={`relative group/vid cursor-pointer rounded-lg overflow-hidden border-2 transition-all aspect-[9/16] bg-black/50 ${isSelected ? 'border-brand-primary shadow-[0_0_10px_rgba(var(--color-brand-primary),0.3)]' : 'border-transparent hover:border-brand-primary/50'}`}
+                                >
+                                  {/* Video preview element */}
+                                  <video 
+                                    src={`http://localhost:8000/api/files/${(v.final_video_path || v.raw_video_path || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '').split('/').map(encodeURIComponent).join('/')}#t=2.0`}
+                                    className="absolute inset-0 w-full h-full object-cover opacity-70 group-hover/vid:opacity-100 transition-opacity"
+                                    muted loop playsInline preload="metadata"
+                                    onLoadedMetadata={(e) => { e.target.currentTime = 2; }}
+                                    onMouseEnter={(e) => { e.target.play().catch(()=>{}); }}
+                                    onMouseLeave={(e) => { e.target.pause(); e.target.currentTime = 2; }}
+                                  />
+                                  
+                                  {/* Overlay content */}
+                                  <div className="absolute inset-0 flex flex-col justify-between p-1.5 pointer-events-none">
+                                    {/* Top Badges */}
+                                    <div className="flex justify-between items-start gap-1">
+                                      <span className={`text-[9px] px-1 py-0.5 rounded shadow-sm backdrop-blur-md font-medium ${v.final_video_path || v.status === 'completed' || v.status === 'processed' ? 'bg-green-500/80 text-white' : 'bg-yellow-500/80 text-white'}`}>
+                                        {v.final_video_path || v.status === 'completed' || v.status === 'processed' ? 'Rendered' : 'Raw'}
+                                      </span>
+                                      
+                                      {hasDuplicate && (
+                                        <div className="text-yellow-400 bg-black/60 backdrop-blur-md p-1 rounded shadow-sm" title="Đã đăng lên tài khoản đang chọn">
+                                          <AlertTriangle size={12} />
+                                        </div>
+                                      )}
+                                    </div>
+                                    
+                                    {/* Bottom Info */}
+                                    <div className="bg-black/70 backdrop-blur-md p-1.5 rounded-md">
+                                      <p className="text-[10px] text-white font-medium truncate" title={v.original_name}>
+                                        {truncateFilename(v.original_name)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Selection Indicator */}
+                                  <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-brand-primary border-white opacity-100 scale-100' : 'bg-black/50 border-white/50 opacity-0 scale-90 group-hover/vid:opacity-100 group-hover/vid:scale-100'}`}>
+                                    {isSelected && <CheckSquare size={16} className="text-white" />}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            )}
           </div>
         </div>
         </div>
