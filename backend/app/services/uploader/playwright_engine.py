@@ -322,9 +322,23 @@ class PlaywrightUploader(BaseUploaderEngine):
             
             # Nếu không tìm thấy toast rõ ràng, đừng lấy bừa thẻ a href video trên trang (vì có thể là video cũ)
             # Trả về URL mặc định của trang Profile hoặc Upload
-            return "https://www.tiktok.com/profile"
+            final_url = "https://www.tiktok.com/profile"
         except:
-            return "https://www.tiktok.com/profile"
+            final_url = "https://www.tiktok.com/profile"
+            
+        # --- Lướt feed sau khi đăng để tăng độ trust ---
+        try:
+            logger.info("[Playwright] Chuyển về trang chủ Tiktok để lướt dạo...")
+            page.goto("https://www.tiktok.com/foryou", timeout=40000, wait_until="domcontentloaded")
+            page.wait_for_timeout(5000)
+            for i in range(2):
+                logger.info(f"[Playwright] Xem video Tiktok thứ {i+1}...")
+                page.keyboard.press("ArrowDown")
+                page.wait_for_timeout(8000) # Xem 8s mỗi video
+        except Exception as surf_err:
+            logger.warning(f"[Playwright] Lỗi khi lướt dạo Tiktok (bỏ qua): {surf_err}")
+            
+        return final_url
         
     def _upload_youtube(self, page, video_path: str, text: str) -> str:
         logger.info("[Playwright] Mở trang Youtube Studio...")
@@ -402,15 +416,28 @@ class PlaywrightUploader(BaseUploaderEngine):
             page.wait_for_timeout(10000)
             
             # 8. Lấy URL (Trong hộp thoại Video Published)
+            final_url = "https://studio.youtube.com/"
             video_link = page.locator('a.ytcp-video-info').first
             if video_link.is_visible():
-                return video_link.get_attribute("href")
+                final_url = video_link.get_attribute("href")
                 
         except Exception as e:
             logger.error(f"[Playwright] Lỗi thao tác Youtube: {e}")
             raise e
             
-        return "https://studio.youtube.com/"
+        # --- Lướt feed sau khi đăng để tăng độ trust ---
+        try:
+            logger.info("[Playwright] Chuyển về Youtube Shorts để lướt dạo...")
+            page.goto("https://www.youtube.com/shorts", timeout=40000, wait_until="domcontentloaded")
+            page.wait_for_timeout(5000)
+            for i in range(2):
+                logger.info(f"[Playwright] Xem video Shorts thứ {i+1}...")
+                page.keyboard.press("ArrowDown")
+                page.wait_for_timeout(8000)
+        except Exception as surf_err:
+            logger.warning(f"[Playwright] Lỗi khi lướt dạo Youtube (bỏ qua): {surf_err}")
+
+        return final_url
 
     def check_status(self) -> bool:
         """Kiểm tra cookie có hợp lệ không bằng cách truy cập thử trang profile."""
