@@ -42,13 +42,14 @@ export const useScheduleData = () => {
 
   const fetchData = async () => {
     try {
-      const [schedRes, vidRes, accRes] = await Promise.all([
+      const [schedRes, vidResRaw, accRes] = await Promise.all([
         fetch(`${API_BASE}/upload-schedules/`).then(res => res.json()),
-        fetch(`${API_BASE}/history/`).then(res => res.json()),
+        fetch(`${API_BASE}/history/?limit=200`).then(res => res.json()),
         fetch(`${API_BASE}/social-accounts/`).then(res => res.json())
       ]);
       setSchedules(schedRes);
       
+      const vidRes = Array.isArray(vidResRaw) ? vidResRaw : (vidResRaw.data || []);
       const availableVideos = vidRes.filter(v => 
         v.raw_video_path || v.final_video_path
       );
