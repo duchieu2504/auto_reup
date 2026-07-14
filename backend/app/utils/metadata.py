@@ -49,6 +49,30 @@ def save_video_metadata(video_record):
     }
     
     try:
+        from app.db.session import SessionLocal
+        from app.models.upload_schedule import UploadSchedule
+        schedules_data = []
+        with SessionLocal() as db:
+            schedules = db.query(UploadSchedule).filter(UploadSchedule.video_history_id == video_record.id).all()
+            for sch in schedules:
+                schedules_data.append({
+                    "id": sch.id,
+                    "account_id": sch.account_id,
+                    "engine_type": sch.engine_type,
+                    "status": sch.status,
+                    "caption": sch.caption,
+                    "hashtags": sch.hashtags,
+                    "scheduled_time": iso_format(sch.scheduled_time),
+                    "post_url": sch.post_url,
+                    "error_message": sch.error_message,
+                    "created_at": iso_format(sch.created_at),
+                    "updated_at": iso_format(sch.updated_at),
+                })
+        data["schedules"] = schedules_data
+    except Exception as e:
+        print(f"Failed to load schedules for metadata: {e}")
+    
+    try:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
     except Exception as e:

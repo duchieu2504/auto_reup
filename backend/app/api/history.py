@@ -417,8 +417,10 @@ def sync_data(db: Session = Depends(get_db)):
             if parse_date(data.get("uploaded_at")):
                 exists.uploaded_at = parse_date(data.get("uploaded_at"))
             updated_count += 1
+            record_to_sync_schedules = exists
         else:
             # Insert
+            import json
             new_record = VideoHistory(
                 original_name=data.get("original_name", f"{vid_id}.mp4"),
                 source=data.get("source", "Imported"),
@@ -437,7 +439,42 @@ def sync_data(db: Session = Depends(get_db)):
                 uploaded_at=parse_date(data.get("uploaded_at"))
             )
             db.add(new_record)
+            db.flush() # Lấy ID mới
             added_count += 1
+            record_to_sync_schedules = new_record
+            
+        # Sync UploadSchedules
+        schedules_data = data.get("schedules", [])
+        for sch_data in schedules_data:
+            existing_sch = db.query(UploadSchedule).filter(
+                UploadSchedule.video_history_id == record_to_sync_schedules.id,
+                UploadSchedule.account_id == sch_data.get("account_id")
+            ).first()
+            
+            if existing_sch:
+                existing_sch.engine_type = sch_data.get("engine_type", existing_sch.engine_type)
+                existing_sch.status = sch_data.get("status", existing_sch.status)
+                existing_sch.caption = sch_data.get("caption", existing_sch.caption)
+                existing_sch.hashtags = sch_data.get("hashtags", existing_sch.hashtags)
+                existing_sch.post_url = sch_data.get("post_url", existing_sch.post_url)
+                existing_sch.error_message = sch_data.get("error_message", existing_sch.error_message)
+                if parse_date(sch_data.get("scheduled_time")):
+                    existing_sch.scheduled_time = parse_date(sch_data.get("scheduled_time"))
+            else:
+                new_sch = UploadSchedule(
+                    video_history_id=record_to_sync_schedules.id,
+                    account_id=sch_data.get("account_id"),
+                    engine_type=sch_data.get("engine_type", "playwright"),
+                    status=sch_data.get("status", "pending"),
+                    caption=sch_data.get("caption"),
+                    hashtags=sch_data.get("hashtags"),
+                    scheduled_time=parse_date(sch_data.get("scheduled_time")),
+                    post_url=sch_data.get("post_url"),
+                    error_message=sch_data.get("error_message"),
+                    created_at=parse_date(sch_data.get("created_at")) or func.now(),
+                    updated_at=parse_date(sch_data.get("updated_at"))
+                )
+                db.add(new_sch)
     
     db.commit()
 

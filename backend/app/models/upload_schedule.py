@@ -38,3 +38,21 @@ class UploadSchedule(Base):
     # Mối quan hệ
     history = relationship("VideoHistory", back_populates="schedules")
     account = relationship("SocialAccount")
+
+from sqlalchemy import event
+
+def _save_schedule_listener(mapper, connection, target):
+    from app.utils.metadata import save_video_metadata
+    from app.models.history import VideoHistory
+    from app.db.session import SessionLocal
+    
+    try:
+        with SessionLocal() as db:
+            video = db.query(VideoHistory).filter(VideoHistory.id == target.video_history_id).first()
+            if video:
+                save_video_metadata(video)
+    except Exception as e:
+        print(f"Error in schedule metadata event listener: {e}")
+
+event.listen(UploadSchedule, 'after_insert', _save_schedule_listener)
+event.listen(UploadSchedule, 'after_update', _save_schedule_listener)
