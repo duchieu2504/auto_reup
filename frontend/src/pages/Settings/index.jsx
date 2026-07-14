@@ -171,6 +171,7 @@ import ThemeTab from './components/ThemeTab';const Settings = () => {
           ai_concurrency_limit: Number(concurrency),
           douyin_cookie: douyinCookie,
           anti_detect_provider: antiDetectProvider,
+          gpm_api_url: gpmApiUrl,
           groq_api_key: groqKey,
           use_groq: useGroq,
           use_gpu_acceleration: useGpuAcceleration,
