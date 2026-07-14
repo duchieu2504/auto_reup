@@ -160,8 +160,9 @@ app.add_middleware(
 # Phục vụ file tĩnh (Video, Audio, SRT) cho phần Preview
 app.mount("/api/files", StaticFiles(directory=DATA_DIR), name="files")
 
-from app.api import crawler, processor, settings, history, discovery, social_accounts, analytics, edit_profiles, proxies, faceless, live
+from app.api import crawler, processor, settings, history, discovery, social_accounts, analytics, edit_profiles, proxies, faceless, live, system
 
+app.include_router(system.router, prefix="/api/system", tags=["System"])
 app.include_router(crawler.router, prefix="/api/crawler", tags=["Crawler"])
 app.include_router(processor.router, prefix="/api/processor", tags=["Processor"])
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])

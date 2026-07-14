@@ -16,14 +16,6 @@ export default function SocialAccounts() {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={accountHook.handleSync}
-            className="flex items-center gap-2 px-4 py-2 bg-bg-secondary text-text-primary font-medium rounded-xl hover:bg-white/5 transition-colors border border-border-subtle"
-            title="Đồng bộ tài khoản từ ổ cứng vào Database"
-          >
-            <RefreshCw size={18} />
-            Đồng bộ từ Data
-          </button>
-          <button
             onClick={() => { accountHook.resetForm(); accountHook.setIsModalOpen(true); }}
             className="flex items-center gap-2 px-4 py-2 bg-brand-primary text-white font-medium rounded-xl hover:opacity-90 transition-all shadow-[0_0_20px_rgba(var(--color-brand-primary),0.3)]"
           >

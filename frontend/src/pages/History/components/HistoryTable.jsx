@@ -103,13 +103,7 @@ export const HistoryTable = ({ hook }) => {
             </select>
           </div>
 
-          <button 
-            className="flex items-center gap-2 bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white px-4 py-2 rounded-lg transition-colors font-medium ml-auto"
-            onClick={handleSyncData}
-          >
-            <RefreshCw size={18} />
-            Đồng bộ từ Data
-          </button>
+
         </div>
 
         {selectedIds.length > 0 && (

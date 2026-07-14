@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowRight, DownloadCloud, Activity, UploadCloud, Video, Users, AlertTriangle } from 'lucide-react';
+import { ArrowRight, DownloadCloud, Activity, UploadCloud, Video, Users, AlertTriangle, RefreshCw } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, BarChart, Bar } from 'recharts';
 
 const Dashboard = () => {
@@ -29,6 +30,34 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSyncData = () => {
+    toast((t) => (
+      <div className="flex flex-col gap-4 p-1">
+        <p className="text-sm font-medium">Hệ thống sẽ quét thư mục data và khôi phục toàn bộ tài khoản, video, và tiến trình tải lên. Bạn có muốn tiếp tục?</p>
+        <div className="flex justify-end gap-2 mt-2">
+          <button className="px-3 py-1.5 bg-bg-secondary border border-border-subtle text-text-primary hover:bg-glass-hover rounded-lg text-xs transition-colors" onClick={() => toast.dismiss(t.id)}>Hủy</button>
+          <button className="px-3 py-1.5 bg-neon-cyan text-black hover:bg-cyan-400 font-medium rounded-lg text-xs transition-colors" onClick={async () => {
+            toast.dismiss(t.id);
+            const toastId = toast.loading("Đang đồng bộ data toàn hệ thống...");
+            try {
+              const res = await fetch('http://localhost:8000/api/system/sync-all', { method: 'POST' });
+              const data = await res.json();
+              if (res.ok) {
+                toast.success(`Đã khôi phục ${data.accounts_synced} tài khoản, ${data.videos_synced} video và ${data.schedules_restored} lịch đăng.`, { id: toastId, duration: 5000 });
+                fetchStats(); // Refresh dashboard stats
+              } else {
+                toast.error("Lỗi đồng bộ: " + data.message, { id: toastId });
+              }
+            } catch (err) {
+              console.error(err);
+              toast.error("Lỗi kết nối server.", { id: toastId });
+            }
+          }}>Xác nhận</button>
+        </div>
+      </div>
+    ), { duration: Infinity });
   };
 
   const COLORS = ['#06b6d4', '#ec4899', '#a855f7', '#10b981', '#f59e0b'];
@@ -103,6 +132,15 @@ const Dashboard = () => {
           Bảng Điều Khiển (Dashboard)
         </h2>
         <div className="flex gap-3">
+          <motion.button 
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleSyncData}
+            className="px-4 py-2 bg-neon-cyan/10 text-neon-cyan hover:bg-neon-cyan hover:text-white border border-neon-cyan/20 rounded-xl transition-all duration-300 font-medium flex items-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(6,182,212,0.05)]"
+          >
+            <RefreshCw size={16} />
+            Đồng bộ từ Data
+          </motion.button>
           <motion.button 
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}

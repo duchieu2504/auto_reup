@@ -373,6 +373,7 @@ def sync_data(db: Session = Depends(get_db)):
 
     added_count = 0
     updated_count = 0
+    schedules_count = 0
     
     # 1. Khôi phục từ Shadow Metadata (Nguồn chân lý số 1)
     metadata_records = load_video_metadata()
@@ -472,9 +473,8 @@ def sync_data(db: Session = Depends(get_db)):
                     post_url=sch_data.get("post_url"),
                     error_message=sch_data.get("error_message"),
                     created_at=parse_date(sch_data.get("created_at")) or func.now(),
-                    updated_at=parse_date(sch_data.get("updated_at"))
-                )
                 db.add(new_sch)
+            schedules_count += 1
     
     db.commit()
 
@@ -575,5 +575,5 @@ def sync_data(db: Session = Depends(get_db)):
         added_count += 1
         
     db.commit()
-    return {"status": "success", "added_count": added_count, "updated_count": updated_count}
+    return {"status": "success", "added_count": added_count, "updated_count": updated_count, "schedules_count": schedules_count}
 
