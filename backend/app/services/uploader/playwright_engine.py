@@ -210,7 +210,7 @@ class PlaywrightUploader(BaseUploaderEngine):
             try:
                 # BYPASS 50MB LIMIT OVER CDP
                 # Gán ID tạm cho element để tìm qua CDP
-                file_input.evaluate("el => el.id = 'gpm-upload-bypass'")
+                file_input.first.evaluate("el => el.id = 'gpm-upload-bypass'")
                 client = page.context.new_cdp_session(page)
                 doc = client.send("DOM.getDocument")
                 node = client.send("DOM.querySelector", {"nodeId": doc["root"]["nodeId"], "selector": "#gpm-upload-bypass"})
@@ -228,7 +228,7 @@ class PlaywrightUploader(BaseUploaderEngine):
         except Exception as e:
             # Fallback
             try:
-                page.locator('input[type="file"]').evaluate("el => el.id = 'gpm-upload-bypass-fallback'")
+                page.locator('input[type="file"]').first.evaluate("el => el.id = 'gpm-upload-bypass-fallback'")
                 client = page.context.new_cdp_session(page)
                 doc = client.send("DOM.getDocument")
                 node = client.send("DOM.querySelector", {"nodeId": doc["root"]["nodeId"], "selector": "#gpm-upload-bypass-fallback"})
@@ -332,7 +332,7 @@ class PlaywrightUploader(BaseUploaderEngine):
             
             try:
                 # BYPASS 50MB LIMIT OVER CDP
-                page.locator('input[type="file"]').evaluate("el => el.id = 'gpm-yt-upload-bypass'")
+                page.locator('input[type="file"]').first.evaluate("el => el.id = 'gpm-yt-upload-bypass'")
                 client = page.context.new_cdp_session(page)
                 doc = client.send("DOM.getDocument")
                 node = client.send("DOM.querySelector", {"nodeId": doc["root"]["nodeId"], "selector": "#gpm-yt-upload-bypass"})
