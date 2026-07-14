@@ -78,8 +78,11 @@ class PlaywrightUploader(BaseUploaderEngine):
                     url_v1 = f"{gpm_api_url}/api/v1/profiles/start/{gpm_profile_id}"
                     start_res = requests.get(url_v1, timeout=15)
                     start_data = start_res.json()
-                    if start_data.get("success") and start_data.get("data"):
-                        ws_endpoint = start_data["data"].get("websocket_debugging_url") or start_data["data"].get("ws_endpoint")
+                    if isinstance(start_data, dict):
+                        if start_data.get("success") and start_data.get("data"):
+                            ws_endpoint = start_data["data"].get("websocket_debugging_url") or start_data["data"].get("ws_endpoint")
+                    else:
+                        logger.warning(f"[Playwright] API v1 trả về dữ liệu không đúng định dạng (có thể là lỗi): {start_data}")
                 except Exception as e:
                     logger.warning(f"[Playwright] Thử GPM API v1 thất bại: {e}")
                 
@@ -89,8 +92,11 @@ class PlaywrightUploader(BaseUploaderEngine):
                         url_v2 = f"{gpm_api_url}/api/v2/profile/start?profileId={gpm_profile_id}"
                         start_res = requests.get(url_v2, timeout=15)
                         start_data = start_res.json()
-                        if start_data.get("success") and start_data.get("data"):
-                            ws_endpoint = start_data["data"].get("ws_endpoint") or start_data["data"].get("websocket_debugging_url")
+                        if isinstance(start_data, dict):
+                            if start_data.get("success") and start_data.get("data"):
+                                ws_endpoint = start_data["data"].get("ws_endpoint") or start_data["data"].get("websocket_debugging_url")
+                        else:
+                            logger.warning(f"[Playwright] API v2 trả về dữ liệu không đúng định dạng (có thể là lỗi): {start_data}")
                     except Exception as e:
                         logger.warning(f"[Playwright] Thử GPM API v2 thất bại: {e}")
                 
