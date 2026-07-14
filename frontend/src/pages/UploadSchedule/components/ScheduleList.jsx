@@ -55,8 +55,14 @@ export const ScheduleList = ({ hook }) => {
           <tbody className="divide-y divide-border-subtle">
             {schedules.length === 0 && (
               <tr>
-                <td colSpan="7" className="p-8 text-center text-text-tertiary">
-                  Chưa có lịch đăng nào được tạo.
+                <td colSpan="7" className="h-[400px]">
+                  <div className="flex flex-col items-center justify-center h-full w-full text-text-tertiary">
+                    <div className="bg-bg-secondary p-4 rounded-full mb-3 border border-border-subtle/50">
+                      <CalendarClock size={32} className="text-brand-secondary opacity-50" />
+                    </div>
+                    <p className="text-base font-medium">Chưa có lịch đăng nào được tạo.</p>
+                    <p className="text-sm mt-1 opacity-70">Hãy chọn video và tài khoản ở bảng trên để bắt đầu!</p>
+                  </div>
                 </td>
               </tr>
             )}
