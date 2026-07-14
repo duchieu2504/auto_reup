@@ -28,7 +28,7 @@ export const ScheduleList = ({ hook }) => {
   const currentSchedules = schedules.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
-    <div className="lg:col-span-2 bg-bg-secondary border border-border-subtle rounded-2xl p-6 flex flex-col h-[800px]">
+    <div className="bg-bg-secondary border border-border-subtle rounded-2xl p-6 flex flex-col h-[800px]">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold flex items-center gap-2">
           <CalendarClock size={24} className="text-brand-secondary" />

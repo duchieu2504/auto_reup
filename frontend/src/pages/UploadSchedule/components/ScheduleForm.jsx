@@ -12,15 +12,17 @@ export const ScheduleForm = ({ hook }) => {
   } = hook;
 
   return (
-    <div className="lg:col-span-1 bg-bg-secondary border border-border-subtle rounded-2xl p-6">
+    <div className="bg-bg-secondary border border-border-subtle rounded-2xl p-6">
       <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
         <Send size={24} className="text-brand-primary" />
         Tạo Lịch Đăng Mới
       </h2>
       
-      <form onSubmit={onSubmit} className="space-y-5">
-        {/* Chọn Video */}
-        <div>
+      <form onSubmit={onSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Cột 1: Chọn Video */}
+        <div className="space-y-5">
+          {/* Chọn Video */}
+          <div className="flex flex-col h-full">
           <div className="flex justify-between items-end mb-2">
             <label className="block text-sm font-medium text-text-secondary flex items-center gap-2">
               <Video size={16} /> Chọn Video
@@ -30,7 +32,7 @@ export const ScheduleForm = ({ hook }) => {
             </span>
           </div>
           
-          <div className="bg-bg-primary border border-border-subtle rounded-xl p-4 max-h-[240px] overflow-y-auto">
+          <div className="bg-bg-primary border border-border-subtle rounded-xl p-4 h-[500px] overflow-y-auto">
             {!selectedAuthor ? (
               <div className="flex flex-col gap-2">
                 {Object.entries(groupedVideos).map(([author, authorVideos]) => (
@@ -126,32 +128,10 @@ export const ScheduleForm = ({ hook }) => {
             )}
           </div>
         </div>
-        
-        {/* Chọn Engine Upload */}
-        <div>
-          <label className="block text-sm font-medium text-text-secondary mb-2 flex items-center gap-2">
-            <Cpu size={16} /> Chế độ Đăng bài (Engine)
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setEngineType("playwright")}
-              className={`flex flex-col items-center p-3 border rounded-xl transition-all ${engineType === 'playwright' ? 'border-brand-primary bg-brand-primary/10 text-brand-primary' : 'border-border-subtle hover:bg-glass-hover text-text-secondary'}`}
-            >
-              <MonitorPlay size={24} className="mb-1" />
-              <span className="text-sm font-semibold">Web Browser</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setEngineType("adb")}
-              className={`flex flex-col items-center p-3 border rounded-xl transition-all ${engineType === 'adb' ? 'border-brand-primary bg-brand-primary/10 text-brand-primary' : 'border-border-subtle hover:bg-glass-hover text-text-secondary'}`}
-            >
-              <Smartphone size={24} className="mb-1" />
-              <span className="text-sm font-semibold">Mobile App (ADB)</span>
-            </button>
-          </div>
         </div>
 
+        {/* Cột 2: Chọn Tài khoản */}
+        <div className="space-y-5">
         {/* Chọn Tài khoản */}
         <div>
           <div className="flex justify-between items-end mb-2">
@@ -162,7 +142,7 @@ export const ScheduleForm = ({ hook }) => {
               Đã chọn: {selectedAccounts.length}
             </span>
           </div>
-          <div className="bg-bg-primary border border-border-subtle rounded-xl p-4 max-h-[240px] overflow-y-auto">
+          <div className="bg-bg-primary border border-border-subtle rounded-xl p-4 h-[500px] overflow-y-auto">
             {(() => {
               const filteredAccounts = accounts.filter(acc => {
                 const type = acc.connection_type || 'web_playwright';
@@ -225,6 +205,34 @@ export const ScheduleForm = ({ hook }) => {
                 </div>
               );
             })()}
+          </div>
+        </div>
+        </div>
+
+        {/* Cột 3: Cài đặt nâng cao */}
+        <div className="space-y-5">
+        {/* Chọn Engine Upload */}
+        <div>
+          <label className="block text-sm font-medium text-text-secondary mb-2 flex items-center gap-2">
+            <Cpu size={16} /> Chế độ Đăng bài (Engine)
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setEngineType("playwright")}
+              className={`flex flex-col items-center p-3 border rounded-xl transition-all ${engineType === 'playwright' ? 'border-brand-primary bg-brand-primary/10 text-brand-primary' : 'border-border-subtle hover:bg-glass-hover text-text-secondary'}`}
+            >
+              <MonitorPlay size={24} className="mb-1" />
+              <span className="text-sm font-semibold">Web Browser</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setEngineType("adb")}
+              className={`flex flex-col items-center p-3 border rounded-xl transition-all ${engineType === 'adb' ? 'border-brand-primary bg-brand-primary/10 text-brand-primary' : 'border-border-subtle hover:bg-glass-hover text-text-secondary'}`}
+            >
+              <Smartphone size={24} className="mb-1" />
+              <span className="text-sm font-semibold">Mobile App (ADB)</span>
+            </button>
           </div>
         </div>
 
@@ -302,6 +310,7 @@ export const ScheduleForm = ({ hook }) => {
           {isSubmitting ? <RefreshCw className="animate-spin" size={20} /> : <Send size={20} />}
           Xác nhận Lên Lịch
         </button>
+        </div>
       </form>
     </div>
   );
