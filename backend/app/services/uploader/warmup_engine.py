@@ -87,7 +87,7 @@ class GpmWarmupEngine(BaseWarmupEngine):
                 else:
                     logger.warning(f"Chưa hỗ trợ nuôi nền tảng {platform}")
             finally:
-                browser.disconnect()
+                browser.close()
                 # Stop profile after warmup
                 logger.info(f"[Warmup-GPM] Đóng GPM Profile: {profile_id}")
                 
