@@ -168,6 +168,8 @@ class Transcriber:
                 transcription = client.audio.transcriptions.create(
                     file=("audio.wav", file, "audio/wav"),
                     model="whisper-large-v3",
+                    prompt="Bóc băng nguyên văn, đầy đủ, chính xác từng từ một, không tóm tắt, không bỏ sót chữ.",
+                    temperature=0.0,
                     response_format="verbose_json",
                     timeout=300
                 )
@@ -195,7 +197,14 @@ class Transcriber:
 
     def _transcribe_offline(self, media_path: str, output_srt_path: str):
         model = self._get_whisper_model()
-        segments, info = model.transcribe(media_path, beam_size=5)
+        segments, info = model.transcribe(
+            media_path, 
+            beam_size=5,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500),
+            word_timestamps=True,
+            initial_prompt="Bóc băng nguyên văn, đầy đủ, chính xác từng từ một, không tóm tắt, không bỏ sót chữ."
+        )
         
         with open(output_srt_path, "w", encoding="utf-8") as f:
             for i, segment in enumerate(segments, start=1):

@@ -212,6 +212,8 @@ class PlaywrightUploader(BaseUploaderEngine):
                 # Gán ID tạm cho element để tìm qua CDP (kể cả trong iframe)
                 file_input.first.evaluate("el => el.id = 'gpm-upload-bypass'")
                 client = page.context.new_cdp_session(page)
+                client.send("DOM.enable")
+                client.send("DOM.getDocument")
                 
                 # Sử dụng DOM.performSearch để tìm xuyên qua các iframe
                 search_res = client.send("DOM.performSearch", {"query": "#gpm-upload-bypass"})
@@ -241,6 +243,8 @@ class PlaywrightUploader(BaseUploaderEngine):
             try:
                 page.locator('input[type="file"]').first.evaluate("el => el.id = 'gpm-upload-bypass-fallback'")
                 client = page.context.new_cdp_session(page)
+                client.send("DOM.enable")
+                client.send("DOM.getDocument")
                 search_res = client.send("DOM.performSearch", {"query": "#gpm-upload-bypass-fallback"})
                 results = client.send("DOM.getSearchResults", {
                     "searchId": search_res["searchId"], 
@@ -300,9 +304,17 @@ class PlaywrightUploader(BaseUploaderEngine):
             # Chờ thêm 5 giây để nút đăng sáng lên (hết disable)
             page.wait_for_timeout(5000)
             
-            post_btn = page.locator('button:has-text("Post"), button:has-text("Đăng")').last
-            # Bỏ force=True để nó tự check nút có bị mờ không, nếu mờ thì đợi
-            post_btn.click(timeout=20000)
+            post_selector = 'button:has-text("Post"), button:has-text("Đăng"), [data-e2e="post_video_button"]'
+            post_btn = page.locator(post_selector).last
+            
+            try:
+                # Bỏ force=True để nó tự check nút có bị mờ không, nếu mờ thì đợi. Tăng timeout lên 90s cho mạng chậm.
+                post_btn.click(timeout=90000)
+            except Exception as e:
+                logger.warning(f"[Playwright] Không click được nút Đăng ở trang chính, thử tìm trong Iframe: {e}")
+                frame = page.frame_locator('iframe[data-tt="Upload_index_iframe"]')
+                post_btn = frame.locator(post_selector).last
+                post_btn.click(timeout=60000)
         except Exception as e:
             logger.error(f"[Playwright] Không bấm được nút Đăng: {e}")
             raise Exception(f"Không bấm được nút Đăng, có thể do mạng chậm hoặc giao diện thay đổi: {str(e)}")
@@ -364,6 +376,8 @@ class PlaywrightUploader(BaseUploaderEngine):
                 # BYPASS 50MB LIMIT OVER CDP
                 page.locator('input[type="file"]').first.evaluate("el => el.id = 'gpm-yt-upload-bypass'")
                 client = page.context.new_cdp_session(page)
+                client.send("DOM.enable")
+                client.send("DOM.getDocument")
                 search_res = client.send("DOM.performSearch", {"query": "#gpm-yt-upload-bypass"})
                 results = client.send("DOM.getSearchResults", {
                     "searchId": search_res["searchId"], 
