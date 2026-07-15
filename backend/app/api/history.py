@@ -473,6 +473,8 @@ def sync_data(db: Session = Depends(get_db)):
                     post_url=sch_data.get("post_url"),
                     error_message=sch_data.get("error_message"),
                     created_at=parse_date(sch_data.get("created_at")) or func.now(),
+                    updated_at=parse_date(sch_data.get("updated_at"))
+                )
                 db.add(new_sch)
             schedules_count += 1
     
