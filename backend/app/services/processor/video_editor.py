@@ -205,9 +205,14 @@ class VideoEditor:
             print(f"DEBUG DRAWTEXT FILTER: {drawtext_filter}")
             vf_filters.append(drawtext_filter)
             
-        pre_filter = ""
-        input_label = "[0:v]"
+        current_in = "[0:v]"
+        v_filter_complex = ""
         
+        if vf_filters:
+            vf_str = ",".join(vf_filters)
+            v_filter_complex += f"{current_in}{vf_str}[vfiltered];"
+            current_in = "[vfiltered]"
+
         if mask_enabled:
             # Fallback for compatibility if masks list is empty or None
             local_masks = masks
@@ -221,7 +226,6 @@ class VideoEditor:
                     "color": mask_color
                 }]
 
-            current_in = "[0:v]"
             filter_parts = []
             for i, mask in enumerate(local_masks):
                 m_x = mask.get("x", 10.0) if isinstance(mask, dict) else getattr(mask, "x", 10.0)
@@ -248,19 +252,13 @@ class VideoEditor:
                 filter_parts.append(part)
                 current_in = out_label
             
-            pre_filter = ";".join(filter_parts) + ";"
-            input_label = current_in
+            v_filter_complex += ";".join(filter_parts) + ";"
 
-        if vf_filters:
-            vf_str = ",".join(vf_filters)
-            v_filter_complex = f"{pre_filter}{input_label}{vf_str}[vbase]"
+        if v_filter_complex:
+            if current_in != "[vbase]":
+                v_filter_complex += f"{current_in}copy[vbase]"
         else:
-            if pre_filter:
-                v_filter_complex = pre_filter.rstrip(';')
-                if v_filter_complex.endswith(input_label):
-                    v_filter_complex = v_filter_complex[:-len(input_label)] + "[vbase]"
-            else:
-                v_filter_complex = "[0:v]copy[vbase]"
+            v_filter_complex = "[0:v]copy[vbase]"
                 
         # Overlay generated subtitles if any
         if subs_input_idx != -1:
@@ -420,6 +418,196 @@ class VideoEditor:
                     _shutil.rmtree(subs_dir, ignore_errors=True)
                 except Exception:
                     pass
+            if wm_file and os.path.exists(wm_file):
+                try:
+                    os.remove(wm_file)
+                except Exception:
+                    pass
+
+    def generate_preview_frame(self, input_video: str, preview_text: str, flip_video: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, subtitle_text_color: str = "#000000", subtitle_bg_color: str = "#FFFFFF", subtitle_font_size: int = 8, subtitle_margin_v: int = 40, subtitle_bg_padding: int = 2, subtitle_bg_opacity: int = 100, watermark_type: str = "none", watermark_text: str = None, watermark_image_path: str = None, watermark_x: float = 50.0, watermark_y: float = 50.0, watermark_size: float = 20.0, watermark_color: str = "#FFFFFF", watermark_opacity: float = 50.0, subtitle_font_family: str = "Liberation Sans", enable_subtitles: bool = True, mask_enabled: bool = False, masks: list = None) -> str:
+        """
+        Extracts a single frame from the input_video at a specific timestamp (e.g. 1 second in),
+        applies the EXACT same video filters, subtitles, and watermarks as `burn_subtitles`,
+        and returns the absolute path to a generated JPG image file.
+        """
+        import tempfile
+        import uuid
+        
+        output_image = os.path.join(tempfile.gettempdir(), f"preview_{uuid.uuid4().hex}.jpg")
+        video_w, video_h = get_video_resolution(input_video)
+        
+        cmd = [ffmpeg_exe, "-y", "-ss", "00:00:01"]
+        cmd.extend(["-i", input_video])
+        input_count = 1
+        
+        vf_filters = []
+        if flip_video:
+            vf_filters.append("hflip")
+            
+        if opt_zoom:
+            vf_filters.append("crop=iw/1.02:ih/1.02,scale=iw:ih")
+        if opt_color:
+            vf_filters.append("eq=brightness=0.02:contrast=1.05")
+        if opt_noise:
+            vf_filters.append("noise=alls=1:allf=t+u")
+            
+        subs_dir = None
+        wm_file = None
+        srt_file = None
+        
+        subs_input_idx = -1
+        ass_file = None
+        
+        try:
+            if enable_subtitles and preview_text:
+                from app.services.processor.subtitle_renderer import SubtitleRenderer
+                import pysrt
+                
+                subs_dir = tempfile.mkdtemp(prefix="preview_subs_")
+                
+                # Create a dummy SRT file spanning the preview time
+                srt_file = os.path.join(subs_dir, "preview.srt")
+                dummy_sub = pysrt.SubRipFile()
+                dummy_sub.append(pysrt.SubRipItem(
+                    1, start=pysrt.SubRipTime(0,0,0,0), end=pysrt.SubRipTime(0,0,10,0), text=preview_text
+                ))
+                dummy_sub.save(srt_file, encoding='utf-8')
+                
+                renderer = SubtitleRenderer(
+                    video_width=video_w,
+                    video_height=video_h,
+                    font_family=subtitle_font_family,
+                    font_size=subtitle_font_size,
+                    text_color=subtitle_text_color,
+                    bg_color=subtitle_bg_color,
+                    bg_opacity=subtitle_bg_opacity,
+                    margin_v=subtitle_margin_v,
+                    bg_padding=subtitle_bg_padding,
+                    style=subtitle_style
+                )
+                
+                subtitle_output = renderer.generate_subtitle_sequence(srt_file, subs_dir)
+                
+                if subtitle_output.endswith('.ass'):
+                    ass_file = subtitle_output
+                else:
+                    concat_escaped = subtitle_output.replace('\\', '/')
+                    cmd.extend(["-f", "concat", "-safe", "0", "-i", concat_escaped])
+                    subs_input_idx = input_count
+                    input_count += 1
+            
+            # Watermark filter
+            if watermark_type == "text" and watermark_text:
+                text_color = watermark_color.replace('#', '0x')
+                opacity_val = watermark_opacity / 100.0
+                
+                import platform
+                if platform.system() == "Windows":
+                    font_path = "C:/Windows/Fonts/arial.ttf"
+                else:
+                    font_path = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+                
+                fonts_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/fonts"))
+                if subtitle_font_family != "Liberation Sans" and os.path.exists(fonts_dir):
+                    for f in os.listdir(fonts_dir):
+                        if os.path.splitext(f)[0] == subtitle_font_family:
+                            font_path = os.path.join(fonts_dir, f).replace("\\", "/")
+                            break
+                
+                wm_file = os.path.join(tempfile.gettempdir(), f"wm_preview_{uuid.uuid4().hex}.txt")
+                with open(wm_file, "w", encoding="utf-8") as f:
+                    f.write(watermark_text)
+                    
+                wm_file_esc = wm_file.replace('\\', '/').replace(':', '\\:')
+                font_path_esc = font_path.replace('\\', '/').replace(':', '\\:')
+                
+                wm_real_size = int(float(watermark_size) * (video_h / 540.0) * 1.5)
+                drawtext_filter = f"drawtext=fontfile='{font_path_esc}':textfile='{wm_file_esc}':fontcolor={text_color}@{opacity_val}:fontsize={wm_real_size}:x=(w-text_w)*{watermark_x}/100:y=(h-text_h)*{watermark_y}/100"
+                vf_filters.append(drawtext_filter)
+                
+            current_in = "[0:v]"
+            v_filter_complex = ""
+            
+            if vf_filters:
+                vf_str = ",".join(vf_filters)
+                v_filter_complex += f"{current_in}{vf_str}[vfiltered];"
+                current_in = "[vfiltered]"
+                
+            if mask_enabled and masks:
+                filter_parts = []
+                for i, mask in enumerate(masks):
+                    m_x = mask.get("x", 10.0)
+                    m_y = mask.get("y", 10.0)
+                    m_w = mask.get("width", 20.0)
+                    m_h = mask.get("height", 15.0)
+                    m_type = mask.get("type", "color")
+                    m_color = mask.get("color", "#000000")
+    
+                    crop_w = video_w * m_w / 100.0
+                    crop_h = video_h * m_h / 100.0
+    
+                    out_label = f"[vmasked_{i}]"
+                    if m_type == "blur":
+                        blur_params = get_safe_boxblur_params(crop_w, crop_h, 15)
+                        part = f"{current_in}split[vsplitbase_{i}][vblur_{i}];[vblur_{i}]crop=w=iw*{m_w}/100:h=ih*{m_h}/100:x=iw*{m_x}/100:y=ih*{m_y}/100,boxblur={blur_params}[blurred_{i}];[vsplitbase_{i}][blurred_{i}]overlay=x=W*{m_x}/100:y=H*{m_y}/100{out_label}"
+                    elif m_type == "noise":
+                        blur_params = get_safe_boxblur_params(crop_w, crop_h, 5)
+                        part = f"{current_in}split[vsplitbase_{i}][vnoise_{i}];[vnoise_{i}]crop=w=iw*{m_w}/100:h=ih*{m_h}/100:x=iw*{m_x}/100:y=ih*{m_y}/100,noise=alls=50:allf=t+u,boxblur={blur_params}[noisy_{i}];[vsplitbase_{i}][noisy_{i}]overlay=x=W*{m_x}/100:y=H*{m_y}/100{out_label}"
+                    else:
+                        color_hex = m_color.replace('#', '0x')
+                        part = f"{current_in}drawbox=x=iw*{m_x}/100:y=ih*{m_y}/100:w=iw*{m_w}/100:h=ih*{m_h}/100:color={color_hex}:t=fill{out_label}"
+                    
+                    filter_parts.append(part)
+                    current_in = out_label
+                
+                v_filter_complex += ";".join(filter_parts) + ";"
+    
+            if v_filter_complex:
+                if current_in != "[vbase]":
+                    v_filter_complex += f"{current_in}copy[vbase]"
+            else:
+                v_filter_complex = "[0:v]copy[vbase]"
+                    
+            if subs_input_idx != -1:
+                v_filter_complex += f";[vbase][{subs_input_idx}:v]overlay=x=0:y=0[vsub_out]"
+                vbase_label = "[vsub_out]"
+            elif ass_file is not None:
+                ass_path_esc = ass_file.replace('\\', '/').replace(':', '\\:')
+                v_filter_complex += f";[vbase]ass='{ass_path_esc}'[vsub_out]"
+                vbase_label = "[vsub_out]"
+            else:
+                vbase_label = "[vbase]"
+            
+            wm_idx = -1
+            if watermark_type == "image" and watermark_image_path and os.path.exists(watermark_image_path):
+                cmd.extend(["-i", watermark_image_path])
+                wm_idx = input_count
+                input_count += 1
+                opacity_val = watermark_opacity / 100.0
+                v_filter_complex += f";[{wm_idx}:v]format=rgba,colorchannelmixer=aa={opacity_val},scale=iw*{watermark_size}/100:-1[wm];{vbase_label}[wm]overlay=x=(W-w)*{watermark_x}/100:y=(H-h)*{watermark_y}/100[vout]"
+            else:
+                v_filter_complex += f";{vbase_label}copy[vout]"
+                
+            cmd.extend([
+                "-filter_complex", v_filter_complex,
+                "-map", "[vout]",
+                "-frames:v", "1",
+                "-q:v", "2",
+                output_image
+            ])
+            
+            print(f"DEBUG PREVIEW CMD: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
+            if result.returncode != 0:
+                print(f"FFmpeg Preview Error:\n{result.stderr}")
+                raise Exception(f"FFmpeg exited with code {result.returncode} during preview generation.")
+                
+            return output_image
+            
+        finally:
+            if subs_dir and os.path.exists(subs_dir):
+                import shutil as _shutil
+                _shutil.rmtree(subs_dir, ignore_errors=True)
             if wm_file and os.path.exists(wm_file):
                 try:
                     os.remove(wm_file)

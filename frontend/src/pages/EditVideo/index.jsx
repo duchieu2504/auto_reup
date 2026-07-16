@@ -7,6 +7,7 @@ import { SubtitleConfigPanel } from '../../components/subtitle/SubtitleConfigPan
 import { WatermarkConfigPanel } from '../../components/subtitle/WatermarkConfigPanel';
 import { InteractiveVideoPreview } from '../../components/subtitle/InteractiveVideoPreview';
 import { ProfileSelector, SaveProfileButton } from '../../components/subtitle/ProfileSelector';
+import { useFfmpegPreview } from '../../hooks/useFfmpegPreview';
 
 const API_BASE = 'http://localhost:8000/api';
 
@@ -19,6 +20,9 @@ const EditVideo = () => {
   const subtitleConfig = useSubtitleState(id);
   const [activeTab, setActiveTab] = useState('subtitle'); // 'subtitle' | 'watermark' | 'srt'
   const [aspectRatio, setAspectRatio] = useState(null);
+  
+  const videoPath = editHook.videoData?.raw_video_path;
+  const { ffmpegPreviewUrl, isGeneratingPreview } = useFfmpegPreview(subtitleConfig, videoPath);
 
   if (editHook.loading) {
     return (
@@ -78,13 +82,29 @@ const EditVideo = () => {
             <div className="flex-1 flex items-center justify-center min-h-0 relative overflow-hidden bg-black/20 rounded-lg">
               <div className="absolute inset-0 flex items-center justify-center">
                 {videoData.raw_video_path ? (
-                  <InteractiveVideoPreview config={subtitleConfig} aspectRatio={aspectRatio} className="max-w-full max-h-full">
-                    <video 
-                      src={`${API_BASE}/files/${(videoData.raw_video_path || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '').split('/').map(encodeURIComponent).join('/')}`}
-                      controls
-                      className="max-w-full max-h-full block rounded-lg shadow-lg"
-                      onLoadedMetadata={(e) => setAspectRatio(e.target.videoWidth / e.target.videoHeight)}
-                    />
+                  <InteractiveVideoPreview config={subtitleConfig} aspectRatio={aspectRatio} className="max-w-full max-h-full" isFfmpegPreview={!!ffmpegPreviewUrl}>
+                    {ffmpegPreviewUrl ? (
+                      <img
+                        src={ffmpegPreviewUrl}
+                        alt="Preview"
+                        className={`max-w-full max-h-full block pointer-events-none object-contain transition-opacity duration-300 ${isGeneratingPreview ? 'opacity-50' : 'opacity-100'}`}
+                        onLoad={(e) => setAspectRatio(e.target.naturalWidth / e.target.naturalHeight)}
+                      />
+                    ) : (
+                      <video 
+                        src={`${API_BASE}/files/${(videoData.raw_video_path || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '').split('/').map(encodeURIComponent).join('/')}`}
+                        controls
+                        className="max-w-full max-h-full block rounded-lg shadow-lg"
+                        onLoadedMetadata={(e) => setAspectRatio(e.target.videoWidth / e.target.videoHeight)}
+                      />
+                    )}
+                    
+                    {isGeneratingPreview && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/30 backdrop-blur-[2px] rounded-xl z-10">
+                        <Loader2 className="animate-spin text-brand-primary mb-2" size={24} />
+                        <span className="text-xs font-semibold drop-shadow-md">Đang cập nhật ảnh mẫu thực tế...</span>
+                      </div>
+                    )}
                   </InteractiveVideoPreview>
                 ) : (
                   <div className="w-full h-full bg-bg-secondary flex items-center justify-center text-text-secondary">

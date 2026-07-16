@@ -64,6 +64,9 @@ export const ProfileSelector = ({ config }) => {
       if (config.setWatermarkSize) config.setWatermarkSize(20);
       if (config.setWatermarkColor) config.setWatermarkColor('#FFFFFF');
       if (config.setWatermarkOpacity) config.setWatermarkOpacity(50);
+      if (config.setEnableSubtitles) config.setEnableSubtitles(true);
+      if (config.setMaskEnabled) config.setMaskEnabled(false);
+      if (config.setMasks) config.setMasks([]);
       if (config.setLoadedProfileConfig) config.setLoadedProfileConfig(null);
       return;
     }
@@ -106,6 +109,11 @@ export const ProfileSelector = ({ config }) => {
       if (config.setWatermarkColor) config.setWatermarkColor(parsedConfig.watermarkColor ?? "#FFFFFF");
       if (config.setWatermarkOpacity) config.setWatermarkOpacity(parsedConfig.watermarkOpacity ?? 50);
 
+      // Mask Settings
+      if (config.setEnableSubtitles) config.setEnableSubtitles(parsedConfig.enableSubtitles ?? true);
+      if (config.setMaskEnabled) config.setMaskEnabled(parsedConfig.maskEnabled ?? false);
+      if (config.setMasks) config.setMasks(parsedConfig.masks ?? []);
+
       if (config.setLoadedProfileConfig) {
         config.setLoadedProfileConfig({
           voice: parsedConfig.voiceMode ?? 'edge_auto',
@@ -131,6 +139,9 @@ export const ProfileSelector = ({ config }) => {
           watermarkSize: parsedConfig.watermarkSize ?? 20,
           watermarkColor: parsedConfig.watermarkColor ?? "#FFFFFF",
           watermarkOpacity: parsedConfig.watermarkOpacity ?? 50,
+          enableSubtitles: parsedConfig.enableSubtitles ?? true,
+          maskEnabled: parsedConfig.maskEnabled ?? false,
+          masks: parsedConfig.masks ?? [],
         });
       }
 
@@ -269,6 +280,9 @@ export const SaveProfileButton = ({ config, onSaveSuccess }) => {
         watermarkSize: config.watermarkSize,
         watermarkColor: config.watermarkColor,
         watermarkOpacity: config.watermarkOpacity,
+        enableSubtitles: config.enableSubtitles,
+        maskEnabled: config.maskEnabled,
+        masks: config.masks,
       };
 
       const formData = new FormData();

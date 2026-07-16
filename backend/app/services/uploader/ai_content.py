@@ -174,6 +174,12 @@ class AIContentGenerator:
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=300
                 )
+            elif self.active_provider == "custom":
+                response = self.custom_client.chat.completions.create(
+                    model=self.custom_ai_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=300
+                )
                 result_text = response.choices[0].message.content.strip()
                 
             return result_text

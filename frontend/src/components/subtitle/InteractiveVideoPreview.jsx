@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const InteractiveVideoPreview = ({ config, children, className = "w-full h-auto", aspectRatio }) => {
+export const InteractiveVideoPreview = ({ config, children, className = "w-full h-auto", aspectRatio, isFfmpegPreview = false }) => {
   const handleBoxMouseDown = (e, mask) => {
     e.preventDefault();
     e.stopPropagation();
@@ -120,12 +120,30 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
         className={`flex items-center justify-center max-w-full max-h-full ${config.isDragging ? 'pointer-events-none' : ''}`}
         style={{
           ...(aspectRatio ? { width: '100%', height: '100%' } : { width: 'fit-content', height: 'fit-content' }),
-          transform: (config.flipVideo ? 'scaleX(-1) ' : '') + (config.optZoom ? 'scale(1.02) ' : '')
+          transform: isFfmpegPreview ? 'none' : ((config.flipVideo ? 'scaleX(-1) ' : '') + (config.optZoom ? 'scale(1.02) ' : ''))
         }}
       >
         {children}
       </div>
       
+      {/* Drag Highlight Line - real-time position indicator during FFmpeg preview drag */}
+      {isFfmpegPreview && config.enableSubtitles && config.isDragging && (
+        <div
+          className="absolute w-full z-[60] pointer-events-none"
+          style={{ bottom: config.subtitleMarginV + '%' }}
+        >
+          <div style={{
+            height: '2px',
+            background: 'linear-gradient(90deg, transparent 0%, #EC4899 20%, #EC4899 80%, transparent 100%)',
+            boxShadow: '0 0 8px rgba(236, 72, 153, 0.6)',
+            opacity: 0.9
+          }} />
+          <div className="absolute left-1/2 -translate-x-1/2 -top-5 bg-black/70 text-[#EC4899] text-[10px] px-2 py-0.5 rounded font-mono whitespace-nowrap backdrop-blur-sm">
+            Sub-Y: {Math.round(config.subtitleMarginV)}%
+          </div>
+        </div>
+      )}
+
       {/* Overlay Subtitle */}
       {config.enableSubtitles && (() => {
         const styleId = config.subtitleStyle || 'classic';
@@ -141,8 +159,8 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
         
         return (
         <div 
-          className={`absolute w-full flex justify-center transition-opacity z-50 pointer-events-auto ${config.isDragging ? 'opacity-50' : 'hover:opacity-90'}`}
-          style={{ bottom: config.subtitleMarginV + '%', cursor: 'move' }}
+          className={`absolute w-full flex justify-center z-50 pointer-events-auto ${config.isDragging ? 'opacity-70' : 'hover:opacity-90'}`}
+          style={{ bottom: config.subtitleMarginV + '%', cursor: 'move', transition: config.isDragging ? 'none' : 'opacity 0.2s' }}
           onMouseDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -151,7 +169,14 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
         >
           <div
             className="text-center pointer-events-none relative"
-            style={{
+            style={isFfmpegPreview ? {
+              color: 'transparent',
+              backgroundColor: 'transparent',
+              fontSize: config.subtitleFontSize + 'px',
+              padding: `${config.subtitleBgPadding * 3}px ${config.subtitleBgPadding * 5}px`,
+              userSelect: 'none',
+              border: 'none'
+            } : {
               color: config.subtitleTextColor,
               backgroundColor: isNeon ? 'transparent' : bgColorHex,
               fontSize: config.subtitleFontSize + 'px',
@@ -163,14 +188,14 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
               border: isNeon ? `2px solid ${config.subtitleBgColor}` : 'none',
             }}
           >
-            {isNeon && (
+            {!isFfmpegPreview && isNeon && (
                <div style={{
                  position: 'absolute', inset: 0, 
                  backgroundColor: config.subtitleBgColor, opacity: config.subtitleBgOpacity / 100, 
                  borderRadius: br, zIndex: 0, filter: 'blur(8px)'
                }}></div>
             )}
-            <span style={{ position: 'relative', zIndex: 1, textShadow: isNeon ? `0 0 8px ${config.subtitleBgColor}` : 'none' }}>
+            <span style={{ position: 'relative', zIndex: 1, textShadow: (!isFfmpegPreview && isNeon) ? `0 0 8px ${config.subtitleBgColor}` : 'none' }}>
               {config.previewSubtitleText || 'Đây là phụ đề mẫu tự động sinh...'}
             </span>
           </div>
@@ -191,10 +216,10 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
               height: `${mask.height}%`,
               position: 'absolute',
               border: isActive ? '2px dashed #EC4899' : '2px dashed rgba(236, 72, 153, 0.4)',
-              backgroundColor: mask.type === 'color' 
+              backgroundColor: isFfmpegPreview ? 'transparent' : (mask.type === 'color' 
                 ? mask.color 
-                : 'rgba(236, 72, 153, 0.15)',
-              backdropFilter: mask.type === 'blur' ? 'blur(8px)' : 'none',
+                : 'rgba(236, 72, 153, 0.15)'),
+              backdropFilter: (isFfmpegPreview || mask.type !== 'blur') ? 'none' : 'blur(8px)',
               cursor: 'move',
               zIndex: isActive ? 35 : 30,
               boxSizing: 'border-box'
@@ -247,16 +272,16 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
             <div
               className="px-4 py-2 border-2 border-dashed border-white/50 rounded pointer-events-none relative"
               style={{
-                color: config.watermarkColor,
+                color: isFfmpegPreview ? 'transparent' : config.watermarkColor,
                 fontSize: config.watermarkSize + 'px',
                 fontWeight: 'bold',
-                textShadow: '0px 1px 3px rgba(0,0,0,0.8)',
+                textShadow: isFfmpegPreview ? 'none' : '0px 1px 3px rgba(0,0,0,0.8)',
                 whiteSpace: 'nowrap',
-                opacity: config.watermarkOpacity / 100
+                opacity: isFfmpegPreview ? 1 : (config.watermarkOpacity / 100)
               }}
             >
               {config.watermarkText || 'Logo của bạn'}
-              <span className="animate-pulse ml-1 border-r-2 border-white absolute right-2 h-3/4 top-[12.5%]"></span>
+              {!isFfmpegPreview && <span className="animate-pulse ml-1 border-r-2 border-white absolute right-2 h-3/4 top-[12.5%]"></span>}
             </div>
           )}
           {config.watermarkType === 'image' && config.watermarkImagePreview && (
@@ -266,6 +291,7 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
                 src={config.watermarkImagePreview} 
                 alt="Watermark" 
                 className="w-full h-auto object-contain"
+                style={{ opacity: isFfmpegPreview ? 0 : 1 }}
               />
             </div>
           )}

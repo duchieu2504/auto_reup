@@ -67,6 +67,11 @@ class ProcessRequest(BaseModel):
     masks: list[VideoMask] = []
 
 
+class PreviewRequest(ProcessRequest):
+    preview_text: str = "Đây là phụ đề mẫu tự động sinh..."
+    video_path: Optional[str] = None
+
+
 @router.post("/upload-logo")
 async def upload_logo(file: UploadFile = File(...)):
     # Validate extension
@@ -112,6 +117,69 @@ async def upload_video(file: UploadFile = File(...)):
     relative_path = f"data/raw_videos/{filename}"
     return {"status": "success", "path": relative_path, "filename": file.filename}
 
+
+@router.post("/preview-subtitle")
+async def preview_subtitle(request: PreviewRequest):
+    vp_clean = None
+    if request.video_path:
+        vp_clean = request.video_path.replace("\\", "/")
+    elif request.video_paths and len(request.video_paths) > 0:
+        vp_clean = request.video_paths[0].replace("\\", "/")
+        
+    if not vp_clean:
+        raise HTTPException(status_code=400, detail="Thiếu đường dẫn video.")
+        
+    if "data/raw_videos/" in vp_clean:
+        vp_clean = os.path.join(DATA_DIR, "raw_videos") + "/" + vp_clean.split("data/raw_videos/")[-1]
+    
+    if not os.path.exists(vp_clean):
+        raise HTTPException(status_code=404, detail="Không tìm thấy video.")
+        
+    from app.services.processor.video_editor import VideoEditor
+    editor = VideoEditor()
+    
+    try:
+        output_img = editor.generate_preview_frame(
+            input_video=vp_clean,
+            preview_text=request.preview_text,
+            flip_video=request.flip_video,
+            subtitle_style=request.subtitle_style,
+            opt_zoom=request.opt_zoom,
+            opt_color=request.opt_color,
+            opt_noise=request.opt_noise,
+            subtitle_text_color=request.subtitle_text_color,
+            subtitle_bg_color=request.subtitle_bg_color,
+            subtitle_font_size=request.subtitle_font_size,
+            subtitle_margin_v=request.subtitle_margin_v,
+            subtitle_bg_padding=request.subtitle_bg_padding,
+            subtitle_bg_opacity=request.subtitle_bg_opacity,
+            watermark_type=request.watermark_type,
+            watermark_text=request.watermark_text,
+            watermark_image_path=request.watermark_image_path,
+            watermark_x=request.watermark_x,
+            watermark_y=request.watermark_y,
+            watermark_size=request.watermark_size,
+            watermark_color=request.watermark_color,
+            watermark_opacity=request.watermark_opacity,
+            subtitle_font_family=request.subtitle_font_family,
+            enable_subtitles=request.enable_subtitles,
+            mask_enabled=request.mask_enabled,
+            masks=[m.dict() for m in request.masks]
+        )
+        
+        # Return image and delete temp file in background
+        from fastapi.responses import FileResponse
+        from starlette.background import BackgroundTask
+        
+        return FileResponse(
+            output_img, 
+            media_type="image/jpeg", 
+            filename="preview.jpg",
+            background=BackgroundTask(os.remove, output_img)
+        )
+    except Exception as e:
+        logger.error(f"Lỗi generate preview frame: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/start")

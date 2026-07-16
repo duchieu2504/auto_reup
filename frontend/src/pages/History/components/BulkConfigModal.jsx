@@ -5,6 +5,7 @@ import { InteractiveVideoPreview } from '../../../components/subtitle/Interactiv
 import { ProfileSelector, SaveProfileButton } from '../../../components/subtitle/ProfileSelector';
 import { PlayCircle, Sliders, ImageIcon, Type, Music, X, Loader2 } from 'lucide-react';
 import { useSubtitleState } from '../../../hooks/useSubtitleState';
+import { useFfmpegPreview } from '../../../hooks/useFfmpegPreview';
 
 export const BulkConfigModal = ({ hook }) => {
   const {
@@ -16,6 +17,9 @@ export const BulkConfigModal = ({ hook }) => {
   const subtitleConfig = useSubtitleState();
   const [activeTab, setActiveTab] = useState('basic'); // 'basic' | 'subtitle' | 'watermark'
   const [aspectRatio, setAspectRatio] = useState(null);
+  
+  const videoPath = processingItems && processingItems.length > 0 ? processingItems[0] : null;
+  const { ffmpegPreviewUrl, isGeneratingPreview } = useFfmpegPreview(subtitleConfig, videoPath);
 
   if (!showConfigModal) return null;
 
@@ -133,13 +137,19 @@ export const BulkConfigModal = ({ hook }) => {
             <div className="flex-1 bg-black/40 rounded-xl overflow-hidden border border-white/5 relative min-h-0 shadow-inner p-2">
               <div className="absolute inset-2 flex items-center justify-center">
                 {previewImageUrl ? (
-                  <InteractiveVideoPreview config={subtitleConfig} aspectRatio={aspectRatio} className="max-w-full max-h-full">
+                  <InteractiveVideoPreview config={subtitleConfig} aspectRatio={aspectRatio} className="max-w-full max-h-full" isFfmpegPreview={!!ffmpegPreviewUrl}>
                     <img
-                      src={previewImageUrl}
+                      src={ffmpegPreviewUrl || previewImageUrl}
                       alt="Preview"
-                      className="max-w-full max-h-full block pointer-events-none object-contain"
+                      className={`max-w-full max-h-full block pointer-events-none object-contain transition-opacity duration-300 ${isGeneratingPreview ? 'opacity-50' : 'opacity-100'}`}
                       onLoad={(e) => setAspectRatio(e.target.naturalWidth / e.target.naturalHeight)}
                     />
+                    {isGeneratingPreview && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/30 backdrop-blur-[2px] rounded-xl z-10">
+                        <Loader2 className="animate-spin text-brand-primary mb-2" size={24} />
+                        <span className="text-xs font-semibold drop-shadow-md">Đang cập nhật ảnh mẫu thực tế...</span>
+                      </div>
+                    )}
                   </InteractiveVideoPreview>
                 ) : (
                   <div className="flex flex-col items-center justify-center text-text-secondary gap-2 bg-black/20 w-full h-full">

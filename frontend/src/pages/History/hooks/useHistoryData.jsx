@@ -321,6 +321,23 @@ export const useHistoryData = () => {
         subtitleConfig.saveEditProfile(); // Save selected params as default for next time
       }
 
+      let finalWatermarkPath = subtitleConfig.watermarkImagePath;
+      if (subtitleConfig.watermarkType === 'image' && subtitleConfig.watermarkImageFile) {
+        const formData = new FormData();
+        formData.append('file', subtitleConfig.watermarkImageFile);
+        const uploadRes = await fetch(`${API_BASE}/processor/upload-logo`, {
+          method: 'POST',
+          body: formData
+        });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          finalWatermarkPath = uploadData.path;
+          subtitleConfig.setWatermarkImagePath(finalWatermarkPath);
+        } else {
+          return toast.error("Lỗi khi tải lên logo watermark!");
+        }
+      }
+
       const res = await fetch(`${API_BASE}/processor/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -340,6 +357,14 @@ export const useHistoryData = () => {
           subtitle_margin_v: subtitleConfig.subtitleMarginV,
           subtitle_bg_padding: subtitleConfig.subtitleBgPadding,
           subtitle_bg_opacity: subtitleConfig.subtitleBgOpacity,
+          watermark_type: subtitleConfig.watermarkType || "none",
+          watermark_text: subtitleConfig.watermarkText || null,
+          watermark_image_path: finalWatermarkPath || null,
+          watermark_x: subtitleConfig.watermarkX || 50.0,
+          watermark_y: subtitleConfig.watermarkY || 50.0,
+          watermark_size: subtitleConfig.watermarkSize || 20.0,
+          watermark_color: subtitleConfig.watermarkColor || "#FFFFFF",
+          watermark_opacity: subtitleConfig.watermarkOpacity || 50.0,
           mask_enabled: subtitleConfig.maskEnabled,
           mask_x: subtitleConfig.maskX || 10.0,
           mask_y: subtitleConfig.maskY || 10.0,

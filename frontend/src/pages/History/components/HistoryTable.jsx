@@ -312,7 +312,8 @@ export const HistoryTable = ({ hook }) => {
                             {historyEntries.map((hist, i) => {
                               // Tránh hiển thị trùng lặp nếu record đã có trong schedules (UploadSchedule mới)
                               const alreadyInSchedules = item.schedules?.some(sch => 
-                                sch.account_id === hist.account_id && (sch.status === 'success' || sch.status === 'completed')
+                                String(sch.account_id || sch.account?.id) === String(hist.account_id) && 
+                                (sch.status?.toLowerCase() === 'success' || sch.status?.toLowerCase() === 'completed')
                               );
                               if (alreadyInSchedules) return null;
                               
