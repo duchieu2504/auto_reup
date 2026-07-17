@@ -99,7 +99,43 @@ class VideoEditor:
             
         return "libx264"
 
-    def burn_subtitles(self, input_video: str, srt_file: str, output_video: str, tts_audio: str = None, bg_volume: int = 10, bgm_audio: str = None, flip_video: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, opt_pitch: bool = False, subtitle_text_color: str = "#000000", subtitle_bg_color: str = "#FFFFFF", subtitle_font_size: int = 8, subtitle_margin_v: int = 40, subtitle_bg_padding: int = 2, subtitle_bg_opacity: int = 100, watermark_type: str = "none", watermark_text: str = None, watermark_image_path: str = None, watermark_x: float = 50.0, watermark_y: float = 50.0, watermark_size: float = 20.0, watermark_color: str = "#FFFFFF", watermark_opacity: float = 50.0, subtitle_font_family: str = "Liberation Sans", enable_subtitles: bool = True, mask_enabled: bool = False, mask_x: float = 10.0, mask_y: float = 10.0, mask_width: float = 20.0, mask_height: float = 15.0, mask_type: str = "color", mask_color: str = "#000000", masks: list = None, log_callback=None, force_cpu: bool = False):
+    def burn_subtitles(self, input_video: str, srt_file: str, output_video: str, tts_audio: str = None, bgm_audio: str = None, config=None, log_callback=None, force_cpu: bool = False):
+        if config is None:
+            from app.schemas.processor_config import VideoProcessingConfig
+            config = VideoProcessingConfig()
+            
+        bg_volume = config.bg_volume
+        flip_video = config.flip_video
+        subtitle_style = config.subtitle_style
+        opt_zoom = config.opt_zoom
+        opt_color = config.opt_color
+        opt_noise = config.opt_noise
+        opt_pitch = config.opt_pitch
+        subtitle_text_color = config.subtitle_text_color
+        subtitle_bg_color = config.subtitle_bg_color
+        subtitle_font_size = config.subtitle_font_size
+        subtitle_margin_v = config.subtitle_margin_v
+        subtitle_bg_padding = config.subtitle_bg_padding
+        subtitle_bg_opacity = config.subtitle_bg_opacity
+        watermark_type = config.watermark_type
+        watermark_text = config.watermark_text
+        watermark_image_path = config.watermark_image_path
+        watermark_x = config.watermark_x
+        watermark_y = config.watermark_y
+        watermark_size = config.watermark_size
+        watermark_color = config.watermark_color
+        watermark_opacity = config.watermark_opacity
+        subtitle_font_family = config.subtitle_font_family
+        enable_subtitles = config.enable_subtitles
+        mask_enabled = config.mask_enabled
+        mask_x = config.mask_x
+        mask_y = config.mask_y
+        mask_width = config.mask_width
+        mask_height = config.mask_height
+        mask_type = config.mask_type
+        mask_color = config.mask_color
+        masks = config.masks
+
         load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/.env")), override=True)
         use_gpu = os.getenv("USE_GPU_ACCELERATION", "False").lower() == "true" and not force_cpu
         vcodec = self.get_optimal_video_encoder(use_gpu)
@@ -114,212 +150,81 @@ class VideoEditor:
         input_count = 1
         video_w, video_h = get_video_resolution(input_video)
         
-        # Build dynamic video filters
-        vf_filters = []
-        if flip_video:
-            vf_filters.append("hflip")
-            
-        if opt_zoom:
-            vf_filters.append("crop=iw/1.02:ih/1.02,scale=iw:ih")
-        if opt_color:
-            vf_filters.append("eq=brightness=0.02:contrast=1.05")
-        if opt_noise:
-            vf_filters.append("noise=alls=1:allf=t+u")
-            
-        # Scale subtitle size, padding, and position dynamically based on video height relative to preview reference (540px height)
-        scale_factor = video_h / 540.0
-        real_sub_size = max(1, int(float(subtitle_font_size) * scale_factor))
-        real_watermark_size = int(float(watermark_size) * 3)
-        real_margin_v = int(video_h * float(subtitle_margin_v) / 100.0)
-        real_bg_padding = max(0, int(float(subtitle_bg_padding) * scale_factor))
+        from app.services.processor.ffmpeg_builder import FFmpegFilterBuilder
+        builder = FFmpegFilterBuilder(config, video_w, video_h)
         
-        subs_dir = None  # Track for cleanup in finally block
-        wm_file = None   # Track watermark temp file for cleanup
+        builder.build_basic_filters()
+        builder.build_text_watermark()
+        builder.apply_vf_filters()
         
-        subs_input_idx = -1
-        ass_file = None
-        if enable_subtitles and srt_file:
+        if config.mask_enabled and not config.masks:
+            config.masks = [{
+                "x": config.mask_x,
+                "y": config.mask_y,
+                "width": config.mask_width,
+                "height": config.mask_height,
+                "type": config.mask_type,
+                "color": config.mask_color
+            }]
+            
+        builder.build_masks()
+        builder.finalize_vbase()
+        
+        subs_dir = None
+        if config.enable_subtitles and srt_file:
             from app.services.processor.subtitle_renderer import SubtitleRenderer
             import tempfile
-            
             subs_dir = tempfile.mkdtemp(prefix="subs_")
             
             renderer = SubtitleRenderer(
                 video_width=video_w,
                 video_height=video_h,
-                font_family=subtitle_font_family,
-                font_size=subtitle_font_size,
-                text_color=subtitle_text_color,
-                bg_color=subtitle_bg_color,
-                bg_opacity=subtitle_bg_opacity,
-                margin_v=subtitle_margin_v,
-                bg_padding=subtitle_bg_padding,
-                style=subtitle_style
+                font_family=config.subtitle_font_family,
+                font_size=config.subtitle_font_size,
+                text_color=config.subtitle_text_color,
+                bg_color=config.subtitle_bg_color,
+                bg_opacity=config.subtitle_bg_opacity,
+                margin_v=config.subtitle_margin_v,
+                bg_padding=config.subtitle_bg_padding,
+                style=config.subtitle_style
             )
             
             subtitle_output = renderer.generate_subtitle_sequence(srt_file, subs_dir)
-            
             if subtitle_output.endswith('.ass'):
-                ass_file = subtitle_output
+                builder.ass_file = subtitle_output
             else:
                 concat_escaped = subtitle_output.replace('\\', '/')
                 cmd.extend(["-f", "concat", "-safe", "0", "-i", concat_escaped])
-                subs_input_idx = input_count
+                builder.subs_input_idx = input_count
                 input_count += 1
-        
-        # Add watermark filter if applicable
-        if watermark_type == "text" and watermark_text:
-            text_color = watermark_color.replace('#', '0x')
-            opacity_val = watermark_opacity / 100.0
-            
-            # Default fallback for Linux/Docker/Windows
-            import platform
-            if platform.system() == "Windows":
-                font_path = "C:/Windows/Fonts/arial.ttf"
-            else:
-                font_path = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-            
-            # If a custom font is selected, try to find its file in data/fonts
-            fonts_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/fonts"))
-            if subtitle_font_family != "Liberation Sans" and os.path.exists(fonts_dir):
-                for f in os.listdir(fonts_dir):
-                    if os.path.splitext(f)[0] == subtitle_font_family:
-                        font_path = os.path.join(fonts_dir, f).replace("\\", "/")
-                        break
-            
-            # Write watermark text to a temp file to avoid all FFmpeg quoting/escaping hell
-            import uuid
-            import tempfile
-            wm_file = os.path.join(tempfile.gettempdir(), f"wm_{uuid.uuid4().hex}.txt")
-            with open(wm_file, "w", encoding="utf-8") as f:
-                f.write(watermark_text)
                 
-            # FFmpeg drawtext needs absolute paths to have colons escaped (e.g. C\:/temp/...)
-            wm_file_esc = wm_file.replace('\\', '/').replace(':', '\\:')
-            font_path_esc = font_path.replace('\\', '/').replace(':', '\\:')
-            
-            # Increase watermark font size to be more visible (watermark_size from UI is 0-100)
-            wm_real_size = int(float(watermark_size) * (video_h / 540.0) * 1.5)
-                
-            drawtext_filter = f"drawtext=fontfile='{font_path_esc}':textfile='{wm_file_esc}':fontcolor={text_color}@{opacity_val}:fontsize={wm_real_size}:x=(w-text_w)*{watermark_x}/100:y=(h-text_h)*{watermark_y}/100"
-            print(f"DEBUG DRAWTEXT FILTER: {drawtext_filter}")
-            vf_filters.append(drawtext_filter)
-            
-        current_in = "[0:v]"
-        v_filter_complex = ""
+        builder.build_subtitle_overlay()
         
-        if vf_filters:
-            vf_str = ",".join(vf_filters)
-            v_filter_complex += f"{current_in}{vf_str}[vfiltered];"
-            current_in = "[vfiltered]"
-
-        if mask_enabled:
-            # Fallback for compatibility if masks list is empty or None
-            local_masks = masks
-            if not local_masks:
-                local_masks = [{
-                    "x": mask_x,
-                    "y": mask_y,
-                    "width": mask_width,
-                    "height": mask_height,
-                    "type": mask_type,
-                    "color": mask_color
-                }]
-
-            filter_parts = []
-            for i, mask in enumerate(local_masks):
-                m_x = mask.get("x", 10.0) if isinstance(mask, dict) else getattr(mask, "x", 10.0)
-                m_y = mask.get("y", 10.0) if isinstance(mask, dict) else getattr(mask, "y", 10.0)
-                m_w = mask.get("width", 20.0) if isinstance(mask, dict) else getattr(mask, "width", 20.0)
-                m_h = mask.get("height", 15.0) if isinstance(mask, dict) else getattr(mask, "height", 15.0)
-                m_type = mask.get("type", "color") if isinstance(mask, dict) else getattr(mask, "type", "color")
-                m_color = mask.get("color", "#000000") if isinstance(mask, dict) else getattr(mask, "color", "#000000")
-
-                crop_w = video_w * m_w / 100.0
-                crop_h = video_h * m_h / 100.0
-
-                out_label = f"[vmasked_{i}]"
-                if m_type == "blur":
-                    blur_params = get_safe_boxblur_params(crop_w, crop_h, 15)
-                    part = f"{current_in}split[vsplitbase_{i}][vblur_{i}];[vblur_{i}]crop=w=iw*{m_w}/100:h=ih*{m_h}/100:x=iw*{m_x}/100:y=ih*{m_y}/100,boxblur={blur_params}[blurred_{i}];[vsplitbase_{i}][blurred_{i}]overlay=x=W*{m_x}/100:y=H*{m_y}/100{out_label}"
-                elif m_type == "noise":
-                    blur_params = get_safe_boxblur_params(crop_w, crop_h, 5)
-                    part = f"{current_in}split[vsplitbase_{i}][vnoise_{i}];[vnoise_{i}]crop=w=iw*{m_w}/100:h=ih*{m_h}/100:x=iw*{m_x}/100:y=ih*{m_y}/100,noise=alls=50:allf=t+u,boxblur={blur_params}[noisy_{i}];[vsplitbase_{i}][noisy_{i}]overlay=x=W*{m_x}/100:y=H*{m_y}/100{out_label}"
-                else: # color
-                    color_hex = m_color.replace('#', '0x')
-                    part = f"{current_in}drawbox=x=iw*{m_x}/100:y=ih*{m_y}/100:w=iw*{m_w}/100:h=ih*{m_h}/100:color={color_hex}:t=fill{out_label}"
-                
-                filter_parts.append(part)
-                current_in = out_label
-            
-            v_filter_complex += ";".join(filter_parts) + ";"
-
-        if v_filter_complex:
-            if current_in != "[vbase]":
-                v_filter_complex += f"{current_in}copy[vbase]"
-        else:
-            v_filter_complex = "[0:v]copy[vbase]"
-                
-        # Overlay generated subtitles if any
-        if subs_input_idx != -1:
-            v_filter_complex += f";[vbase][{subs_input_idx}:v]overlay=x=0:y=0[vsub_out]"
-            vbase_label = "[vsub_out]"
-        elif ass_file is not None:
-            # Escape absolute path for Windows
-            ass_path_esc = ass_file.replace('\\', '/').replace(':', '\\:')
-            v_filter_complex += f";[vbase]ass='{ass_path_esc}'[vsub_out]"
-            vbase_label = "[vsub_out]"
-        else:
-            vbase_label = "[vbase]"
-        
-        print(f"DEBUG V_FILTER_COMPLEX: {v_filter_complex}")
-        
-        wm_idx = -1
-        if watermark_type == "image" and watermark_image_path and os.path.exists(watermark_image_path):
-            cmd.extend(["-i", watermark_image_path])
-            wm_idx = input_count
+        if config.watermark_type == "image" and config.watermark_image_path and os.path.exists(config.watermark_image_path):
+            cmd.extend(["-i", config.watermark_image_path])
+            builder.wm_image_idx = input_count
             input_count += 1
-            opacity_val = watermark_opacity / 100.0
-            v_filter_complex += f";[{wm_idx}:v]format=rgba,colorchannelmixer=aa={opacity_val},scale=iw*{watermark_size}/100:-1[wm];{vbase_label}[wm]overlay=x=(W-w)*{watermark_x}/100:y=(H-h)*{watermark_y}/100[vout]"
-        else:
-            v_filter_complex += f";{vbase_label}copy[vout]"
             
-        tts_idx = -1
+        builder.build_image_watermark()
+        
         if tts_audio and os.path.exists(tts_audio):
             cmd.extend(["-i", tts_audio])
-            tts_idx = input_count
+            builder.tts_idx = input_count
             input_count += 1
             
-        bgm_idx = 0
         if bgm_audio and os.path.exists(bgm_audio):
             cmd.extend(["-i", bgm_audio])
-            bgm_idx = input_count
+            builder.bgm_idx = input_count
             input_count += 1
-
-        filter_complex_str = v_filter_complex
-        a_map = "0:a?" if bgm_idx == 0 else f"{bgm_idx}:a?"
-        v_map = "[vout]"
-        
-        bg_audio_label = f"[{bgm_idx}:a]"
-        
-        if tts_idx != -1:
-            bg_vol_float = bg_volume / 100.0
-            if opt_pitch:
-                audio_filter = f"{bg_audio_label}volume={bg_vol_float},asetrate=44100*1.02,atempo=1/1.02[bg];[{tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0[aout]"
-            else:
-                audio_filter = f"{bg_audio_label}volume={bg_vol_float}[bg];[{tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0[aout]"
             
-            filter_complex_str += ";" + audio_filter
-            a_map = "[aout]"
-        else:
-            if opt_pitch:
-                audio_filter = f"{bg_audio_label}asetrate=44100*1.02,atempo=1/1.02[aout]"
-                filter_complex_str += ";" + audio_filter
-                a_map = "[aout]"
+        a_map = builder.build_audio_filters()
+        filter_complex_str = builder.get_filter_complex_string()
+        
+        print(f"DEBUG V_FILTER_COMPLEX: {filter_complex_str}")
 
         cmd.extend([
             "-filter_complex", filter_complex_str,
-            "-map", v_map,
+            "-map", "[vout]",
             "-map", a_map,
             "-c:v", vcodec,
         ])
@@ -337,7 +242,7 @@ class VideoEditor:
                 "-pix_fmt", "yuv420p"
             ])
         
-        if tts_idx != -1 or opt_pitch:
+        if builder.tts_idx != -1 or config.opt_pitch:
             cmd.extend([
                 "-c:a", "aac",
                 "-b:a", "128k"
@@ -400,36 +305,63 @@ class VideoEditor:
                 if log_callback:
                     log_callback(f"[!] Phát hiện lỗi bộ mã hóa GPU (NVENC): {e}.\nTự động chuyển hướng render bằng CPU (libx264)...\n")
                 return self.burn_subtitles(
-                    input_video, srt_file, output_video, tts_audio, bg_volume, bgm_audio, flip_video, subtitle_style,
-                    opt_zoom, opt_color, opt_noise, opt_pitch, subtitle_text_color, subtitle_bg_color,
-                    subtitle_font_size, subtitle_margin_v, subtitle_bg_padding, subtitle_bg_opacity,
-                    watermark_type, watermark_text, watermark_image_path, watermark_x, watermark_y,
-                    watermark_size, watermark_color, watermark_opacity, subtitle_font_family,
-                    enable_subtitles, mask_enabled, mask_x, mask_y, mask_width, mask_height, mask_type,
-                    mask_color, masks, log_callback, force_cpu=True
+                    input_video=input_video, 
+                    srt_file=srt_file, 
+                    output_video=output_video, 
+                    tts_audio=tts_audio, 
+                    bgm_audio=bgm_audio, 
+                    config=config, 
+                    log_callback=log_callback, 
+                    force_cpu=True
                 )
             else:
                 raise Exception(f"Lỗi FFmpeg khi burn sub: {e}")
         finally:
-            # Cleanup: dọn dẹp thư mục subtitle PNGs tạm và file watermark temp
+            if builder:
+                builder.cleanup()
+            
+            # Cleanup: dọn dẹp thư mục subtitle PNGs tạm
             if subs_dir and os.path.exists(subs_dir):
                 try:
                     import shutil as _shutil
                     _shutil.rmtree(subs_dir, ignore_errors=True)
                 except Exception:
                     pass
-            if wm_file and os.path.exists(wm_file):
-                try:
-                    os.remove(wm_file)
-                except Exception:
-                    pass
 
-    def generate_preview_frame(self, input_video: str, preview_text: str, flip_video: bool = False, subtitle_style: str = "black_white", opt_zoom: bool = False, opt_color: bool = False, opt_noise: bool = False, subtitle_text_color: str = "#000000", subtitle_bg_color: str = "#FFFFFF", subtitle_font_size: int = 8, subtitle_margin_v: int = 40, subtitle_bg_padding: int = 2, subtitle_bg_opacity: int = 100, watermark_type: str = "none", watermark_text: str = None, watermark_image_path: str = None, watermark_x: float = 50.0, watermark_y: float = 50.0, watermark_size: float = 20.0, watermark_color: str = "#FFFFFF", watermark_opacity: float = 50.0, subtitle_font_family: str = "Liberation Sans", enable_subtitles: bool = True, mask_enabled: bool = False, masks: list = None) -> str:
+    def generate_preview_frame(self, input_video: str, preview_text: str, config=None) -> str:
         """
         Extracts a single frame from the input_video at a specific timestamp (e.g. 1 second in),
         applies the EXACT same video filters, subtitles, and watermarks as `burn_subtitles`,
         and returns the absolute path to a generated JPG image file.
         """
+        if config is None:
+            from app.schemas.processor_config import VideoProcessingConfig
+            config = VideoProcessingConfig()
+            
+        flip_video = config.flip_video
+        subtitle_style = config.subtitle_style
+        opt_zoom = config.opt_zoom
+        opt_color = config.opt_color
+        opt_noise = config.opt_noise
+        subtitle_text_color = config.subtitle_text_color
+        subtitle_bg_color = config.subtitle_bg_color
+        subtitle_font_size = config.subtitle_font_size
+        subtitle_margin_v = config.subtitle_margin_v
+        subtitle_bg_padding = config.subtitle_bg_padding
+        subtitle_bg_opacity = config.subtitle_bg_opacity
+        watermark_type = config.watermark_type
+        watermark_text = config.watermark_text
+        watermark_image_path = config.watermark_image_path
+        watermark_x = config.watermark_x
+        watermark_y = config.watermark_y
+        watermark_size = config.watermark_size
+        watermark_color = config.watermark_color
+        watermark_opacity = config.watermark_opacity
+        subtitle_font_family = config.subtitle_font_family
+        enable_subtitles = config.enable_subtitles
+        mask_enabled = config.mask_enabled
+        masks = config.masks
+
         import tempfile
         import uuid
         
@@ -440,32 +372,22 @@ class VideoEditor:
         cmd.extend(["-i", input_video])
         input_count = 1
         
-        vf_filters = []
-        if flip_video:
-            vf_filters.append("hflip")
-            
-        if opt_zoom:
-            vf_filters.append("crop=iw/1.02:ih/1.02,scale=iw:ih")
-        if opt_color:
-            vf_filters.append("eq=brightness=0.02:contrast=1.05")
-        if opt_noise:
-            vf_filters.append("noise=alls=1:allf=t+u")
-            
+        from app.services.processor.ffmpeg_builder import FFmpegFilterBuilder
+        builder = FFmpegFilterBuilder(config, video_w, video_h)
+        
+        builder.build_basic_filters()
+        
         subs_dir = None
-        wm_file = None
         srt_file = None
         
-        subs_input_idx = -1
-        ass_file = None
-        
         try:
-            if enable_subtitles and preview_text:
+            if config.enable_subtitles and preview_text:
                 from app.services.processor.subtitle_renderer import SubtitleRenderer
                 import pysrt
+                import tempfile
                 
                 subs_dir = tempfile.mkdtemp(prefix="preview_subs_")
                 
-                # Create a dummy SRT file spanning the preview time
                 srt_file = os.path.join(subs_dir, "preview.srt")
                 dummy_sub = pysrt.SubRipFile()
                 dummy_sub.append(pysrt.SubRipItem(
@@ -476,118 +398,51 @@ class VideoEditor:
                 renderer = SubtitleRenderer(
                     video_width=video_w,
                     video_height=video_h,
-                    font_family=subtitle_font_family,
-                    font_size=subtitle_font_size,
-                    text_color=subtitle_text_color,
-                    bg_color=subtitle_bg_color,
-                    bg_opacity=subtitle_bg_opacity,
-                    margin_v=subtitle_margin_v,
-                    bg_padding=subtitle_bg_padding,
-                    style=subtitle_style
+                    font_family=config.subtitle_font_family,
+                    font_size=config.subtitle_font_size,
+                    text_color=config.subtitle_text_color,
+                    bg_color=config.subtitle_bg_color,
+                    bg_opacity=config.subtitle_bg_opacity,
+                    margin_v=config.subtitle_margin_v,
+                    bg_padding=config.subtitle_bg_padding,
+                    style=config.subtitle_style
                 )
                 
                 subtitle_output = renderer.generate_subtitle_sequence(srt_file, subs_dir)
                 
                 if subtitle_output.endswith('.ass'):
-                    ass_file = subtitle_output
+                    builder.ass_file = subtitle_output
                 else:
                     concat_escaped = subtitle_output.replace('\\', '/')
                     cmd.extend(["-f", "concat", "-safe", "0", "-i", concat_escaped])
-                    subs_input_idx = input_count
+                    builder.subs_input_idx = input_count
                     input_count += 1
             
-            # Watermark filter
-            if watermark_type == "text" and watermark_text:
-                text_color = watermark_color.replace('#', '0x')
-                opacity_val = watermark_opacity / 100.0
-                
-                import platform
-                if platform.system() == "Windows":
-                    font_path = "C:/Windows/Fonts/arial.ttf"
-                else:
-                    font_path = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-                
-                fonts_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../data/fonts"))
-                if subtitle_font_family != "Liberation Sans" and os.path.exists(fonts_dir):
-                    for f in os.listdir(fonts_dir):
-                        if os.path.splitext(f)[0] == subtitle_font_family:
-                            font_path = os.path.join(fonts_dir, f).replace("\\", "/")
-                            break
-                
-                wm_file = os.path.join(tempfile.gettempdir(), f"wm_preview_{uuid.uuid4().hex}.txt")
-                with open(wm_file, "w", encoding="utf-8") as f:
-                    f.write(watermark_text)
-                    
-                wm_file_esc = wm_file.replace('\\', '/').replace(':', '\\:')
-                font_path_esc = font_path.replace('\\', '/').replace(':', '\\:')
-                
-                wm_real_size = int(float(watermark_size) * (video_h / 540.0) * 1.5)
-                drawtext_filter = f"drawtext=fontfile='{font_path_esc}':textfile='{wm_file_esc}':fontcolor={text_color}@{opacity_val}:fontsize={wm_real_size}:x=(w-text_w)*{watermark_x}/100:y=(h-text_h)*{watermark_y}/100"
-                vf_filters.append(drawtext_filter)
-                
-            current_in = "[0:v]"
-            v_filter_complex = ""
+            builder.build_text_watermark()
+            builder.apply_vf_filters()
             
-            if vf_filters:
-                vf_str = ",".join(vf_filters)
-                v_filter_complex += f"{current_in}{vf_str}[vfiltered];"
-                current_in = "[vfiltered]"
+            if config.mask_enabled and not config.masks:
+                config.masks = [{
+                    "x": config.mask_x,
+                    "y": config.mask_y,
+                    "width": config.mask_width,
+                    "height": config.mask_height,
+                    "type": config.mask_type,
+                    "color": config.mask_color
+                }]
                 
-            if mask_enabled and masks:
-                filter_parts = []
-                for i, mask in enumerate(masks):
-                    m_x = mask.get("x", 10.0)
-                    m_y = mask.get("y", 10.0)
-                    m_w = mask.get("width", 20.0)
-                    m_h = mask.get("height", 15.0)
-                    m_type = mask.get("type", "color")
-                    m_color = mask.get("color", "#000000")
-    
-                    crop_w = video_w * m_w / 100.0
-                    crop_h = video_h * m_h / 100.0
-    
-                    out_label = f"[vmasked_{i}]"
-                    if m_type == "blur":
-                        blur_params = get_safe_boxblur_params(crop_w, crop_h, 15)
-                        part = f"{current_in}split[vsplitbase_{i}][vblur_{i}];[vblur_{i}]crop=w=iw*{m_w}/100:h=ih*{m_h}/100:x=iw*{m_x}/100:y=ih*{m_y}/100,boxblur={blur_params}[blurred_{i}];[vsplitbase_{i}][blurred_{i}]overlay=x=W*{m_x}/100:y=H*{m_y}/100{out_label}"
-                    elif m_type == "noise":
-                        blur_params = get_safe_boxblur_params(crop_w, crop_h, 5)
-                        part = f"{current_in}split[vsplitbase_{i}][vnoise_{i}];[vnoise_{i}]crop=w=iw*{m_w}/100:h=ih*{m_h}/100:x=iw*{m_x}/100:y=ih*{m_y}/100,noise=alls=50:allf=t+u,boxblur={blur_params}[noisy_{i}];[vsplitbase_{i}][noisy_{i}]overlay=x=W*{m_x}/100:y=H*{m_y}/100{out_label}"
-                    else:
-                        color_hex = m_color.replace('#', '0x')
-                        part = f"{current_in}drawbox=x=iw*{m_x}/100:y=ih*{m_y}/100:w=iw*{m_w}/100:h=ih*{m_h}/100:color={color_hex}:t=fill{out_label}"
-                    
-                    filter_parts.append(part)
-                    current_in = out_label
-                
-                v_filter_complex += ";".join(filter_parts) + ";"
-    
-            if v_filter_complex:
-                if current_in != "[vbase]":
-                    v_filter_complex += f"{current_in}copy[vbase]"
-            else:
-                v_filter_complex = "[0:v]copy[vbase]"
-                    
-            if subs_input_idx != -1:
-                v_filter_complex += f";[vbase][{subs_input_idx}:v]overlay=x=0:y=0[vsub_out]"
-                vbase_label = "[vsub_out]"
-            elif ass_file is not None:
-                ass_path_esc = ass_file.replace('\\', '/').replace(':', '\\:')
-                v_filter_complex += f";[vbase]ass='{ass_path_esc}'[vsub_out]"
-                vbase_label = "[vsub_out]"
-            else:
-                vbase_label = "[vbase]"
+            builder.build_masks()
+            builder.finalize_vbase()
+            builder.build_subtitle_overlay()
             
-            wm_idx = -1
-            if watermark_type == "image" and watermark_image_path and os.path.exists(watermark_image_path):
-                cmd.extend(["-i", watermark_image_path])
-                wm_idx = input_count
+            if config.watermark_type == "image" and config.watermark_image_path and os.path.exists(config.watermark_image_path):
+                cmd.extend(["-i", config.watermark_image_path])
+                builder.wm_image_idx = input_count
                 input_count += 1
-                opacity_val = watermark_opacity / 100.0
-                v_filter_complex += f";[{wm_idx}:v]format=rgba,colorchannelmixer=aa={opacity_val},scale=iw*{watermark_size}/100:-1[wm];{vbase_label}[wm]overlay=x=(W-w)*{watermark_x}/100:y=(H-h)*{watermark_y}/100[vout]"
-            else:
-                v_filter_complex += f";{vbase_label}copy[vout]"
                 
+            builder.build_image_watermark()
+            v_filter_complex = builder.get_filter_complex_string()
+            
             cmd.extend([
                 "-filter_complex", v_filter_complex,
                 "-map", "[vout]",
@@ -605,11 +460,8 @@ class VideoEditor:
             return output_image
             
         finally:
+            if builder:
+                builder.cleanup()
             if subs_dir and os.path.exists(subs_dir):
                 import shutil as _shutil
                 _shutil.rmtree(subs_dir, ignore_errors=True)
-            if wm_file and os.path.exists(wm_file):
-                try:
-                    os.remove(wm_file)
-                except Exception:
-                    pass

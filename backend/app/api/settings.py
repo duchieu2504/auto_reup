@@ -87,56 +87,9 @@ async def get_edit_profile(video_id: str, db: Session = Depends(get_db)):
             with open(profile_path, "r", encoding="utf-8") as f:
                 return json.load(f)
                 
-        # Fallback to process_config in db if video_id is a history id
-        if video_id.isdigit():
-            from app.models.history import VideoHistory
-            record = db.query(VideoHistory).filter(VideoHistory.id == int(video_id)).first()
-            if record and record.process_config:
-                try:
-                    p_config = json.loads(record.process_config)
-                    print("TESTING GET PROFILE", p_config)
-                    if not p_config or len(p_config.keys()) == 0:
-                        print("RETURNING EMPTY")
-                        return {}
-                    
-                    camel_config = {
-                        "voice": p_config.get("voice_mode"),
-                        "volume": p_config.get("bg_volume"),
-                        "flipVideo": p_config.get("flip_video"),
-                        "optZoom": p_config.get("opt_zoom"),
-                        "optColor": p_config.get("opt_color"),
-                        "optNoise": p_config.get("opt_noise"),
-                        "optPitch": p_config.get("opt_pitch"),
-                        "subtitleFont": p_config.get("subtitle_font_family"),
-                        "subtitleStyle": p_config.get("subtitle_style"),
-                        "subtitleTextColor": p_config.get("subtitle_text_color"),
-                        "subtitleBgColor": p_config.get("subtitle_bg_color"),
-                        "subtitleFontSize": p_config.get("subtitle_font_size"),
-                        "subtitleMarginV": p_config.get("subtitle_margin_v"),
-                        "subtitleBgPadding": p_config.get("subtitle_bg_padding"),
-                        "enableSubtitles": p_config.get("enable_subtitles"),
-                        "maskEnabled": p_config.get("mask_enabled"),
-                        "maskX": p_config.get("mask_x"),
-                        "maskY": p_config.get("mask_y"),
-                        "maskWidth": p_config.get("mask_width"),
-                        "maskHeight": p_config.get("mask_height"),
-                        "maskType": p_config.get("mask_type"),
-                        "maskColor": p_config.get("mask_color"),
-                        "masks": p_config.get("masks", []),
-                        "watermarkType": p_config.get("watermark_type"),
-                        "watermarkText": p_config.get("watermark_text"),
-                        "watermarkImagePreview": p_config.get("watermark_image_path"),
-                        "watermarkX": p_config.get("watermark_x"),
-                        "watermarkY": p_config.get("watermark_y"),
-                        "watermarkSize": p_config.get("watermark_size"),
-                        "watermarkColor": p_config.get("watermark_color"),
-                        "watermarkOpacity": p_config.get("watermark_opacity")
-                    }
-                    return {k: v for k, v in camel_config.items() if v is not None}
-                except Exception as e:
-                    print(f"Error parsing process_config for {video_id}: {e}")
-                    
-        # Removed fallback to default.json to prevent new videos from inheriting the last bulk config
+        # Return empty dictionary if no specific profile exists, forcing frontend to use default clean state
+        return {}
+        
     except Exception as e:
         print(f"Error reading edit profile: {e}")
         

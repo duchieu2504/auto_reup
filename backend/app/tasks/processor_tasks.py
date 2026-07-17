@@ -122,8 +122,10 @@ def process_video_task(
 
         log_callback(f"[System] Chế độ đa luồng đang bật: {concurrency} luồng song song\n")
 
-        # Collect all process kwargs once to avoid repeating in the lambda
-        process_kwargs = dict(
+        from app.schemas.processor_config import VideoProcessingConfig
+        
+        # Collect all process kwargs once to construct the config object
+        config = VideoProcessingConfig(
             voice_mode=voice_mode,
             bg_volume=bg_volume,
             flip_video=flip_video,
@@ -156,12 +158,12 @@ def process_video_task(
             mask_height=mask_height,
             mask_type=mask_type,
             mask_color=mask_color,
-            masks=masks,
+            masks=masks if masks else [],
         )
 
         def process_single(vp):
             try:
-                pipeline.process_video(vp, log_callback, **process_kwargs)
+                pipeline.process_video(vp, log_callback, config)
             except Exception as e:
                 logger.error(f"Lỗi khi xử lý {vp}: {e}")
 

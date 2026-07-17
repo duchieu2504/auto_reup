@@ -139,9 +139,8 @@ async def preview_subtitle(request: PreviewRequest):
     editor = VideoEditor()
     
     try:
-        output_img = editor.generate_preview_frame(
-            input_video=vp_clean,
-            preview_text=request.preview_text,
+        from app.schemas.processor_config import VideoProcessingConfig
+        config = VideoProcessingConfig(
             flip_video=request.flip_video,
             subtitle_style=request.subtitle_style,
             opt_zoom=request.opt_zoom,
@@ -165,6 +164,12 @@ async def preview_subtitle(request: PreviewRequest):
             enable_subtitles=request.enable_subtitles,
             mask_enabled=request.mask_enabled,
             masks=[m.dict() for m in request.masks]
+        )
+        
+        output_img = editor.generate_preview_frame(
+            input_video=vp_clean,
+            preview_text=request.preview_text,
+            config=config
         )
         
         # Return image and delete temp file in background
@@ -198,81 +203,53 @@ async def start_processor(request: ProcessRequest):
     # Clear pause flags and set PENDING status for immediate UI update
     try:
         from app.db.session import get_db_session
-        from app.models.history import VideoHistory, ProcessStatus
+        from app.crud.crud_history import update_processing_config_and_status
 
         with get_db_session() as db:
             for vp_clean in cleaned_paths:
                 base_name = os.path.basename(vp_clean).split('.')[0]
                 await redis_client.delete(f"pause_video_{base_name}")
 
-                # Update DB to PENDING and save config
-                record = db.query(VideoHistory).filter(VideoHistory.raw_video_path.like(f"%{base_name}%")).first()
-                if record:
-                    old_config = {}
-                    if record.process_config:
-                        try:
-                            old_config = json.loads(record.process_config)
-                        except Exception:
-                            pass
-
-                    new_config = {
-                        "voice_mode": request.voice_mode,
-                        "bg_volume": request.bg_volume,
-                        "flip_video": request.flip_video,
-                        "subtitle_style": request.subtitle_style,
-                        "opt_zoom": request.opt_zoom,
-                        "opt_color": request.opt_color,
-                        "opt_noise": request.opt_noise,
-                        "opt_pitch": request.opt_pitch,
-                        "subtitle_font_family": request.subtitle_font_family,
-                        "subtitle_text_color": request.subtitle_text_color,
-                        "subtitle_bg_color": request.subtitle_bg_color,
-                        "subtitle_font_size": request.subtitle_font_size,
-                        "subtitle_margin_v": request.subtitle_margin_v,
-                        "subtitle_bg_padding": request.subtitle_bg_padding,
-                        "enable_subtitles": request.enable_subtitles,
-                        "mask_enabled": request.mask_enabled,
-                        "mask_x": request.mask_x,
-                        "mask_y": request.mask_y,
-                        "mask_width": request.mask_width,
-                        "mask_height": request.mask_height,
-                        "mask_type": request.mask_type,
-                        "mask_color": request.mask_color,
-                        "masks": [m.dict() for m in request.masks],
-                        "watermark_type": request.watermark_type,
-                        "watermark_text": request.watermark_text,
-                        "watermark_image_path": request.watermark_image_path,
-                        "watermark_x": request.watermark_x,
-                        "watermark_y": request.watermark_y,
-                        "watermark_size": request.watermark_size,
-                        "watermark_color": request.watermark_color,
-                        "watermark_opacity": request.watermark_opacity,
-                    }
-
-                    config_changed = (old_config != new_config)
-                    if config_changed:
-                        # Delete outdated processed video to force re-render
-                        out_video_path = os.path.join(DATA_DIR, "processed_videos", f"{base_name}_processed.mp4")
-                        if os.path.exists(out_video_path):
-                            try:
-                                os.remove(out_video_path)
-                                logger.info(f"Cấu hình thay đổi. Đã xóa video đã xử lý cũ: {out_video_path}")
-                            except Exception as e:
-                                logger.error(f"Lỗi khi xóa video cũ: {e}")
-
-                        # Delete outdated TTS audio if voice changed
-                        if old_config.get("voice_mode") != new_config.get("voice_mode"):
-                            out_tts_path = os.path.join(DATA_DIR, "audio", f"{base_name}_tts.mp3")
-                            if os.path.exists(out_tts_path):
-                                try:
-                                    os.remove(out_tts_path)
-                                    logger.info(f"Thay đổi giọng đọc. Đã xóa file TTS cũ: {out_tts_path}")
-                                except Exception as e:
-                                    logger.error(f"Lỗi khi xóa file TTS cũ: {e}")
-
-                    record.status = ProcessStatus.TRANSCRIBING
-                    record.process_config = json.dumps(new_config)
-            db.commit()
+                new_config = {
+                    "voice_mode": request.voice_mode,
+                    "bg_volume": request.bg_volume,
+                    "flip_video": request.flip_video,
+                    "subtitle_style": request.subtitle_style,
+                    "opt_zoom": request.opt_zoom,
+                    "opt_color": request.opt_color,
+                    "opt_noise": request.opt_noise,
+                    "opt_pitch": request.opt_pitch,
+                    "subtitle_font_family": request.subtitle_font_family,
+                    "subtitle_text_color": request.subtitle_text_color,
+                    "subtitle_bg_color": request.subtitle_bg_color,
+                    "subtitle_font_size": request.subtitle_font_size,
+                    "subtitle_margin_v": request.subtitle_margin_v,
+                    "subtitle_bg_padding": request.subtitle_bg_padding,
+                    "enable_subtitles": request.enable_subtitles,
+                    "mask_enabled": request.mask_enabled,
+                    "mask_x": request.mask_x,
+                    "mask_y": request.mask_y,
+                    "mask_width": request.mask_width,
+                    "mask_height": request.mask_height,
+                    "mask_type": request.mask_type,
+                    "mask_color": request.mask_color,
+                    "masks": [m.dict() for m in request.masks],
+                    "watermark_type": request.watermark_type,
+                    "watermark_text": request.watermark_text,
+                    "watermark_image_path": request.watermark_image_path,
+                    "watermark_x": request.watermark_x,
+                    "watermark_y": request.watermark_y,
+                    "watermark_size": request.watermark_size,
+                    "watermark_color": request.watermark_color,
+                    "watermark_opacity": request.watermark_opacity,
+                }
+                
+                update_processing_config_and_status(
+                    db=db, 
+                    base_name=base_name, 
+                    new_config=new_config, 
+                    data_dir=DATA_DIR
+                )
     except Exception as e:
         logger.error(f"Lỗi update DB khi start: {e}")
 
@@ -335,13 +312,16 @@ async def pause_processor(request: PauseRequest):
     # Update DB to PAUSED for immediate UI feedback
     try:
         from app.db.session import get_db_session
-        from app.models.history import VideoHistory, ProcessStatus
+        from app.models.history import ProcessStatus
+        from app.crud.crud_history import update_status
 
         with get_db_session() as db:
-            record = db.query(VideoHistory).filter(VideoHistory.raw_video_path.like(f"%{base_name}%")).first()
-            if record and record.status not in [ProcessStatus.COMPLETED, ProcessStatus.FAILED]:
-                record.status = ProcessStatus.PAUSED
-                db.commit()
+            update_status(
+                db=db, 
+                base_name=base_name, 
+                status=ProcessStatus.PAUSED, 
+                exclude_statuses=[ProcessStatus.COMPLETED, ProcessStatus.FAILED]
+            )
     except Exception as e:
         logger.error(f"Lỗi update DB khi pause: {e}")
 

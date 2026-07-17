@@ -217,6 +217,11 @@ SRT Gốc (Phần {i//chunk_size + 1}):
             try:
                 self._translate_srt_fallback_google(input_srt, output_srt, voice_mode)
                 logger.info(f"Đã dịch phụ đề thành công bằng Google Translate dự phòng cho {output_srt}")
+                
+                if on_chunk_translated:
+                    with open(output_srt, "r", encoding="utf-8") as f:
+                        on_chunk_translated(f.read())
+                        
                 return output_srt
             except Exception as google_err:
                 raise Exception(f"Lỗi dịch thuật bằng AI ({e}) và Google Translate dự phòng cũng thất bại: {google_err}")
