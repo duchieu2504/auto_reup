@@ -194,18 +194,36 @@ SRT Gốc (Phần {i//chunk_size + 1}):
             with open(output_srt, "w", encoding="utf-8") as f:
                 f.write(translated_full_text.strip())
                 
-            # Nếu dùng chế độ tự động phân vai giọng nói nhưng dịch bằng dịch vụ khác Gemini, mặc định thêm tiền tố [F]
-            if voice_mode == "edge_auto" and active_provider != "gemini":
-                try:
-                    import pysrt
-                    output_subs = pysrt.open(output_srt, encoding='utf-8')
-                    for sub in output_subs:
-                        text_stripped = sub.text.strip()
-                        if not text_stripped.startswith("[F]") and not text_stripped.startswith("[M]"):
-                            sub.text = f"[F] {text_stripped}"
+            # SANITY CHECK: Ép đồng bộ lại thời gian (Force Sync Timestamps)
+            # Lý do: Các model AI (nhất là custom AI) thường xuyên tự chế/làm tròn timestamp gây lệch sub.
+            try:
+                import pysrt
+                output_subs = pysrt.open(output_srt, encoding='utf-8')
+                if len(subs) == len(output_subs):
+                    for idx in range(len(subs)):
+                        output_subs[idx].start = subs[idx].start
+                        output_subs[idx].end = subs[idx].end
+                        output_subs[idx].index = subs[idx].index
+                    
+                    # Nếu dùng chế độ tự động phân vai, thêm [F] nếu chưa có
+                    if voice_mode == "edge_auto" and active_provider != "gemini":
+                        for sub in output_subs:
+                            text_stripped = sub.text.strip()
+                            if not text_stripped.startswith("[F]") and not text_stripped.startswith("[M]"):
+                                sub.text = f"[F] {text_stripped}"
+                                
                     output_subs.save(output_srt, encoding='utf-8')
-                except Exception as e_sub:
-                    print("Lỗi khi thêm tiền tố [F] cho sub:", e_sub)
+                else:
+                    print(f"[Cảnh báo] AI trả về số lượng dòng ({len(output_subs)}) khác với gốc ({len(subs)}). Bỏ qua ép đồng bộ thời gian.")
+                    # Nếu dùng chế độ tự động phân vai, thêm [F] nếu chưa có
+                    if voice_mode == "edge_auto" and active_provider != "gemini":
+                        for sub in output_subs:
+                            text_stripped = sub.text.strip()
+                            if not text_stripped.startswith("[F]") and not text_stripped.startswith("[M]"):
+                                sub.text = f"[F] {text_stripped}"
+                        output_subs.save(output_srt, encoding='utf-8')
+            except Exception as e_sync:
+                print("Lỗi khi ép đồng bộ thời gian sub:", e_sync)
                 
             return output_srt
             

@@ -345,6 +345,7 @@ export const useHistoryData = () => {
           video_paths: processingItems,
           voice_mode: subtitleConfig.voice,
           bg_volume: parseInt(subtitleConfig.volume),
+          vocal_volume: parseInt(subtitleConfig.vocalVolume || 0),
           flip_video: subtitleConfig.flipVideo,
           opt_zoom: subtitleConfig.optZoom,
           opt_color: subtitleConfig.optColor,

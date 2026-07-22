@@ -179,8 +179,8 @@ export const useScheduleData = () => {
       return;
     }
     
-    if (!targetVideo.original_caption) {
-      toast.error("Video này không có Caption gốc để dịch!");
+    if (!targetVideo.original_caption && !targetVideo.original_hashtags) {
+      toast.error("Video này không có Caption hoặc Hashtag gốc để dịch!");
       return;
     }
     
@@ -196,8 +196,9 @@ export const useScheduleData = () => {
       const data = await res.json();
       
       if (res.ok && data) {
-        if (data.translated_caption) {
-          setCaption(data.translated_caption);
+        if (data.translated_caption || data.hashtags) {
+          if (data.translated_caption) setCaption(data.translated_caption);
+          if (data.hashtags) setHashtags(data.hashtags);
           toast.success("Đã dịch xong caption!", { id: loadingToast });
         } else {
           toast.error("Không dịch được caption hoặc bản dịch trống.", { id: loadingToast });

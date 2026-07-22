@@ -100,6 +100,7 @@ export const useEditVideo = (id) => {
         video_paths: [videoData.raw_video_path],
         voice_mode: subtitleConfig.voice,
         bg_volume: parseInt(subtitleConfig.volume),
+        vocal_volume: parseInt(subtitleConfig.vocalVolume || 0),
         flip_video: subtitleConfig.flipVideo,
         opt_zoom: subtitleConfig.optZoom,
         opt_color: subtitleConfig.optColor,
@@ -129,7 +130,8 @@ export const useEditVideo = (id) => {
         mask_height: subtitleConfig.maskHeight || 15.0,
         mask_type: subtitleConfig.maskType || "color",
         mask_color: subtitleConfig.maskColor || "#000000",
-        masks: subtitleConfig.masks || []
+        masks: subtitleConfig.masks || [],
+        edited_subtitle: subtitle
       };
 
       const res = await fetch(`${API_BASE}/processor/start`, {

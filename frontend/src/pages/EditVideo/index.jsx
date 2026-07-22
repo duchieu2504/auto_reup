@@ -132,7 +132,6 @@ const EditVideo = () => {
                   ))}
                 </select>
               </div>
-              
               <div>
                 <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2 flex justify-between">
                   <span>Âm lượng nhạc nền</span>
@@ -143,6 +142,20 @@ const EditVideo = () => {
                   min="0" max="100" 
                   value={subtitleConfig.volume} 
                   onChange={e => subtitleConfig.setVolume(Number(e.target.value))} 
+                  className="w-full h-2 bg-border-subtle rounded-lg appearance-none cursor-pointer accent-brand-primary mt-1"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2 flex justify-between">
+                  <span>Âm lượng voice gốc</span>
+                  <span className="text-brand-primary font-mono">{subtitleConfig.vocalVolume || 0}%</span>
+                </label>
+                <input 
+                  type="range" 
+                  min="0" max="100" 
+                  value={subtitleConfig.vocalVolume || 0} 
+                  onChange={e => subtitleConfig.setVocalVolume(Number(e.target.value))} 
                   className="w-full h-2 bg-border-subtle rounded-lg appearance-none cursor-pointer accent-brand-primary mt-1"
                 />
               </div>

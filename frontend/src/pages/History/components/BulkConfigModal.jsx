@@ -26,6 +26,7 @@ export const BulkConfigModal = ({ hook }) => {
   const tabs = [
     { id: 'basic', label: 'Lồng tiếng & Mẫu', icon: <Music size={14} /> },
     { id: 'subtitle', label: 'Phụ đề & Siêu lách', icon: <Sliders size={14} /> },
+    { id: 'customSrt', label: 'Sub Tùy Chỉnh', icon: <Type size={14} /> },
     { id: 'watermark', label: 'Logo / Watermark', icon: <ImageIcon size={14} /> }
   ];
 
@@ -109,6 +110,20 @@ export const BulkConfigModal = ({ hook }) => {
                         className="w-full h-1.5 bg-border-subtle rounded-lg appearance-none cursor-pointer accent-brand-primary mt-2"
                       />
                     </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2 flex justify-between">
+                        <span>Âm lượng voice gốc</span>
+                        <span className="text-brand-primary font-mono">{subtitleConfig.vocalVolume || 0}%</span>
+                      </label>
+                      <input
+                        type="range"
+                        min="0" max="100"
+                        value={subtitleConfig.vocalVolume || 0}
+                        onChange={e => subtitleConfig.setVocalVolume(Number(e.target.value))}
+                        className="w-full h-1.5 bg-border-subtle rounded-lg appearance-none cursor-pointer accent-brand-primary mt-2"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -116,6 +131,55 @@ export const BulkConfigModal = ({ hook }) => {
               {activeTab === 'subtitle' && (
                 <div className="space-y-4 animate-in fade-in duration-200">
                   <SubtitleConfigPanel config={subtitleConfig} />
+                </div>
+              )}
+
+              {activeTab === 'customSrt' && (
+                <div className="space-y-4 animate-in fade-in duration-200">
+                  <div className="bg-bg-primary/40 border border-white/5 rounded-xl p-5 space-y-5">
+                    <div>
+                      <label className="flex items-center gap-2 cursor-pointer mb-4">
+                        <input
+                          type="checkbox"
+                          checked={subtitleConfig.useCustomSrt}
+                          onChange={(e) => subtitleConfig.setUseCustomSrt(e.target.checked)}
+                          className="w-4 h-4 rounded border-border-subtle bg-bg-secondary text-brand-primary focus:ring-brand-primary"
+                        />
+                        <span className="text-sm font-semibold text-text-primary">Bật phụ đề tùy chỉnh (Bỏ qua Dịch AI)</span>
+                      </label>
+                      <p className="text-xs text-text-secondary mb-4">
+                        Hệ thống sẽ bỏ qua bước nhận diện và dịch AI, trực tiếp render âm thanh lồng tiếng theo mốc thời gian bạn cấu hình dưới đây.
+                      </p>
+                    </div>
+
+                    <div className={!subtitleConfig.useCustomSrt ? 'opacity-50 pointer-events-none transition-opacity' : 'transition-opacity'}>
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider">Nội dung SRT</label>
+                        <label className="cursor-pointer bg-bg-secondary hover:bg-brand-primary/20 text-brand-primary text-xs px-3 py-1.5 rounded-lg transition-colors border border-brand-primary/30 flex items-center gap-2">
+                          <span>Tải file .srt</span>
+                          <input 
+                            type="file" 
+                            accept=".srt" 
+                            className="hidden" 
+                            onChange={(e) => {
+                              const file = e.target.files[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = (e) => subtitleConfig.setCustomSrt(e.target.result);
+                                reader.readAsText(file);
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+                      <textarea
+                        className="w-full h-48 bg-bg-secondary border border-border-subtle rounded-xl p-4 text-text-primary focus:outline-none focus:border-brand-primary transition-all duration-200 text-sm font-mono resize-y"
+                        placeholder="1\n00:00:01,000 --> 00:00:05,000\nXin chào các bạn!\n\n2\n..."
+                        value={subtitleConfig.customSrt}
+                        onChange={(e) => subtitleConfig.setCustomSrt(e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 

@@ -33,6 +33,7 @@ from app.models.edit_profile import EditProfile
 from app.models.proxy import Proxy
 from app.models.live_job import LiveStreamJob
 from app.models.followed_account import FollowedAccount
+from app.models.twitter_nurture_config import TwitterNurtureConfig
 from app.api.social_accounts import router as social_accounts_router
 from app.api.upload_schedule import router as upload_schedule_router
 

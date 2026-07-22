@@ -6,15 +6,11 @@ import random
 import re
 from datetime import datetime
 from typing import Dict, Any
-from .base_engine import BaseUploaderEngine
+from .base_engine import BaseUploaderEngine, TaskAbortedByUser
 from .adb_automator import ADBAutomator
 
 logger = logging.getLogger(__name__)
 
-
-class TaskAbortedByUser(Exception):
-    """Raised when the user manually stops the upload task via the UI."""
-    pass
 
 
 class ADBUploader(BaseUploaderEngine):
@@ -25,8 +21,7 @@ class ADBUploader(BaseUploaderEngine):
     """
     
     def __init__(self, account_data: Dict[str, Any], schedule_id: int = None):
-        super().__init__(account_data)
-        self.schedule_id = schedule_id
+        super().__init__(account_data, schedule_id=schedule_id)
         # Auth data có thể chứa "adb_ip" thay vì cookie, nhưng ưu tiên device_id nếu có
         self.adb_ip = self.account_data.get("device_id")
         if not self.adb_ip:

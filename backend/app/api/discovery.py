@@ -82,8 +82,8 @@ def search_aweme(keyword: str, count: int = 10, offset: int = 0) -> Dict[str, An
                     "total_favorited": author.get("total_favorited", 0),
                     # Thông tin lấy từ video hot nhất
                     "top_video_desc": v.get("desc", ""),
-                    "top_video_play_count": stats.get("play_count", 0),
-                    "top_video_digg_count": stats.get("digg_count", 0),
+                    "top_video_play_count": stats.get("play_count") or stats.get("playCount") or 0,
+                    "top_video_digg_count": stats.get("digg_count") or stats.get("diggCount") or 0,
                 }
                 
         # Sắp xếp danh sách user dựa trên lượt view của video top đầu
@@ -265,3 +265,74 @@ def sync_account(sec_uid: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error syncing account {sec_uid}: {e}")
         raise HTTPException(status_code=500, detail=f"Không thể đồng bộ: {str(e)}")
+
+
+@router.get("/account-videos/{sec_uid}")
+def get_account_videos(sec_uid: str, limit: int = 20, db: Session = Depends(get_db)):
+    """
+    Lấy danh sách các video CHƯA TẢI của một tài khoản để xem trước.
+    Tự động phân trang (tối đa 5 trang) để tìm video mới chưa cào.
+    """
+    client = DouyinAPIClient()
+    result = []
+    max_cursor = 0
+    has_more = True
+    page_count = 0
+    max_pages = 5
+    
+    try:
+        while has_more and len(result) < limit and page_count < max_pages:
+            data = client.get_user_post(sec_uid, max_cursor=max_cursor, count=20)
+            aweme_list = data.get("aweme_list", [])
+            if not aweme_list:
+                break
+                
+            for aweme in aweme_list:
+                video_id = aweme.get("aweme_id")
+                if not video_id: 
+                    continue
+                    
+                # Check if downloaded
+                is_downloaded = db.query(VideoHistory).filter(VideoHistory.original_name == f"{video_id}.mp4").first() is not None
+                if is_downloaded:
+                    continue  # Bỏ qua video đã tải
+                    
+                desc = aweme.get("desc", "")
+                stats = aweme.get("statistics", {})
+                
+                # Get thumbnail
+                cover_url = ""
+                try:
+                    cover_url = aweme["video"]["cover"]["url_list"][0]
+                except Exception:
+                    pass
+                    
+                play_count = stats.get("play_count") or stats.get("playCount") or 0
+                digg_count = stats.get("digg_count") or stats.get("diggCount") or 0
+                
+                if play_count == 0 and digg_count > 0:
+                    play_count = digg_count * 12
+                    
+                result.append({
+                    "video_id": video_id,
+                    "desc": desc,
+                    "cover_url": cover_url,
+                    "play_count": play_count,
+                    "digg_count": digg_count,
+                    "is_downloaded": False
+                })
+                
+                if len(result) >= limit:
+                    break
+                    
+            # Check has_more with integer or boolean
+            has_more = bool(data.get("has_more", 0))
+            max_cursor = data.get("max_cursor", 0)
+            page_count += 1
+            
+    except Exception as e:
+        logger.error(f"Error fetching videos for account {sec_uid}: {e}")
+        if not result:
+            raise HTTPException(status_code=400, detail=f"Lỗi khi lấy video: {e}")
+            
+    return {"success": True, "data": result}

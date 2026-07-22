@@ -39,6 +39,7 @@ class KeysUpdate(BaseModel):
     enable_auto_voice_clone: bool = False
     enable_diarization: bool = False
     bgm_volume: int = 50
+    default_vocal_volume: int = 0
     custom_ai_endpoint: str = "http://localhost:20128/v1"
     custom_ai_key: str = ""
     custom_ai_model: str = "kr/claude-sonnet-4.5"
@@ -78,7 +79,6 @@ async def get_edit_profile(video_id: str, db: Session = Depends(get_db)):
     
     # Check specific video profile first
     profile_path = os.path.join(profile_dir, f"{video_id}.json")
-    default_path = os.path.join(profile_dir, "default.json")
     
     try:
         import json
@@ -87,6 +87,48 @@ async def get_edit_profile(video_id: str, db: Session = Depends(get_db)):
             with open(profile_path, "r", encoding="utf-8") as f:
                 return json.load(f)
                 
+        # FALLBACK: Lấy process_config từ DB của video đã render
+        try:
+            from app.models.history import VideoHistory
+            if video_id.isdigit():
+                vid_id_int = int(video_id)
+                record = db.query(VideoHistory).filter(VideoHistory.id == vid_id_int).first()
+                if record and record.process_config:
+                    db_config = json.loads(record.process_config)
+                    if db_config:
+                        # Map backend snake_case to frontend camelCase
+                        return {
+                            "voice": db_config.get("voice_mode", "edge_auto"),
+                            "volume": db_config.get("bg_volume", 10),
+                            "vocalVolume": db_config.get("vocal_volume", 0),
+                            "flipVideo": db_config.get("flip_video", False),
+                            "optZoom": db_config.get("opt_zoom", False),
+                            "optColor": db_config.get("opt_color", False),
+                            "optNoise": db_config.get("opt_noise", False),
+                            "optPitch": db_config.get("opt_pitch", False),
+                            "subtitleFont": db_config.get("subtitle_font_family", "Liberation Sans"),
+                            "subtitleStyle": db_config.get("subtitle_style", "black_white"),
+                            "subtitleTextColor": db_config.get("subtitle_text_color", "#000000"),
+                            "subtitleBgColor": db_config.get("subtitle_bg_color", "#FFFFFF"),
+                            "subtitleFontSize": db_config.get("subtitle_font_size", 8),
+                            "subtitleMarginV": db_config.get("subtitle_margin_v", 40),
+                            "subtitleBgPadding": db_config.get("subtitle_bg_padding", 2),
+                            "subtitleBgOpacity": db_config.get("subtitle_bg_opacity", 100),
+                            "enableSubtitles": db_config.get("enable_subtitles", True),
+                            "maskEnabled": db_config.get("mask_enabled", False),
+                            "masks": db_config.get("masks", []),
+                            "watermarkType": db_config.get("watermark_type", "none"),
+                            "watermarkText": db_config.get("watermark_text", ""),
+                            "watermarkImagePreview": db_config.get("watermark_image_path", ""),
+                            "watermarkX": db_config.get("watermark_x", 50.0),
+                            "watermarkY": db_config.get("watermark_y", 50.0),
+                            "watermarkSize": db_config.get("watermark_size", 20.0),
+                            "watermarkColor": db_config.get("watermark_color", "#FFFFFF"),
+                            "watermarkOpacity": db_config.get("watermark_opacity", 50.0),
+                        }
+        except Exception as e:
+            print(f"Error reading process_config fallback: {e}")
+            
         # Return empty dictionary if no specific profile exists, forcing frontend to use default clean state
         return {}
         
@@ -242,6 +284,7 @@ async def get_keys():
         "enable_auto_voice_clone": os.getenv("ENABLE_AUTO_VOICE_CLONE", "False").lower() == "true",
         "enable_diarization": os.getenv("ENABLE_DIARIZATION", "False").lower() == "true",
         "bgm_volume": int(os.getenv("BGM_VOLUME", 50)),
+        "default_vocal_volume": int(os.getenv("DEFAULT_VOCAL_VOLUME", 0)),
         "custom_ai_endpoint": os.getenv("CUSTOM_AI_ENDPOINT", "http://localhost:20128/v1"),
         "custom_ai_key": decrypt_data(os.getenv("CUSTOM_AI_KEY", "")),
         "custom_ai_model": os.getenv("CUSTOM_AI_MODEL", "kr/claude-sonnet-4.5")
@@ -280,6 +323,7 @@ async def update_keys(data: KeysUpdate):
     set_key(ENV_PATH, "ENABLE_AUTO_VOICE_CLONE", str(data.enable_auto_voice_clone))
     set_key(ENV_PATH, "ENABLE_DIARIZATION", str(data.enable_diarization))
     set_key(ENV_PATH, "BGM_VOLUME", str(data.bgm_volume))
+    set_key(ENV_PATH, "DEFAULT_VOCAL_VOLUME", str(data.default_vocal_volume))
     set_key(ENV_PATH, "CUSTOM_AI_ENDPOINT", data.custom_ai_endpoint)
     set_key(ENV_PATH, "CUSTOM_AI_KEY", encrypt_data(data.custom_ai_key))
     set_key(ENV_PATH, "CUSTOM_AI_MODEL", data.custom_ai_model)

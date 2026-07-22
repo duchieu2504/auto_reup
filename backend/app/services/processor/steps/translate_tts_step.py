@@ -76,6 +76,9 @@ class TranslateAndTTSStep(ProcessorStep):
             
             tts_queue = queue.Queue()
             tts_thread = None
+            # Use a separate temp path for TTS to write its time-adjusted SRT,
+            # avoiding race condition with translator writing to vi_srt simultaneously.
+            tts_adjusted_srt = vi_srt.replace('.srt', '_tts_adjusted.srt')
             
             if config.voice_mode != "none" and (not tts_audio_path or not os.path.exists(tts_audio_path) or os.path.getsize(tts_audio_path) == 0):
                 log_callback(f"[*] Bước 3: Tạo âm thanh lồng tiếng AI (Chạy song song)...\n", progress=25.0)
@@ -98,7 +101,7 @@ class TranslateAndTTSStep(ProcessorStep):
                     
                 tts_thread = threading.Thread(
                     target=tts.generate_tts_from_queue,
-                    args=(tts_queue, vi_srt, tts_audio_path, config.voice_mode, video_path, log_callback, vocal_path_to_clone)
+                    args=(tts_queue, tts_adjusted_srt, tts_audio_path, config.voice_mode, video_path, log_callback, vocal_path_to_clone)
                 )
                 tts_thread.start()
                 
@@ -112,6 +115,19 @@ class TranslateAndTTSStep(ProcessorStep):
                 tts_queue.put(None)
                 tts_thread.join()
                 record.audio_tts_path = tts_audio_path
+                
+                # CRITICAL FIX: TTS thread wrote time-adjusted SRT to a temp file.
+                # Now that both translator and TTS are done, copy the TTS-adjusted
+                # version (which has correct spillover timestamps matching the audio)
+                # over the translator's vi_srt so subtitle timing matches voice timing.
+                if os.path.exists(tts_adjusted_srt) and os.path.getsize(tts_adjusted_srt) > 0:
+                    import shutil
+                    shutil.copy2(tts_adjusted_srt, vi_srt)
+                    try:
+                        os.remove(tts_adjusted_srt)
+                    except Exception:
+                        pass
+                    log_callback(f"[*] Đã đồng bộ thời gian SRT với TTS (Spillover Sync).\n")
                 
                 tts_meta_path = os.path.join(audio_dir, f"{base_name}_tts_meta.json")
                 if os.path.exists(tts_audio_path):

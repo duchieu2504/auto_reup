@@ -178,7 +178,7 @@ export const ScheduleForm = ({ hook }) => {
 
               return (
                 <div className="flex flex-col gap-5">
-                  {['tiktok', 'youtube', 'facebook', 'instagram'].map(platform => {
+                  {['tiktok', 'youtube', 'facebook', 'instagram', 'twitter'].map(platform => {
                     const platformAccounts = filteredAccounts.filter(a => (a.platform || '').toLowerCase() === platform);
                     if (platformAccounts.length === 0) return null;
                     
@@ -189,6 +189,7 @@ export const ScheduleForm = ({ hook }) => {
                           {platform === 'youtube' && <div className="w-2 h-2 rounded-full bg-red-500"></div>}
                           {platform === 'facebook' && <div className="w-2 h-2 rounded-full bg-blue-500"></div>}
                           {platform === 'instagram' && <div className="w-2 h-2 rounded-full bg-pink-500"></div>}
+                          {platform === 'twitter' && <div className="w-2 h-2 rounded-full bg-white"></div>}
                           {platform} <span className="text-[10px] bg-bg-secondary px-1.5 py-0.5 rounded-md border border-border-subtle">{platformAccounts.length}</span>
                         </h4>
                         <div className="grid grid-cols-2 gap-3">
@@ -254,7 +255,7 @@ export const ScheduleForm = ({ hook }) => {
                   
                   {/* Other platforms catch-all */}
                   {(() => {
-                    const knownPlatforms = ['tiktok', 'youtube', 'facebook', 'instagram'];
+                    const knownPlatforms = ['tiktok', 'youtube', 'facebook', 'instagram', 'twitter'];
                     const otherAccounts = filteredAccounts.filter(a => !knownPlatforms.includes((a.platform || '').toLowerCase()));
                     if (otherAccounts.length === 0) return null;
                     

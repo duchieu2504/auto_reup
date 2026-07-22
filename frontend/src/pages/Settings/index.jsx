@@ -33,6 +33,7 @@ import ThemeTab from './components/ThemeTab';const Settings = () => {
   const [enableAutoVoiceClone, setEnableAutoVoiceClone] = useState(false);
   const [enableDiarization, setEnableDiarization] = useState(false);
   const [bgmVolume, setBgmVolume] = useState(50);
+  const [defaultVocalVolume, setDefaultVocalVolume] = useState(0);
   const [uploadBgStatus, setUploadBgStatus] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   const [validateStatus, setValidateStatus] = useState({ fpt: "", elevenlabs: "", gemini: "", openai: "", anthropic: "", xai: "", groq: "", pexels: "", douyin: "", gpm: "", custom: "" });
@@ -101,6 +102,7 @@ import ThemeTab from './components/ThemeTab';const Settings = () => {
         if (data.enable_auto_voice_clone !== undefined) setEnableAutoVoiceClone(data.enable_auto_voice_clone);
         if (data.enable_diarization !== undefined) setEnableDiarization(data.enable_diarization);
         if (data.bgmVolume !== undefined) setBgmVolume(data.bgmVolume);
+        if (data.default_vocal_volume !== undefined) setDefaultVocalVolume(data.default_vocal_volume);
 
         // Tự động kiểm tra trạng thái ngay khi load trang nếu có dữ liệu
         if (data.fpt_ai_api_key || data.gemini_api_key || data.douyin_cookie || data.pexels_api_key) {
@@ -184,6 +186,7 @@ import ThemeTab from './components/ThemeTab';const Settings = () => {
           enable_auto_voice_clone: enableAutoVoiceClone,
           enable_diarization: enableDiarization,
           bgm_volume: Number(bgmVolume),
+          default_vocal_volume: Number(defaultVocalVolume),
           custom_ai_endpoint: customAiEndpoint,
           custom_ai_key: customAiKey,
           custom_ai_model: customAiModel
@@ -363,6 +366,7 @@ import ThemeTab from './components/ThemeTab';const Settings = () => {
                 hfToken={hfToken} setHfToken={setHfToken}
                 enableDemucs={enableDemucs} setEnableDemucs={setEnableDemucs}
                 bgmVolume={bgmVolume} setBgmVolume={setBgmVolume}
+                defaultVocalVolume={defaultVocalVolume} setDefaultVocalVolume={setDefaultVocalVolume}
                 activeTTSProvider={activeTTSProvider} setActiveTTSProvider={setActiveTTSProvider}
                 enableAutoVoiceClone={enableAutoVoiceClone} setEnableAutoVoiceClone={setEnableAutoVoiceClone}
                 fptKey={fptKey} setFptKey={setFptKey}

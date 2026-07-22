@@ -373,6 +373,8 @@ class TTSGenerator:
         if log_callback: log_callback(f"[*] Bắt đầu sinh âm thanh Pipeline bằng {max_workers} luồng xử lý song song...\n")
         
         all_subs = []
+        prev_chunk_last_sub = None  # Track last sub of previous chunk for cross-chunk boundary
+        prev_chunk_last_future = None
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {}
             while True:
@@ -383,14 +385,30 @@ class TTSGenerator:
                 # Parse the chunk text into SubRipItems
                 subs = pysrt.from_string(chunk)
                 all_subs.extend(subs)
+                
+                # If we have context from previous chunk, submit the boundary sub now
+                if prev_chunk_last_sub is not None and len(subs) > 0:
+                    n_s = subs[0].start
+                    boundary_next_start = (n_s.hours * 3600 + n_s.minutes * 60 + n_s.seconds) * 1000 + n_s.milliseconds
+                    future = executor.submit(process_single_sub, prev_chunk_last_sub.index, prev_chunk_last_sub, boundary_next_start)
+                    futures[future] = prev_chunk_last_sub.index
+                    prev_chunk_last_sub = None
+                
                 for idx_sub, sub in enumerate(subs):
-                    # Calculate next_sub_start_ms for Spillover logic
-                    next_sub_start_ms = None
                     if idx_sub + 1 < len(subs):
+                        # Not the last sub in this chunk - we know the next sub start
                         n_s = subs[idx_sub + 1].start
                         next_sub_start_ms = (n_s.hours * 3600 + n_s.minutes * 60 + n_s.seconds) * 1000 + n_s.milliseconds
-                    future = executor.submit(process_single_sub, sub.index, sub, next_sub_start_ms)
-                    futures[future] = sub.index
+                        future = executor.submit(process_single_sub, sub.index, sub, next_sub_start_ms)
+                        futures[future] = sub.index
+                    else:
+                        # Last sub in this chunk - defer until we know next chunk's first sub
+                        prev_chunk_last_sub = sub
+                        
+            # Submit the very last sub (no next chunk coming)
+            if prev_chunk_last_sub is not None:
+                future = executor.submit(process_single_sub, prev_chunk_last_sub.index, prev_chunk_last_sub, None)
+                futures[future] = prev_chunk_last_sub.index
                     
             for future in concurrent.futures.as_completed(futures):
                 try:

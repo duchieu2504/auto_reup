@@ -13,12 +13,15 @@ class VideoMask(BaseModel):
 class VideoProcessingConfig(BaseModel):
     voice_mode: str = "edge_auto"
     bg_volume: int = 10
+    vocal_volume: int = 0
     flip_video: bool = False
     opt_zoom: bool = False
     opt_color: bool = False
     opt_noise: bool = False
     opt_pitch: bool = False
     force_render: bool = False
+    custom_srt: Optional[str] = None
+    use_custom_srt: bool = False
     
     subtitle_style: str = "black_white"
     subtitle_font_family: str = "Liberation Sans"

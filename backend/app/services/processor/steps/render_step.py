@@ -14,6 +14,7 @@ class RenderStep(ProcessorStep):
         sync_redis = context['sync_redis']
         video_editor = context['video_editor']
         instrumental_audio_path = context.get('instrumental_audio_path')
+        vocal_audio_path = context.get('vocal_ref_path')
         tts_audio_path = context.get('tts_audio_path')
 
         log_callback(f"[*] Bước 4: Đang render video kết quả...\n", progress=40.0)
@@ -37,6 +38,7 @@ class RenderStep(ProcessorStep):
                 output_video=out_video_path,
                 tts_audio=final_tts_audio,
                 bgm_audio=instrumental_audio_path,
+                vocal_audio=vocal_audio_path,
                 config=config,
                 log_callback=log_callback
             )

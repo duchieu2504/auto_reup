@@ -3,9 +3,15 @@ import { Plus, RefreshCw } from 'lucide-react';
 import { useAccountsData } from './hooks/useAccountsData';
 import { AccountGrid } from './components/AccountGrid';
 import { AddAccountModal } from './components/AddAccountModal';
+import { NurtureConfigModal } from './components/NurtureConfigModal';
 
 export default function SocialAccounts() {
   const accountHook = useAccountsData();
+  const [nurtureModal, setNurtureModal] = React.useState({ isOpen: false, accountId: null, username: '' });
+
+  const openNurtureModal = (account) => {
+    setNurtureModal({ isOpen: true, accountId: account.id, username: account.username });
+  };
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto">
@@ -25,8 +31,14 @@ export default function SocialAccounts() {
         </div>
       </div>
 
-      <AccountGrid hook={accountHook} />
+      <AccountGrid hook={accountHook} onOpenNurture={openNurtureModal} />
       <AddAccountModal hook={accountHook} />
+      <NurtureConfigModal
+        isOpen={nurtureModal.isOpen}
+        onClose={() => setNurtureModal({ isOpen: false, accountId: null, username: '' })}
+        accountId={nurtureModal.accountId}
+        username={nurtureModal.username}
+      />
     </div>
   );
 }

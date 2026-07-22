@@ -24,6 +24,7 @@ class FFmpegFilterBuilder:
         self.ass_file = None
         self.wm_image_idx = -1
         self.tts_idx = -1
+        self.vocal_idx = -1
         self.bgm_idx = 0
         
         # Keep track of temporary files generated that need cleanup
@@ -136,22 +137,42 @@ class FFmpegFilterBuilder:
             self.current_v_in = "[vout]"
 
     def build_audio_filters(self):
-        bg_audio_label = f"[{self.bgm_idx}:a]"
+        inputs = []
+        mix_inputs = 0
         
+        # 1. Background Music
+        bg_audio_label = f"[{self.bgm_idx}:a]" if self.bgm_idx != 0 else "[0:a]"
+        bg_vol_float = self.config.bg_volume / 100.0
+        if self.config.opt_pitch:
+            self.complex_filters.append(f"{bg_audio_label}volume={bg_vol_float},asetrate=44100*1.02,atempo=1/1.02[bg]")
+        else:
+            self.complex_filters.append(f"{bg_audio_label}volume={bg_vol_float}[bg]")
+        inputs.append("[bg]")
+        mix_inputs += 1
+        
+        # 2. TTS Voice
         if self.tts_idx != -1:
-            bg_vol_float = self.config.bg_volume / 100.0
+            self.complex_filters.append(f"[{self.tts_idx}:a]volume=1.0[tts]")
+            inputs.append("[tts]")
+            mix_inputs += 1
+            
+        # 3. Original Vocal Voice
+        if self.vocal_idx != -1:
+            voc_vol_float = self.config.vocal_volume / 100.0
             if self.config.opt_pitch:
-                audio_filter = f"{bg_audio_label}volume={bg_vol_float},asetrate=44100*1.02,atempo=1/1.02[bg];[{self.tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0[aout]"
+                self.complex_filters.append(f"[{self.vocal_idx}:a]volume={voc_vol_float},asetrate=44100*1.02,atempo=1/1.02[vocal]")
             else:
-                audio_filter = f"{bg_audio_label}volume={bg_vol_float}[bg];[{self.tts_idx}:a]volume=1.0[tts];[bg][tts]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0[aout]"
+                self.complex_filters.append(f"[{self.vocal_idx}:a]volume={voc_vol_float}[vocal]")
+            inputs.append("[vocal]")
+            mix_inputs += 1
+            
+        if mix_inputs > 1:
+            inputs_str = "".join(inputs)
+            audio_filter = f"{inputs_str}amix=inputs={mix_inputs}:duration=longest:dropout_transition=2:normalize=0[aout]"
             self.complex_filters.append(audio_filter)
             return "[aout]"
         else:
-            if self.config.opt_pitch:
-                audio_filter = f"{bg_audio_label}asetrate=44100*1.02,atempo=1/1.02[aout]"
-                self.complex_filters.append(audio_filter)
-                return "[aout]"
-            return "0:a?" if self.bgm_idx == 0 else f"{self.bgm_idx}:a?"
+            return inputs[0]
 
     def get_filter_complex_string(self):
         return ";".join(self.complex_filters)

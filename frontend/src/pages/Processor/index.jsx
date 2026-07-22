@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileVideo, PlayCircle, Settings, Save, Trash2, Terminal, FolderOpen, Volume2, UploadCloud, RefreshCw, Folder, ChevronLeft, Edit, XCircle } from 'lucide-react';
+import { FileVideo, Settings, XCircle } from 'lucide-react';
 import { useProcessor } from '../../context/ProcessorContext';
 import { toast } from 'react-hot-toast';
 import { useSubtitleState } from '../../hooks/useSubtitleState';
@@ -8,6 +8,14 @@ import { useFfmpegPreview } from '../../hooks/useFfmpegPreview';
 import { SubtitleConfigPanel } from '../../components/subtitle/SubtitleConfigPanel';
 import { WatermarkConfigPanel } from '../../components/subtitle/WatermarkConfigPanel';
 import { InteractiveVideoPreview } from '../../components/subtitle/InteractiveVideoPreview';
+
+// Sub-components
+import { ProfileSelector } from './components/ProfileSelector';
+import { SaveProfileModal } from './components/SaveProfileModal';
+import { PreviewPanel } from './components/PreviewPanel';
+import { TerminalPanel } from './components/TerminalPanel';
+import { SourceConfigTab } from './components/SourceConfigTab';
+
 
 const Phase2Processor = () => {
   const { videoPath, setVideoPath, isProcessing, logs, progress, startProcessing, stopProcessing } = useProcessor();
@@ -144,6 +152,7 @@ const Phase2Processor = () => {
   const tabs = [
     { id: "source", label: "Nguồn & Giọng AI" },
     { id: "subtitle", label: "Phụ đề & Siêu lách" },
+    { id: "customSrt", label: "Sub Tùy Chỉnh" },
     { id: "watermark", label: "Logo & Watermark" }
   ];
 
@@ -284,6 +293,8 @@ const Phase2Processor = () => {
         enableSubtitles: subtitleState.enableSubtitles,
         maskEnabled: subtitleState.maskEnabled,
         masks: subtitleState.masks,
+        useCustomSrt: subtitleState.useCustomSrt,
+        customSrt: subtitleState.customSrt,
       };
 
       const formData = new FormData();
@@ -370,6 +381,9 @@ const Phase2Processor = () => {
         subtitleState.setMasks(config.maskEnabled ? [oldMask] : []);
         subtitleState.setActiveMaskId(config.maskEnabled ? 1 : null);
       }
+      
+      subtitleState.setUseCustomSrt(config.useCustomSrt ?? false);
+      subtitleState.setCustomSrt(config.customSrt ?? "");
 
       toast.success(`Đã áp dụng: ${profile.name}`);
     } catch (err) {
@@ -412,47 +426,14 @@ const Phase2Processor = () => {
       animate="show"
       className="space-y-6"
     >
-      {/* Profile Selector Banner */}
-      <div className="glass-panel p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between bg-neon-purple/5 border border-neon-purple/20 gap-4">
-        <div className="flex items-center gap-3.5 flex-1 w-full">
-          <Save size={20} className="text-neon-purple min-w-[20px]" />
-          <div className="flex-1 sm:max-w-xs">
-            <select 
-              className="w-full bg-bg-secondary/80 border border-border-subtle rounded-xl py-2 px-3 text-text-primary focus:outline-none focus:border-neon-purple text-sm cursor-pointer"
-              value={selectedProfileId}
-              onChange={handleApplyProfile}
-            >
-              <option value="">-- Chọn Mẫu Cấu Hình --</option>
-              {editProfiles.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </div>
-          {selectedProfileId && (
-            <motion.button 
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={handleDeleteProfile}
-              className="text-neon-pink hover:text-white hover:bg-neon-pink/15 p-2 rounded-xl transition-all duration-300 border border-transparent hover:border-neon-pink/20 cursor-pointer"
-              title="Xóa mẫu đang chọn"
-            >
-              <Trash2 size={16} />
-            </motion.button>
-          )}
-        </div>
-        <div className="w-full sm:w-auto">
-          <motion.button 
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setShowSaveModal(true)}
-            className="text-xs bg-bg-tertiary hover:bg-border-subtle text-text-primary px-4 py-2.5 rounded-xl transition-colors font-bold border border-white/5 shadow-md cursor-pointer w-full sm:w-auto"
-          >
-            + Lưu Cấu Hình Hiện Tại
-          </motion.button>
-        </div>
-      </div>
+      <ProfileSelector
+        editProfiles={editProfiles}
+        selectedProfileId={selectedProfileId}
+        handleApplyProfile={handleApplyProfile}
+        handleDeleteProfile={handleDeleteProfile}
+        setShowSaveModal={setShowSaveModal}
+      />
 
-      {/* Grid 2 Cột Linh Hoạt trên Desktop */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:items-stretch">
         
         {/* CỘT TRÁI: Form Cấu Hình (Chiếm 60%) */}
@@ -465,7 +446,6 @@ const Phase2Processor = () => {
               Cấu Hình Video & Render
             </h3>
 
-            {/* Tabs Navigation Header */}
             <div className="flex border-b border-border-subtle overflow-x-auto pb-px gap-2 scrollbar-none mb-6">
               {tabs.map((tab) => (
                 <button
@@ -484,340 +464,90 @@ const Phase2Processor = () => {
             </div>
             
             <form onSubmit={handleStart} className="space-y-6">
-              {/* Tab Contents */}
               <div className="min-h-[300px]">
                 {activeTab === "source" && (
-                  <div className="space-y-6">
-                    {/* Source Selector Radios */}
-                    <div>
-                      <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2.5">
-                        Nguồn Video Đầu Vào
-                      </label>
-                      <div className="grid grid-cols-2 gap-4">
-                        <button
-                          type="button"
-                          onClick={() => setSourceType('crawler')}
-                          className={`py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-wider border transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
-                            sourceType === 'crawler'
-                              ? 'bg-neon-pink/10 border-neon-pink text-neon-pink shadow-[0_0_10px_rgba(236,72,153,0.15)]'
-                              : 'bg-bg-secondary/40 border-white/5 text-text-secondary hover:text-text-primary hover:bg-glass-hover'
-                          }`}
-                        >
-                          <PlayCircle size={15} />
-                          Video từ Crawler
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSourceType('upload')}
-                          className={`py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-wider border transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
-                            sourceType === 'upload'
-                              ? 'bg-neon-pink/10 border-neon-pink text-neon-pink shadow-[0_0_10px_rgba(236,72,153,0.15)]'
-                              : 'bg-bg-secondary/40 border-white/5 text-text-secondary hover:text-text-primary hover:bg-glass-hover'
-                          }`}
-                        >
-                          <FolderOpen size={15} />
-                          Tải file / Local Path
-                        </button>
-                      </div>
-                    </div>
-
-                    {sourceType === 'crawler' ? (
-                      /* Crawler Videos Selection Component */
-                      <div className="space-y-3 animate-in fade-in duration-200">
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            placeholder="Tìm kiếm video..."
-                            value={crawlerSearch}
-                            onChange={e => setCrawlerSearch(e.target.value)}
-                            className="flex-1 bg-bg-secondary/60 border border-border-subtle rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-neon-pink text-text-primary placeholder:text-text-secondary/45"
-                          />
-                          <select
-                            value={crawlerFilterStatus}
-                            onChange={e => setCrawlerFilterStatus(e.target.value)}
-                            className="bg-bg-secondary/60 border border-border-subtle rounded-xl py-2 px-3 text-sm focus:outline-none focus:border-neon-pink text-text-primary cursor-pointer"
-                          >
-                            <option value="all">Tất cả</option>
-                            <option value="pending">Chờ xử lý</option>
-                            <option value="completed">Đã hoàn thành</option>
-                            <option value="failed">Bị lỗi</option>
-                          </select>
-                          <button
-                            type="button"
-                            onClick={fetchCrawlerVideos}
-                            className="p-2 bg-bg-tertiary hover:bg-border-subtle rounded-xl border border-white/5 text-text-primary transition-colors cursor-pointer flex items-center justify-center"
-                            title="Làm mới danh sách"
-                          >
-                            <RefreshCw size={15} className="text-text-secondary" />
-                          </button>
-                        </div>
-
-                        <div className="border border-border-subtle rounded-xl overflow-hidden bg-bg-secondary/20">
-                          {/* Folder Selector View */}
-                          {!selectedAuthor ? (
-                            <div className="max-h-[220px] overflow-y-auto p-3 flex flex-col gap-2 scrollbar-none">
-                              {Object.entries(groupedCrawlerVideos).map(([author, authorVideos]) => (
-                                <div
-                                  key={author}
-                                  onClick={() => setSelectedAuthor(author)}
-                                  className="flex items-center justify-between gap-3 p-3 rounded-xl cursor-pointer transition-all border border-white/5 bg-bg-secondary/40 hover:border-neon-pink/50 hover:bg-neon-pink/5 group"
-                                >
-                                  <div className="flex items-center gap-3 min-w-0">
-                                    <Folder size={18} className="text-neon-purple group-hover:text-neon-pink transition-colors shrink-0" />
-                                    <div className="font-bold text-xs text-text-primary truncate" title={author}>{author}</div>
-                                  </div>
-                                  <div className="text-[10px] text-text-secondary px-2 py-0.5 bg-bg-primary rounded-md border border-border-subtle shrink-0 font-bold">
-                                    {authorVideos.length} video
-                                  </div>
-                                </div>
-                              ))}
-                              {Object.keys(groupedCrawlerVideos).length === 0 && (
-                                <div className="text-center py-10 text-text-secondary text-xs italic">
-                                  Không tìm thấy thư mục video nào
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            /* Sub-Folder Videos List View */
-                            <div className="flex flex-col">
-                              {/* Sub Header sticky */}
-                              <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle bg-bg-secondary/80 backdrop-blur sticky top-0 z-10">
-                                <button 
-                                  type="button"
-                                  onClick={() => setSelectedAuthor(null)}
-                                  className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
-                                >
-                                  <ChevronLeft size={14} /> Trở lại
-                                </button>
-                                <span className="text-xs font-bold text-neon-pink truncate max-w-[150px]">{selectedAuthor}</span>
-                                <button 
-                                  type="button"
-                                  onClick={() => {
-                                    const authorVideos = groupedCrawlerVideos[selectedAuthor] || [];
-                                    const authorPaths = authorVideos.map(v => v.raw_video_path).filter(Boolean);
-                                    const allSelected = authorPaths.every(path => selectedCrawlerPaths.includes(path));
-                                    if (allSelected) {
-                                      setSelectedCrawlerPaths(prev => prev.filter(path => !authorPaths.includes(path)));
-                                    } else {
-                                      setSelectedCrawlerPaths(prev => Array.from(new Set([...prev, ...authorPaths])));
-                                    }
-                                  }}
-                                  className="text-[10px] text-neon-purple hover:text-neon-pink font-semibold transition-colors bg-neon-purple/10 px-2 py-1 rounded-md cursor-pointer"
-                                >
-                                  Chọn tất cả
-                                </button>
-                              </div>
-
-                              <div className="max-h-[180px] overflow-y-auto divide-y divide-border-subtle/50 scrollbar-none">
-                                {(groupedCrawlerVideos[selectedAuthor] || []).length === 0 ? (
-                                  <div className="p-8 text-center text-text-secondary text-xs italic">
-                                    Thư mục này không có video nào
-                                  </div>
-                                ) : (
-                                  groupedCrawlerVideos[selectedAuthor].map((video) => {
-                                    const isSelected = selectedCrawlerPaths.includes(video.raw_video_path);
-                                    return (
-                                      <div
-                                        key={video.id}
-                                        onClick={() => {
-                                          if (isSelected) {
-                                            setSelectedCrawlerPaths(prev => prev.filter(p => p !== video.raw_video_path));
-                                          } else {
-                                            setSelectedCrawlerPaths(prev => [...prev, video.raw_video_path]);
-                                          }
-                                        }}
-                                        className={`flex items-center gap-3 p-3 hover:bg-white/5 transition-colors cursor-pointer ${
-                                          isSelected ? 'bg-neon-pink/5' : ''
-                                        }`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={isSelected}
-                                          readOnly
-                                          className="rounded border-border-subtle bg-bg-secondary cursor-pointer accent-neon-pink"
-                                        />
-                                        <div className="w-10 h-14 shrink-0 rounded overflow-hidden bg-black/40 border border-white/5 relative flex items-center justify-center">
-                                          {video.raw_video_path?.startsWith('deleted:') ? (
-                                            <img 
-                                              src={`http://localhost:8000/api/history/thumbnail?path=${encodeURIComponent(video.raw_video_path)}`}
-                                              className="w-full h-full object-cover"
-                                              alt="thumb"
-                                            />
-                                          ) : (
-                                            <video
-                                              src={`http://localhost:8000/api/files/${(video.raw_video_path || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '').split('/').map(encodeURIComponent).join('/')}#t=2.0`}
-                                              className="w-full h-full object-cover"
-                                              muted
-                                              playsInline
-                                              preload="none"
-                                            />
-                                          )}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-xs font-semibold text-text-primary truncate font-mono" title={video.original_name}>
-                                            {video.original_name.split('/').pop().split('\\').pop()}
-                                          </p>
-                                          <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded mt-1.5 uppercase tracking-wider ${
-                                            video.status === 'completed' ? 'bg-green-500/10 text-green-500 border border-green-500/20' :
-                                            video.status === 'failed' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
-                                            'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'
-                                          }`}>
-                                            {video.status}
-                                          </span>
-                                        </div>
-                                        {/* Nút Edit nếu video đã xử lý xong */}
-                                        {(video.status === 'completed' || video.status === 'uploaded') && (
-                                          <a 
-                                            href={`/edit/${video.id}`}
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="p-1.5 rounded-lg text-text-secondary hover:text-neon-pink hover:bg-neon-pink/10 transition-colors shrink-0 cursor-pointer"
-                                            title="Chỉnh sửa phụ đề thủ công (Edit)"
-                                          >
-                                            <Edit size={14} />
-                                          </a>
-                                        )}
-                                      </div>
-                                    );
-                                  })
-                                )}
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* Footer hiển thị số video đã chọn */}
-                          <div className="bg-bg-secondary/40 p-2.5 flex justify-between items-center text-[11px] border-t border-border-subtle text-text-secondary select-none">
-                            <span>Đã chọn tổng cộng: <strong className="text-neon-pink font-mono">{selectedCrawlerPaths.length}</strong> video</span>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedCrawlerPaths([]);
-                              }}
-                              className="text-neon-pink font-semibold hover:underline cursor-pointer"
-                            >
-                              Bỏ chọn tất cả
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      /* Upload & Local Path Component */
-                      <div className="space-y-4 animate-in fade-in duration-200">
-                        {/* Drag and Drop Zone */}
-                        <div 
-                          className="border border-dashed border-border-subtle hover:border-neon-pink/40 rounded-xl p-5 text-center cursor-pointer transition-all bg-bg-secondary/20 hover:bg-neon-pink/5"
-                          onClick={() => fileInputRef.current.click()}
-                        >
-                          <input 
-                            type="file" 
-                            ref={fileInputRef} 
-                            onChange={handleVideoUpload}
-                            accept="video/*" 
-                            className="hidden" 
-                          />
-                          <div className="flex flex-col items-center gap-2 text-text-secondary">
-                            <UploadCloud size={24} className={uploading ? "animate-bounce text-neon-pink" : "text-text-secondary"} />
-                            <span className="text-xs font-semibold text-text-primary">
-                              {uploading ? "Đang tải video lên server..." : "Nhấp hoặc kéo thả video vào đây để tải lên"}
-                            </span>
-                            <span className="text-[10px]">Hỗ trợ file video (mp4, mkv, webm...)</span>
-                          </div>
-                        </div>
-
-                        {/* Uploaded Files Queue */}
-                        {uploadedFiles.length > 0 && (
-                          <div className="space-y-2">
-                            <label className="block text-[10px] font-bold text-text-secondary uppercase tracking-wider">
-                              Danh sách video đã tải lên:
-                            </label>
-                            <div className="bg-bg-secondary/40 border border-border-subtle rounded-xl p-2.5 divide-y divide-border-subtle/40">
-                              {uploadedFiles.map((file, idx) => (
-                                <div key={idx} className="flex justify-between items-center py-1.5 first:pt-0 last:pb-0">
-                                  <span className="text-xs font-medium text-text-primary truncate max-w-[85%] font-mono">
-                                    {file.name}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== idx))}
-                                    className="text-neon-pink/80 hover:text-neon-pink p-1 rounded transition-colors cursor-pointer"
-                                    title="Xóa video khỏi hàng chờ"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Local Paths Input */}
-                        <div>
-                          <div className="flex justify-between items-center mb-2">
-                            <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider">Hoặc nhập đường dẫn video cục bộ</label>
-                            <motion.button 
-                              whileHover={{ scale: 1.02 }}
-                              whileTap={{ scale: 0.98 }}
-                              type="button" 
-                              onClick={handleScanFolder}
-                              disabled={isScanning || !videoPath}
-                              className="text-[11px] bg-bg-tertiary hover:bg-border-subtle text-text-primary px-3 py-1.5 rounded-lg transition-colors border border-white/5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 font-bold"
-                            >
-                              <FolderOpen size={12} />
-                              {isScanning ? 'Đang quét...' : 'Quét Thư mục'}
-                            </motion.button>
-                          </div>
-                          
-                          <div className="relative group">
-                            <FileVideo size={18} className="absolute left-4 top-4 text-text-secondary group-focus-within:text-neon-pink transition-colors" />
-                            <textarea 
-                              className="w-full bg-bg-secondary/60 border border-border-subtle rounded-xl py-3 pl-12 pr-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-neon-pink/50 focus:border-neon-pink/40 transition-all duration-300 resize-none font-medium text-sm placeholder:text-text-secondary/50" 
-                              placeholder="Nhập đường dẫn file (.mp4) trong máy hoặc tên thư mục (ví dụ: Douyin_User1)..." 
-                              value={videoPath}
-                              onChange={(e) => setVideoPath(e.target.value)}
-                              rows={3}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Giọng Lồng Tiếng AI</label>
-                        <select 
-                          className="w-full bg-bg-secondary/80 border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:ring-2 focus:ring-neon-pink/30 focus:border-neon-pink/40 transition-all duration-300 cursor-pointer text-sm" 
-                          value={voiceMode} 
-                          onChange={e => setVoiceMode(e.target.value)}
-                        >
-                          {voices.map(v => (
-                            <option key={v.id} value={v.id}>{v.name} [{v.provider}]</option>
-                          ))}
-                          {voices.length === 0 && <option value="edge_auto">Đang tải danh sách giọng...</option>}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2 flex items-center justify-between">
-                          <span>Âm lượng Video Gốc</span>
-                          <span className="text-neon-pink font-mono text-xs">{bgVolume}%</span>
-                        </label>
-                        <div className="flex items-center gap-3 mt-3">
-                          <Volume2 size={16} className="text-text-secondary" />
-                          <input 
-                            type="range" 
-                            min="0" max="100" 
-                            value={bgVolume} 
-                            onChange={e => setBgVolume(Number(e.target.value))} 
-                            className="w-full h-1.5 bg-border-subtle rounded-lg appearance-none cursor-pointer accent-neon-pink" 
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <SourceConfigTab
+                    sourceType={sourceType}
+                    setSourceType={setSourceType}
+                    crawlerSearch={crawlerSearch}
+                    setCrawlerSearch={setCrawlerSearch}
+                    crawlerFilterStatus={crawlerFilterStatus}
+                    setCrawlerFilterStatus={setCrawlerFilterStatus}
+                    fetchCrawlerVideos={fetchCrawlerVideos}
+                    groupedCrawlerVideos={groupedCrawlerVideos}
+                    selectedAuthor={selectedAuthor}
+                    setSelectedAuthor={setSelectedAuthor}
+                    selectedCrawlerPaths={selectedCrawlerPaths}
+                    setSelectedCrawlerPaths={setSelectedCrawlerPaths}
+                    fileInputRef={fileInputRef}
+                    handleVideoUpload={handleVideoUpload}
+                    uploading={uploading}
+                    uploadedFiles={uploadedFiles}
+                    setUploadedFiles={setUploadedFiles}
+                    isScanning={isScanning}
+                    handleScanFolder={handleScanFolder}
+                    videoPath={videoPath}
+                    setVideoPath={setVideoPath}
+                    voices={voices}
+                    voiceMode={voiceMode}
+                    setVoiceMode={setVoiceMode}
+                    bgVolume={bgVolume}
+                    setBgVolume={setBgVolume}
+                  />
                 )}
                 
                 {activeTab === "subtitle" && (
                   <div className="space-y-4">
                     <SubtitleConfigPanel config={subtitleState} />
+                  </div>
+                )}
+                
+                {activeTab === "customSrt" && (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <div className="bg-bg-primary/40 border border-white/5 rounded-xl p-5 space-y-5">
+                      <div>
+                        <label className="flex items-center gap-2 cursor-pointer mb-4">
+                          <input
+                            type="checkbox"
+                            checked={subtitleState.useCustomSrt}
+                            onChange={(e) => subtitleState.setUseCustomSrt(e.target.checked)}
+                            className="w-4 h-4 rounded border-border-subtle bg-bg-secondary text-neon-pink focus:ring-neon-pink"
+                          />
+                          <span className="text-sm font-semibold text-text-primary">Bật phụ đề tùy chỉnh (Bỏ qua Dịch AI)</span>
+                        </label>
+                        <p className="text-xs text-text-secondary mb-4">
+                          Hệ thống sẽ bỏ qua bước nhận diện và dịch AI, trực tiếp render âm thanh lồng tiếng theo mốc thời gian bạn cấu hình dưới đây.
+                        </p>
+                      </div>
+
+                      <div className={!subtitleState.useCustomSrt ? 'opacity-50 pointer-events-none transition-opacity' : 'transition-opacity'}>
+                        <div className="flex justify-between items-center mb-2">
+                          <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider">Nội dung SRT</label>
+                          <label className="cursor-pointer bg-bg-secondary hover:bg-neon-pink/20 text-neon-pink text-xs px-3 py-1.5 rounded-lg transition-colors border border-neon-pink/30 flex items-center gap-2">
+                            <span>Tải file .srt</span>
+                            <input 
+                              type="file" 
+                              accept=".srt" 
+                              className="hidden" 
+                              onChange={(e) => {
+                                const file = e.target.files[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onload = (e) => subtitleState.setCustomSrt(e.target.result);
+                                  reader.readAsText(file);
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                        <textarea
+                          className="w-full h-48 bg-bg-secondary border border-border-subtle rounded-xl p-4 text-text-primary focus:outline-none focus:border-neon-pink transition-all duration-200 text-sm font-mono resize-y"
+                          placeholder="1\n00:00:01,000 --> 00:00:05,000\nXin chào các bạn!\n\n2\n..."
+                          value={subtitleState.customSrt}
+                          onChange={(e) => subtitleState.setCustomSrt(e.target.value)}
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
                 
@@ -857,171 +587,29 @@ const Phase2Processor = () => {
           </div>
         </div>
 
-        {/* CỘT PHẢI: Xem trước Video & Phụ Đề (Chiếm 40%) */}
-        <div className="lg:col-span-2 glass-panel p-6 rounded-2xl border border-white/5 relative overflow-hidden flex flex-col justify-between gap-6">
-          <div className="flex flex-col gap-5 flex-1">
-            <h3 className="text-xl font-bold tracking-tight font-display bg-gradient-to-r from-white to-text-secondary bg-clip-text text-transparent flex items-center gap-2">
-              <PlayCircle className="text-neon-pink" size={20} />
-              Xem Trước Video & Phụ Đề
-            </h3>
-            
-            <div className="bg-bg-secondary/40 border border-border-subtle rounded-2xl p-4 flex-1 flex items-center justify-center min-h-[300px] relative overflow-hidden">
-              <div className="absolute inset-4 flex items-center justify-center">
-                {previewVideoPath ? (
-                  <InteractiveVideoPreview config={subtitleState} aspectRatio={aspectRatio} className="max-w-full max-h-full" isFfmpegPreview={!!ffmpegPreviewUrl}>
-                    {ffmpegPreviewUrl ? (
-                      <img
-                        src={ffmpegPreviewUrl}
-                        alt="Preview"
-                        className={`max-w-full max-h-full block pointer-events-none object-contain transition-opacity duration-300 ${isGeneratingPreview ? 'opacity-50' : 'opacity-100'}`}
-                        onLoad={(e) => setAspectRatio(e.target.naturalWidth / e.target.naturalHeight)}
-                      />
-                    ) : (
-                      <video 
-                        src={`http://localhost:8000/api/files/${(previewVideoPath || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '').split('/').map(encodeURIComponent).join('/')}`}
-                        controls
-                        className="max-w-full max-h-full block rounded-lg shadow-lg"
-                        onLoadedMetadata={(e) => setAspectRatio(e.target.videoWidth / e.target.videoHeight)}
-                      />
-                    )}
-                    
-                    {isGeneratingPreview && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/30 backdrop-blur-[2px] rounded-xl z-10">
-                        <Loader2 className="animate-spin text-brand-primary mb-2" size={24} />
-                        <span className="text-xs font-semibold drop-shadow-md">Đang cập nhật ảnh mẫu thực tế...</span>
-                      </div>
-                    )}
-                  </InteractiveVideoPreview>
-                ) : (
-                  <div className="w-full aspect-video bg-bg-secondary/20 rounded-lg flex flex-col items-center justify-center text-text-secondary border border-dashed border-border-subtle p-6 select-none">
-                    <PlayCircle size={36} className="opacity-20 mb-2 text-neon-pink animate-pulse" />
-                    <p className="text-sm font-semibold">Chưa có video được chọn</p>
-                    <p className="text-xs text-text-tertiary mt-1">Chọn 1 video từ Crawler hoặc Upload để xem trước phụ đề</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <PreviewPanel
+          previewVideoPath={previewVideoPath}
+          subtitleState={subtitleState}
+          aspectRatio={aspectRatio}
+          setAspectRatio={setAspectRatio}
+          ffmpegPreviewUrl={ffmpegPreviewUrl}
+          isGeneratingPreview={isGeneratingPreview}
+        />
       </div>
 
-      {/* PHẦN DƯỚI: Tiến Trình Render & Terminal Console */}
-      <div className="glass-panel p-6 rounded-2xl border border-white/5 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-neon-cyan/5 blur-3xl rounded-full pointer-events-none" />
-        
-        <div className="flex flex-col gap-5">
-          <h3 className="text-xl font-bold tracking-tight font-display bg-gradient-to-r from-white to-text-secondary bg-clip-text text-transparent flex items-center gap-2">
-            <Terminal className="text-neon-cyan" size={20} />
-            Tiến Trình Render
-          </h3>
-          
-          {/* Progress Bar */}
-          <div className="bg-bg-secondary/40 p-4 rounded-xl border border-white/5 space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Trạng thái Render</span>
-              <span className="text-xs font-bold text-neon-cyan font-mono">{progress.toFixed(1)}%</span>
-            </div>
-            <div className="h-1.5 bg-bg-secondary border border-white/5 rounded-full overflow-hidden">
-              <motion.div 
-                className="h-full bg-gradient-to-r from-neon-cyan to-neon-purple"
-                initial={{ width: 0 }}
-                animate={{ width: `${progress}%` }}
-                transition={{ duration: 0.3 }}
-              />
-            </div>
-          </div>
-          
-          {/* Terminal Window style */}
-          <div className="relative rounded-xl overflow-hidden border border-border-subtle shadow-2xl flex flex-col w-full">
-            <div className="bg-[#0b0f17] px-4 py-2.5 flex items-center gap-1.5 border-b border-border-subtle/50">
-              <span className="w-2.5 h-2.5 rounded-full bg-neon-pink/70"></span>
-              <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/70"></span>
-              <span className="w-2.5 h-2.5 rounded-full bg-neon-green/70"></span>
-              <span className="text-[10px] text-text-secondary font-mono font-bold ml-2 tracking-wider">PROCESSOR_CONSOLE.SH</span>
-            </div>
-            
-            <div 
-              ref={logContainerRef}
-              className="bg-[#04060a] p-5 font-mono text-[12px] overflow-y-auto leading-relaxed shadow-inner text-neon-cyan/90 selection:bg-neon-pink/20 selection:text-white w-full h-[300px]"
-            >
-              {logs.length === 0 ? (
-                <div className="text-text-secondary/50 italic flex items-center gap-2">
-                  <span className="text-neon-pink animate-pulse">&gt;</span> Hệ thống sẵn sàng...
-                </div>
-              ) : (
-                logs.map((log, index) => (
-                  <div key={index} className="whitespace-pre-wrap py-0.5 border-l-2 border-transparent hover:border-neon-pink/40 hover:bg-white/1 px-2 transition-colors">
-                    <span className="text-neon-pink/60 mr-2 select-none">[{index + 1}]</span>
-                    {log}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      <TerminalPanel
+        progress={progress}
+        logs={logs}
+        logContainerRef={logContainerRef}
+      />
 
-      {/* Save Profile Modal */}
-      <AnimatePresence>
-        {showSaveModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 300, damping: 25 }}
-              className="glass-panel p-6 rounded-2xl w-full max-w-md bg-bg-secondary border border-white/10 shadow-2xl relative overflow-hidden"
-            >
-              {/* Decorative Glow inside modal */}
-              <div className="absolute -top-12 -right-12 w-24 h-24 bg-neon-purple/10 blur-2xl rounded-full" />
-              
-              <h3 className="text-xl font-bold mb-3 font-display bg-gradient-to-r from-white to-text-secondary bg-clip-text text-transparent flex items-center gap-2">
-                <Save className="text-neon-purple" size={18} />
-                Lưu Mẫu Cấu Hình
-              </h3>
-              
-              <p className="text-xs text-text-secondary mb-4 leading-relaxed">
-                Toàn bộ thông số thiết lập hiện tại (âm lượng, phụ đề, font chữ, logo...) sẽ được lưu lại thành một mẫu cấu hình riêng để dễ dàng tái sử dụng cho các lần sau.
-              </p>
-              
-              <div className="mb-6">
-                <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Tên Mẫu Cấu Hình</label>
-                <input 
-                  type="text" 
-                  autoFocus
-                  className="w-full bg-bg-primary border border-border-subtle rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:border-neon-purple focus:ring-1 focus:ring-neon-purple transition-all duration-300 font-medium text-sm placeholder:text-text-secondary/35"
-                  value={newProfileName}
-                  onChange={e => setNewProfileName(e.target.value)}
-                  placeholder="Ví dụ: Giọng Đọc Độc Đáo - Viền Đen"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleSaveProfile();
-                    }
-                  }}
-                />
-              </div>
-              
-              <div className="flex justify-end gap-3.5">
-                <button 
-                  onClick={() => setShowSaveModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-bg-tertiary hover:bg-border-subtle text-text-primary text-xs font-bold transition-colors cursor-pointer"
-                >
-                  Hủy
-                </button>
-                <motion.button 
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleSaveProfile}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-neon-purple to-neon-pink text-white text-xs font-bold transition-all duration-300 flex items-center gap-1.5 cursor-pointer shadow-lg"
-                >
-                  <Save size={14} /> Lưu Lại
-                </motion.button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <SaveProfileModal
+        showSaveModal={showSaveModal}
+        setShowSaveModal={setShowSaveModal}
+        newProfileName={newProfileName}
+        setNewProfileName={setNewProfileName}
+        handleSaveProfile={handleSaveProfile}
+      />
     </motion.div>
   );
 };

@@ -99,7 +99,7 @@ class VideoEditor:
             
         return "libx264"
 
-    def burn_subtitles(self, input_video: str, srt_file: str, output_video: str, tts_audio: str = None, bgm_audio: str = None, config=None, log_callback=None, force_cpu: bool = False):
+    def burn_subtitles(self, input_video: str, srt_file: str, output_video: str, tts_audio: str = None, bgm_audio: str = None, vocal_audio: str = None, config=None, log_callback=None, force_cpu: bool = False):
         if config is None:
             from app.schemas.processor_config import VideoProcessingConfig
             config = VideoProcessingConfig()
@@ -217,6 +217,11 @@ class VideoEditor:
             builder.bgm_idx = input_count
             input_count += 1
             
+        if vocal_audio and os.path.exists(vocal_audio):
+            cmd.extend(["-i", vocal_audio])
+            builder.vocal_idx = input_count
+            input_count += 1
+            
         a_map = builder.build_audio_filters()
         filter_complex_str = builder.get_filter_complex_string()
         
@@ -310,6 +315,7 @@ class VideoEditor:
                     output_video=output_video, 
                     tts_audio=tts_audio, 
                     bgm_audio=bgm_audio, 
+                    vocal_audio=vocal_audio,
                     config=config, 
                     log_callback=log_callback, 
                     force_cpu=True

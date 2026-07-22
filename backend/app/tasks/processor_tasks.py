@@ -62,6 +62,7 @@ def process_video_task(
     video_paths: list,
     voice_mode: str,
     bg_volume: int,
+    vocal_volume: int,
     flip_video: bool = False,
     force_render: bool = False,
     subtitle_style: str = "black_white",
@@ -93,6 +94,8 @@ def process_video_task(
     mask_type: str = "color",
     mask_color: str = "#000000",
     masks: list = None,
+    custom_srt: str = None,
+    use_custom_srt: bool = False,
 ):
     task_id = self.request.id
     channel = f"task_log_{task_id}"
@@ -128,6 +131,7 @@ def process_video_task(
         config = VideoProcessingConfig(
             voice_mode=voice_mode,
             bg_volume=bg_volume,
+            vocal_volume=vocal_volume,
             flip_video=flip_video,
             force_render=force_render,
             subtitle_style=subtitle_style,
@@ -159,6 +163,8 @@ def process_video_task(
             mask_type=mask_type,
             mask_color=mask_color,
             masks=masks if masks else [],
+            custom_srt=custom_srt,
+            use_custom_srt=use_custom_srt
         )
 
         def process_single(vp):

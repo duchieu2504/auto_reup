@@ -34,6 +34,7 @@ class ProcessRequest(BaseModel):
     video_paths: list[str]
     voice_mode: str = "edge_auto"
     bg_volume: int = 10
+    vocal_volume: int = 0
     flip_video: bool = False
     opt_zoom: bool = False
     opt_color: bool = False
@@ -65,6 +66,9 @@ class ProcessRequest(BaseModel):
     mask_type: str = "color"
     mask_color: str = "#000000"
     masks: list[VideoMask] = []
+    edited_subtitle: Optional[str] = None
+    custom_srt: Optional[str] = None
+    use_custom_srt: bool = False
 
 
 class PreviewRequest(ProcessRequest):
@@ -213,6 +217,7 @@ async def start_processor(request: ProcessRequest):
                 new_config = {
                     "voice_mode": request.voice_mode,
                     "bg_volume": request.bg_volume,
+                    "vocal_volume": request.vocal_volume,
                     "flip_video": request.flip_video,
                     "subtitle_style": request.subtitle_style,
                     "opt_zoom": request.opt_zoom,
@@ -242,6 +247,8 @@ async def start_processor(request: ProcessRequest):
                     "watermark_size": request.watermark_size,
                     "watermark_color": request.watermark_color,
                     "watermark_opacity": request.watermark_opacity,
+                    "custom_srt": request.custom_srt,
+                    "use_custom_srt": request.use_custom_srt,
                 }
                 
                 update_processing_config_and_status(
@@ -250,11 +257,35 @@ async def start_processor(request: ProcessRequest):
                     new_config=new_config, 
                     data_dir=DATA_DIR
                 )
+                
+                # Nếu có sửa text subtitle từ UI
+                if request.edited_subtitle and len(cleaned_paths) == 1:
+                    record = db.query(VideoHistory).filter(VideoHistory.raw_video_path.like(f"%{base_name}%")).first()
+                    if record and record.srt_translated_path:
+                        try:
+                            # 1. Ghi đè file sub
+                            with open(record.srt_translated_path, "w", encoding="utf-8") as f:
+                                f.write(request.edited_subtitle)
+                            logger.info(f"Đã cập nhật đè nội dung file SRT: {record.srt_translated_path}")
+                            
+                            # 2. Xoá file TTS cũ (nếu có) để ép hệ thống tạo lại audio cho sub mới
+                            if record.audio_tts_path and os.path.exists(record.audio_tts_path):
+                                try: os.remove(record.audio_tts_path)
+                                except: pass
+                            
+                            tts_meta_path = record.audio_tts_path.replace("_tts.mp3", "_tts_meta.json") if record.audio_tts_path else ""
+                            if tts_meta_path and os.path.exists(tts_meta_path):
+                                try: os.remove(tts_meta_path)
+                                except: pass
+                                
+                        except Exception as file_e:
+                            logger.error(f"Lỗi khi lưu edited_subtitle: {file_e}")
+                            
     except Exception as e:
         logger.error(f"Lỗi update DB khi start: {e}")
 
     task = process_video_task.delay(
-        cleaned_paths, request.voice_mode, request.bg_volume, request.flip_video,
+        cleaned_paths, request.voice_mode, request.bg_volume, request.vocal_volume, request.flip_video,
         request.force_render, request.subtitle_style, request.opt_zoom, request.opt_color,
         request.opt_noise, request.opt_pitch, request.subtitle_text_color, request.subtitle_bg_color,
         request.subtitle_font_size, request.subtitle_margin_v, request.subtitle_bg_padding,
@@ -264,7 +295,8 @@ async def start_processor(request: ProcessRequest):
         request.subtitle_font_family, request.enable_subtitles, request.mask_enabled,
         request.mask_x, request.mask_y, request.mask_width, request.mask_height,
         request.mask_type, request.mask_color,
-        [m.dict() for m in request.masks]
+        [m.dict() for m in request.masks],
+        request.custom_srt, request.use_custom_srt
     )
     
     # Map task ID to base names of raw videos to control cancellation for all videos in this task

@@ -22,6 +22,13 @@ const Discovery = ({ onSelectUser }) => {
   // Sync states per account (sec_uid -> boolean)
   const [syncingMap, setSyncingMap] = useState({});
 
+  // Preview Modal States
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewVideos, setPreviewVideos] = useState([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [selectedVideos, setSelectedVideos] = useState(new Set());
+  const [currentSecUid, setCurrentSecUid] = useState('');
+
   useEffect(() => {
     fetchFollowedAccounts();
   }, []);
@@ -157,14 +164,64 @@ const Discovery = ({ onSelectUser }) => {
     }
   };
 
-  const handleQuickCrawl = (sec_uid, nickname) => {
-    const url = `https://www.douyin.com/user/${sec_uid}`;
+  const handleQuickCrawl = async (sec_uid, nickname) => {
     if (onSelectUser) {
+      const url = `https://www.douyin.com/user/${sec_uid}`;
       onSelectUser(url);
-    } else {
-      navigate('/crawler', { state: { presetUrl: url, autostart: true } });
+      return;
     }
-    toast.success(`Bắt đầu cào nhanh kênh: ${nickname}`);
+    
+    // Mở modal preview
+    setCurrentSecUid(sec_uid);
+    setShowPreviewModal(true);
+    setPreviewLoading(true);
+    setPreviewVideos([]);
+    setSelectedVideos(new Set());
+    
+    try {
+      const res = await fetch(`${API_BASE}/discovery/account-videos/${sec_uid}?limit=20`);
+      const data = await res.json();
+      if (data.success) {
+        setPreviewVideos(data.data);
+      } else {
+        toast.error(data.detail || "Không thể tải danh sách video");
+        setShowPreviewModal(false);
+      }
+    } catch (error) {
+      toast.error("Lỗi kết nối Server");
+      setShowPreviewModal(false);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+  
+  const toggleVideoSelection = (videoId) => {
+    setSelectedVideos(prev => {
+      const next = new Set(prev);
+      if (next.has(videoId)) {
+        next.delete(videoId);
+      } else {
+        next.add(videoId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllNewVideos = () => {
+    const newVideos = previewVideos.filter(v => !v.is_downloaded).map(v => v.video_id);
+    setSelectedVideos(new Set(newVideos));
+  };
+  
+  const handleDownloadSelected = () => {
+    if (selectedVideos.size === 0) {
+      toast.error("Vui lòng chọn ít nhất 1 video");
+      return;
+    }
+    
+    const urls = Array.from(selectedVideos).map(id => `https://www.douyin.com/video/${id}`);
+    navigate('/crawler', { state: { presetUrl: urls.join('\n'), autostart: true } });
+    toast.success(`Đã chuyển ${selectedVideos.size} video sang tiến trình tải`);
+    setShowPreviewModal(false);
   };
 
   const formatNumber = (num) => {
@@ -494,6 +551,136 @@ const Discovery = ({ onSelectUser }) => {
                   </motion.button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Modal Preview Cào Nhanh */}
+      <AnimatePresence>
+        {showPreviewModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="glass-panel p-6 rounded-2xl border border-white/10 w-full max-w-4xl max-h-[90vh] flex flex-col relative overflow-hidden bg-bg-secondary/95 shadow-2xl"
+            >
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="absolute top-4 right-4 text-text-secondary hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors cursor-pointer z-10"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="mb-4 pr-8">
+                <h3 className="text-xl font-bold tracking-tight font-display bg-gradient-to-r from-white to-text-secondary bg-clip-text text-transparent flex items-center gap-2">
+                  <Film className="text-neon-pink" size={20} />
+                  Chọn lọc Video Cào Nhanh
+                </h3>
+                <p className="text-sm text-text-secondary/70 mt-1">
+                  Hệ thống tìm thấy {previewVideos.length} video mới nhất. Hãy chọn những video bạn muốn tải về.
+                </p>
+              </div>
+
+              {previewLoading ? (
+                <div className="flex-1 flex flex-col items-center justify-center py-20 gap-4">
+                  <Loader2 size={32} className="animate-spin text-neon-purple" />
+                  <span className="text-text-secondary font-mono text-sm">Đang tải danh sách video...</span>
+                </div>
+              ) : (
+                <div className="flex-1 overflow-y-auto pr-2 min-h-[300px]">
+                  {previewVideos.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-text-secondary/70">
+                      Không tìm thấy video nào.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                      {previewVideos.map((video) => {
+                        const isSelected = selectedVideos.has(video.video_id);
+                        return (
+                          <div 
+                            key={video.video_id}
+                            onClick={() => !video.is_downloaded && toggleVideoSelection(video.video_id)}
+                            className={`relative rounded-xl overflow-hidden border-2 transition-all cursor-pointer group flex flex-col bg-bg-primary/50
+                              ${video.is_downloaded 
+                                ? 'opacity-40 border-transparent grayscale cursor-not-allowed' 
+                                : isSelected 
+                                  ? 'border-neon-purple shadow-[0_0_15px_rgba(168,85,247,0.3)]' 
+                                  : 'border-white/5 hover:border-white/20'
+                              }
+                            `}
+                          >
+                            <div className="aspect-[9/16] relative">
+                              <img src={video.cover_url} alt={video.desc} className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                              
+                              {!video.is_downloaded && (
+                                <div className="absolute top-2 right-2">
+                                  <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors
+                                    ${isSelected ? 'bg-neon-purple border-neon-purple' : 'bg-black/50 border-white/30 group-hover:border-white'}
+                                  `}>
+                                    {isSelected && <div className="w-2.5 h-2.5 bg-white rounded-sm" />}
+                                  </div>
+                                </div>
+                              )}
+
+                              {video.is_downloaded && (
+                                <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/60 backdrop-blur rounded text-[10px] font-bold text-white border border-white/10">
+                                  ĐÃ TẢI
+                                </div>
+                              )}
+
+                              <div className="absolute bottom-0 left-0 right-0 p-2 flex justify-between items-center text-[10px] text-white font-mono bg-black/40 backdrop-blur-sm">
+                                <span className="flex items-center gap-1"><Eye size={10} className="text-neon-cyan" /> {formatNumber(video.play_count)}</span>
+                                <span className="flex items-center gap-1"><Heart size={10} className="text-neon-pink" /> {formatNumber(video.digg_count)}</span>
+                              </div>
+                            </div>
+                            <div className="p-2 text-xs text-text-secondary truncate bg-bg-secondary" title={video.desc}>
+                              {video.desc || "Không có tiêu đề"}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!previewLoading && (
+                <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
+                  <div className="flex gap-2 items-center">
+                    <button
+                      onClick={selectAllNewVideos}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-text-primary"
+                    >
+                      Chọn tất cả ({previewVideos.filter(v => !v.is_downloaded).length})
+                    </button>
+                    <span className="text-sm font-mono text-neon-cyan">
+                      Đã chọn: {selectedVideos.size}
+                    </span>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowPreviewModal(false)}
+                      className="px-4 py-2 bg-white/5 border border-white/5 hover:bg-white/10 text-text-primary rounded-xl font-semibold transition-colors text-sm"
+                    >
+                      Hủy
+                    </button>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleDownloadSelected}
+                      disabled={selectedVideos.size === 0}
+                      className="px-5 py-2 bg-gradient-to-r from-neon-purple to-neon-pink hover:opacity-95 text-white rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_4px_15px_rgba(168,85,247,0.3)] flex items-center justify-center gap-1.5 text-sm"
+                    >
+                      <DownloadCloud size={16} />
+                      <span>Tải {selectedVideos.size} video</span>
+                    </motion.button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </div>
         )}

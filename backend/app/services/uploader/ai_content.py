@@ -45,14 +45,14 @@ class AIContentGenerator:
             self.custom_client = OpenAI(api_key=self.custom_ai_key, base_url=self.custom_ai_endpoint)
             self.is_configured = True
 
-    def generate_viral_content(self, video_title: str, translated_text: str = "") -> Dict[str, str]:
+    def generate_viral_content(self, video_title: str, translated_text: str = "", original_hashtags: str = "") -> Dict[str, str]:
         """
         Sử dụng AI để sinh Caption giật tít và Hashtag thịnh hành
         """
         if not self.is_configured:
             return {
                 "caption": f"Góc chia sẻ: {video_title}",
-                "hashtags": "#xuhuong #trend #fyp"
+                "hashtags": original_hashtags if original_hashtags else "#xuhuong #trend #fyp"
             }
             
         prompt = f"""
@@ -60,10 +60,11 @@ class AIContentGenerator:
         Hãy viết một đoạn Caption thật ngắn gọn, giật tít, thu hút người xem dựa vào thông tin video sau:
         - Tiêu đề gốc: {video_title}
         - Một phần nội dung (phụ đề): {translated_text[:500] if translated_text else 'Không có'}
+        - Hashtag gốc của video: {original_hashtags if original_hashtags else 'Không có'}
         
         Yêu cầu:
         1. Phần Caption: Viết thật tự nhiên, hài hước hoặc gây tò mò, KHÔNG DÙNG DẤU NHÁY KÉP, tối đa 2 câu. Không chèn hashtag vào phần này.
-        2. Phần Hashtags: Gợi ý 3-5 hashtag hot nhất và phù hợp nhất với chủ đề này (VD: #xuhuong #kienthuc...).
+        2. Phần Hashtags: Hãy dịch hoặc chuyển đổi các hashtag gốc sang tiếng Việt (giữ nguyên định dạng #hashtag, viết liền không dấu hoặc có dấu tùy ý). Nếu video không có hashtag gốc, hãy tự gợi ý 3-5 hashtag hot nhất. Trả về dưới dạng chuỗi các hashtag cách nhau bởi dấu cách.
         
         Vui lòng trả về định dạng đúng JSON như sau, không kèm theo bất kỳ văn bản nào khác:
         {{
@@ -112,6 +113,10 @@ class AIContentGenerator:
             import json
             import re
             
+            # Loại bỏ các thẻ <thinking> hoặc <thought>
+            result_text = re.sub(r'<thinking>.*?</thinking>', '', result_text, flags=re.DOTALL | re.IGNORECASE)
+            result_text = re.sub(r'<thought>.*?</thought>', '', result_text, flags=re.DOTALL | re.IGNORECASE)
+            
             # Xử lý tìm chuỗi JSON trong phản hồi (tránh trường hợp AI nói thêm)
             json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
             if json_match:
@@ -127,23 +132,42 @@ class AIContentGenerator:
             logging.error(f"Lỗi khi sinh nội dung AI ({self.active_provider}): {e}")
             raise Exception(f"Lỗi API ({self.active_provider}): {str(e)}")
 
-    def translate_to_vietnamese(self, text: str) -> str:
+    def translate_to_vietnamese(self, text: str, video_context: str = "", original_hashtags: str = "") -> Dict[str, str]:
         """
-        Dịch một đoạn văn bản (caption gốc) sang tiếng Việt bằng AI đang được cấu hình
+        Dịch một đoạn văn bản (caption gốc) sang tiếng Việt bằng AI đang được cấu hình.
+        Đồng thời dịch cả các hashtag gốc sang tiếng Việt.
         """
-        if not text:
-            return ""
+        if not text and not original_hashtags:
+            return {"caption": "", "hashtags": ""}
             
         if not self.is_configured:
-            return text
+            return {"caption": text, "hashtags": original_hashtags}
+            
+        context_prompt = ""
+        if video_context:
+            context_prompt = f"""
+        [NGỮ CẢNH TỪ VIDEO]
+        - Thoại trong video (Subtitle): "{video_context[:2000]}"
+        * Lưu ý: [M] là giọng Nam, [F] là giọng Nữ. Hãy điều chỉnh đại từ nhân xưng (Anh/Chị/Ông/Bà/Mình...) cho phù hợp với giới tính người nói và hoàn cảnh.
+        """
             
         prompt = f"""
-        Bạn là một dịch giả chuyên nghiệp. Hãy dịch đoạn văn bản sau đây sang tiếng Việt sao cho tự nhiên, trôi chảy, giữ nguyên ngữ cảnh và phong cách của mạng xã hội (ngắn gọn, thu hút).
-        KHÔNG tự thêm các hashtag mới hay lời giải thích nào khác ngoài bản dịch.
+        Bạn là một dịch giả chuyên nghiệp và chuyên gia sáng tạo nội dung. Nhiệm vụ của bạn là dịch đoạn caption gốc và chuyển đổi hashtag sang tiếng Việt một cách tự nhiên, thu hút, đúng ngữ cảnh mạng xã hội.
+        {context_prompt}
         
-        Văn bản gốc: {text}
+        Thông tin cần xử lý:
+        - Caption gốc: {text if text else 'Không có'}
+        - Hashtag gốc: {original_hashtags if original_hashtags else 'Không có'}
         
-        Bản dịch tiếng Việt:
+        Yêu cầu:
+        1. Phần Caption: Dịch trôi chảy sang tiếng Việt. Không tự thêm thông tin hay lời giải thích.
+        2. Phần Hashtags: Dịch/chuyển đổi các hashtag gốc sang tiếng Việt (định dạng #hashtag). Nếu hashtag gốc không có ý nghĩa khi dịch, có thể giữ nguyên hoặc thay thế bằng hashtag tiếng Việt tương đương. Trả về thành 1 chuỗi cách nhau bằng dấu cách.
+        
+        Vui lòng trả về kết quả dưới định dạng JSON đúng chuẩn sau, KHÔNG kèm theo văn bản nào khác:
+        {{
+            "caption": "bản dịch caption",
+            "hashtags": "bản dịch hashtag"
+        }}
         """
         
         try:
@@ -174,6 +198,7 @@ class AIContentGenerator:
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=300
                 )
+                result_text = response.choices[0].message.content.strip()
             elif self.active_provider == "custom":
                 response = self.custom_client.chat.completions.create(
                     model=self.custom_ai_model,
@@ -182,7 +207,22 @@ class AIContentGenerator:
                 )
                 result_text = response.choices[0].message.content.strip()
                 
-            return result_text
+            import json
+            import re
+            # Loại bỏ các thẻ <thinking> hoặc <thought> thường xuất hiện ở các model Reasoning (DeepSeek R1, Claude)
+            result_text = re.sub(r'<thinking>.*?</thinking>', '', result_text, flags=re.DOTALL | re.IGNORECASE)
+            result_text = re.sub(r'<thought>.*?</thought>', '', result_text, flags=re.DOTALL | re.IGNORECASE)
+            
+            # Xử lý lấy JSON
+            json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+            if json_match:
+                result_text = json_match.group(0)
+                
+            data = json.loads(result_text)
+            return {
+                "caption": data.get("caption", text),
+                "hashtags": data.get("hashtags", original_hashtags)
+            }
         except Exception as e:
             import logging
             logging.error(f"Lỗi khi dịch AI ({self.active_provider}): {e}")

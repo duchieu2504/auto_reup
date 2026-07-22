@@ -27,6 +27,7 @@ export const AddAccountModal = ({ hook }) => {
                 <option value="youtube">YouTube</option>
                 <option value="instagram">Instagram</option>
                 <option value="facebook">Facebook</option>
+                <option value="twitter">Twitter (X)</option>
               </select>
             </div>
             <div>

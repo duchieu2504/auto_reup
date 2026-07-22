@@ -1,15 +1,34 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
+import asyncio
+import json
+import logging
+import os
 
 from app.db.session import get_db
 from app.models.social_account import SocialAccount
+from app.models.twitter_nurture_config import TwitterNurtureConfig
 from app.core.security import encrypt_data, decrypt_data
 from app.utils.account_metadata import save_account_metadata, delete_account_metadata
 
 router = APIRouter()
+
+class TwitterNurtureConfigBase(BaseModel):
+    is_active: bool = False
+    mode: str = "A"
+    list_ids: Optional[str] = None
+    hashtags: Optional[str] = None
+    ai_provider: Optional[str] = "deepseek"
+    ai_api_key: Optional[str] = None
+    ai_model: Optional[str] = None
+    ai_style_prompt: Optional[str] = None
+    comments_per_hour: int = 15
+
+    class Config:
+        from_attributes = True
 
 class SocialAccountBase(BaseModel):
     platform: str
@@ -242,6 +261,27 @@ def stop_warmup(account_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi khi dừng: {e}")
 
+@router.get("/{account_id}/twitter-nurture-config", response_model=TwitterNurtureConfigBase)
+def get_nurture_config(account_id: int, db: Session = Depends(get_db)):
+    config = db.query(TwitterNurtureConfig).filter(TwitterNurtureConfig.account_id == account_id).first()
+    if not config:
+        return TwitterNurtureConfigBase()
+    return config
+
+@router.post("/{account_id}/twitter-nurture-config", response_model=TwitterNurtureConfigBase)
+def update_nurture_config(account_id: int, config_data: TwitterNurtureConfigBase, db: Session = Depends(get_db)):
+    config = db.query(TwitterNurtureConfig).filter(TwitterNurtureConfig.account_id == account_id).first()
+    if not config:
+        config = TwitterNurtureConfig(account_id=account_id)
+        db.add(config)
+    
+    for key, value in config_data.model_dump().items():
+        setattr(config, key, value)
+    
+    db.commit()
+    db.refresh(config)
+    return config
+
 @router.post("/sync")
 def sync_accounts(db: Session = Depends(get_db)):
     from app.utils.account_metadata import load_accounts_metadata
@@ -304,3 +344,133 @@ def sync_accounts(db: Session = Depends(get_db)):
             
     db.commit()
     return {"status": "success", "added_count": added_count, "updated_count": updated_count}
+
+@router.websocket("/{account_id}/nurture-ws")
+async def nurture_websocket(websocket: WebSocket, account_id: int, db: Session = Depends(get_db)):
+    await websocket.accept()
+    
+    # Lấy thông tin account và config
+    db_account = db.query(SocialAccount).filter(SocialAccount.id == account_id).first()
+    if not db_account:
+        await websocket.send_text(json.dumps({"type": "error", "message": "Không tìm thấy tài khoản"}))
+        await websocket.close()
+        return
+
+    # Check platform
+    if db_account.platform != "twitter":
+        await websocket.send_text(json.dumps({"type": "error", "message": "Tính năng chỉ hỗ trợ Twitter (X)"}))
+        await websocket.close()
+        return
+
+    # Resolve Proxy
+    from app.utils.proxy_resolver import resolve_proxy
+    proxy = resolve_proxy(db_account, db)
+    proxy_url = ""
+    if proxy and proxy.get("host") and proxy.get("port"):
+        protocol = "http"
+        auth = ""
+        if proxy.get("username") and proxy.get("password"):
+            auth = f"{proxy['username']}:{proxy['password']}@"
+        proxy_url = f"{protocol}://{auth}{proxy['host']}:{proxy['port']}"
+
+    # Lấy Config
+    config = db.query(TwitterNurtureConfig).filter(TwitterNurtureConfig.account_id == account_id).first()
+    if not config:
+        await websocket.send_text(json.dumps({"type": "error", "message": "Vui lòng lưu cấu hình trước khi chạy"}))
+        await websocket.close()
+        return
+
+    # Khởi tạo thư mục và config JSON cho Node.js
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    bot_dir = os.path.join(base_dir, "app", "services", "twitter_bot")
+    storage_dir = os.path.join(base_dir, "data", "twitter_nurture", str(account_id))
+    os.makedirs(storage_dir, exist_ok=True)
+    
+    config_path = os.path.join(storage_dir, "config.json")
+    
+    # Chuyển đổi config của Python sang định dạng Node.js cần
+    node_config = {
+        "AI_PROVIDER": config.ai_provider or "deepseek",
+        "AI_API_KEY": config.ai_api_key or "",
+        "AI_MODEL": config.ai_model or ("deepseek-chat" if config.ai_provider == "deepseek" else "gemini-1.5-pro"),
+        "AI_STYLE_PROMPT": config.ai_style_prompt or "Bạn là một người dùng mạng xã hội, bình luận tự nhiên, hài hước, ngắn gọn.",
+        "TWITTER_TARGET_LIST_ID": config.list_ids or "",
+        "TWITTER_TARGET_HASHTAGS": (config.hashtags or "").split(","),
+        "TWITTER_MODE": config.mode or "A",
+        "COMMENTS_PER_HOUR": config.comments_per_hour or 15
+    }
+    
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(node_config, f, indent=4)
+        
+    # Chuẩn bị biến môi trường
+    env = os.environ.copy()
+    env["CONFIG_PATH"] = config_path
+    env["STORE_PATH"] = storage_dir
+    env["RUN_LOG_PATH"] = os.path.join(storage_dir, "run.log")
+    if proxy_url:
+        env["PROXY_URL"] = proxy_url
+
+    process = None
+    try:
+        await websocket.send_text(json.dumps({"type": "info", "message": f"Bắt đầu khởi động bot cho {db_account.username}..."}))
+        
+        while True:
+            await websocket.send_text(json.dumps({"type": "info", "message": "Đang chạy 1 chu kỳ Nuôi X (Stateless Mode)..."}))
+            
+            # Khởi chạy Subprocess Node.js
+            process = await asyncio.create_subprocess_exec(
+                "node", "src/index.mjs", "--run-once",
+                cwd=bot_dir,
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            async def read_stream(stream, msg_type):
+                while True:
+                    line = await stream.readline()
+                    if not line:
+                        break
+                    decoded_line = line.decode('utf-8', errors='replace').strip()
+                    if decoded_line:
+                        # Gửi trực tiếp log về websocket
+                        try:
+                            await websocket.send_text(json.dumps({"type": msg_type, "message": decoded_line}))
+                        except Exception:
+                            pass # Bỏ qua nếu websocket đóng
+
+            # Đọc log từ cả 2 luồng
+            await asyncio.gather(
+                read_stream(process.stdout, "log"),
+                read_stream(process.stderr, "error")
+            )
+            
+            await process.wait()
+            
+            await websocket.send_text(json.dumps({"type": "success", "message": "Chu kỳ hoàn thành. Đang nghỉ ngơi 15 phút (900s) trước chu kỳ tiếp theo..."}))
+            
+            # Ngủ 15 phút, trong thời gian này nếu user ngắt kết nối thì asyncio.sleep sẽ bị hủy nếu ta wrap tốt, 
+            # hoặc đơn giản lúc gửi tin nhắn nếu lỗi sẽ catch được. Để an toàn, ta sleep theo block nhỏ
+            for _ in range(90):
+                await asyncio.sleep(10)
+                # Ping nhẹ để xem kết nối còn sống không (nếu chết sẽ văng WebSocketDisconnect)
+                await websocket.send_text(json.dumps({"type": "ping"}))
+                
+    except WebSocketDisconnect:
+        logging.info(f"Client ngắt kết nối WebSocket nuôi X của account {account_id}.")
+        # Nếu process đang chạy thì kill đi
+        if process and process.returncode is None:
+            try:
+                process.terminate()
+                logging.info(f"Đã kill tiến trình Node.js nuôi X (PID: {process.pid})")
+            except Exception as e:
+                logging.error(f"Lỗi khi kill Node process: {e}")
+    except Exception as e:
+        logging.error(f"Lỗi WebSocket nuôi X: {str(e)}")
+        if process and process.returncode is None:
+            process.terminate()
+        try:
+            await websocket.close()
+        except:
+            pass

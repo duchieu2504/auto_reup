@@ -81,7 +81,9 @@ export const ProcessorProvider = ({ children }) => {
           mask_height: options.subConfig?.maskHeight ?? 15.0,
           mask_type: options.subConfig?.maskType || 'color',
           mask_color: options.subConfig?.maskColor || '#000000',
-          masks: options.subConfig?.masks || []
+          masks: options.subConfig?.masks || [],
+          use_custom_srt: options.subConfig?.useCustomSrt ?? false,
+          custom_srt: options.subConfig?.customSrt || ''
         })
       });
       

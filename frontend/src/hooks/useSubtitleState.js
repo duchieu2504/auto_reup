@@ -3,9 +3,14 @@ import { useState, useEffect, useRef } from 'react';
 export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
   const [voice, setVoice] = useState(initialConfig.voice || 'edge_auto');
   const [volume, setVolume] = useState(initialConfig.volume ?? 10);
+  const [vocalVolume, setVocalVolume] = useState(initialConfig.vocalVolume ?? 0);
   
   // Preview Subtitle Text
   const [previewSubtitleText, setPreviewSubtitleText] = useState(initialConfig.previewSubtitleText || 'Đây là phụ đề mẫu tự động sinh...');
+  
+  // Custom SRT
+  const [customSrt, setCustomSrt] = useState(initialConfig.customSrt || '');
+  const [useCustomSrt, setUseCustomSrt] = useState(initialConfig.useCustomSrt ?? false);
   
   // Micro-alterations
   const [flipVideo, setFlipVideo] = useState(initialConfig.flipVideo || false);
@@ -95,6 +100,7 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
   // Interactive preview state
   const [isDragging, setIsDragging] = useState(false);
   const [isDraggingWatermark, setIsDraggingWatermark] = useState(false);
+  const [loadedProfileConfig, setLoadedProfileConfig] = useState(null);
 
   // Load from backend API if initialConfig is empty
   useEffect(() => {
@@ -102,6 +108,7 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
       // Reset state to defaults on video change before fetching
       setVoice('edge_auto');
       setVolume(10);
+      setVocalVolume(0);
       setPreviewSubtitleText('Đây là phụ đề mẫu tự động sinh...');
       setFlipVideo(false);
       setOptZoom(false);
@@ -136,7 +143,10 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
           if (data && Object.keys(data).length > 0) {
             if (data.voice) setVoice(data.voice);
             if (data.volume !== undefined) setVolume(data.volume);
+            if (data.vocalVolume !== undefined) setVocalVolume(data.vocalVolume);
             if (data.previewSubtitleText) setPreviewSubtitleText(data.previewSubtitleText);
+            if (data.customSrt !== undefined) setCustomSrt(data.customSrt);
+            if (data.useCustomSrt !== undefined) setUseCustomSrt(data.useCustomSrt);
             if (data.flipVideo !== undefined) setFlipVideo(data.flipVideo);
             if (data.optZoom !== undefined) setOptZoom(data.optZoom);
             if (data.optColor !== undefined) setOptColor(data.optColor);
@@ -164,6 +174,7 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
               setMasks(data.masks);
               setActiveMaskId(data.masks[0].id);
             }
+            setLoadedProfileConfig(data);
           }
         })
         .catch(err => console.error('Failed to load edit profile from backend:', err));
@@ -215,7 +226,6 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
     setIsDraggingWatermark(false);
   };
 
-  const [loadedProfileConfig, setLoadedProfileConfig] = useState(null);
 
   const subConfig = {
     font: subtitleFont,
@@ -237,14 +247,16 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
     watermarkOpacity,
     enableSubtitles,
     maskEnabled,
-    masks
+    masks,
+    useCustomSrt,
+    customSrt
   };
 
   const getCurrentConfigObj = () => ({
-    voice, volume, flipVideo, optZoom, optColor, optNoise, optPitch,
+    voice, volume, vocalVolume, flipVideo, optZoom, optColor, optNoise, optPitch,
     subtitleFont, subtitleStyle, subtitleTextColor, subtitleBgColor,
     subtitleFontSize, subtitleMarginV, subtitleBgPadding, subtitleBgOpacity,
-    previewSubtitleText,
+    previewSubtitleText, customSrt, useCustomSrt,
     watermarkType, watermarkText, watermarkImagePreview,
     watermarkX, watermarkY, watermarkSize, watermarkColor, watermarkOpacity,
     enableSubtitles, maskEnabled, masks
@@ -265,6 +277,7 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
     return {
       voice: String(configObj.voice || ''),
       volume: String(configObj.volume || ''),
+      vocalVolume: String(configObj.vocalVolume || ''),
       flipVideo: Boolean(configObj.flipVideo),
       optZoom: Boolean(configObj.optZoom),
       optColor: Boolean(configObj.optColor),
@@ -279,6 +292,8 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
       subtitleBgPadding: String(configObj.subtitleBgPadding || ''),
       subtitleBgOpacity: String(configObj.subtitleBgOpacity || ''),
       previewSubtitleText: String(configObj.previewSubtitleText || ''),
+      customSrt: String(configObj.customSrt || ''),
+      useCustomSrt: Boolean(configObj.useCustomSrt),
       watermarkType: String(configObj.watermarkType || ''),
       watermarkText: String(configObj.watermarkText || ''),
       watermarkImagePreview: String(configObj.watermarkImagePreview || ''),
@@ -297,7 +312,9 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
         height: Number(m.height),
         type: String(m.type),
         color: String(m.color)
-      })) : []
+      })) : [],
+      useCustomSrt: Boolean(configObj.useCustomSrt),
+      customSrt: String(configObj.customSrt || '')
     };
   };
 
@@ -307,11 +324,11 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
 
   return {
     // State values
-    voice, volume,
+    voice, volume, vocalVolume,
     flipVideo, optZoom, optColor, optNoise, optPitch,
     subtitleFont, subtitleStyle, subtitleTextColor, subtitleBgColor,
     subtitleFontSize, subtitleMarginV, subtitleBgPadding, subtitleBgOpacity,
-    previewSubtitleText,
+    previewSubtitleText, customSrt, useCustomSrt,
     // Watermark State values
     watermarkType, watermarkText, watermarkImageFile, watermarkImagePreview,
     watermarkX, watermarkY, watermarkSize, watermarkColor, watermarkOpacity,
@@ -324,11 +341,11 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
     loadedProfileConfig, isDirty,
     
     // Setters
-    setVoice, setVolume,
+    setVoice, setVolume, setVocalVolume,
     setFlipVideo, setOptZoom, setOptColor, setOptNoise, setOptPitch,
     setSubtitleFont, setSubtitleStyle, setSubtitleTextColor, setSubtitleBgColor,
     setSubtitleFontSize, setSubtitleMarginV, setSubtitleBgPadding, setSubtitleBgOpacity,
-    setPreviewSubtitleText,
+    setPreviewSubtitleText, setCustomSrt, setUseCustomSrt,
     setWatermarkType, setWatermarkText, setWatermarkImageFile, setWatermarkImagePreview,
     setWatermarkX, setWatermarkY, setWatermarkSize, setWatermarkColor, setWatermarkOpacity,
     setEnableSubtitles, setMaskEnabled, setMasks, setActiveMaskId,

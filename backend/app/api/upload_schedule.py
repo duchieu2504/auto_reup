@@ -70,7 +70,11 @@ def generate_ai_content(req: GenerateContentRequest, db: Session = Depends(get_d
                 
     ai_gen = AIContentGenerator()
     try:
-        content = ai_gen.generate_viral_content(video_title=video.original_name or "Video", translated_text=translated_text)
+        content = ai_gen.generate_viral_content(
+            video_title=video.original_name or "Video", 
+            translated_text=translated_text,
+            original_hashtags=video.original_hashtags or ""
+        )
         return content
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -84,13 +88,33 @@ def translate_caption(req: TranslateCaptionRequest, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="Video không tồn tại")
         
     caption_to_translate = video.original_caption
-    if not caption_to_translate:
-        return {"translated_caption": ""}
+    if not caption_to_translate and not video.original_hashtags:
+        return {"translated_caption": "", "hashtags": ""}
+        
+    # Lấy phụ đề video làm ngữ cảnh (ưu tiên phụ đề đã dịch, nếu không thì bản gốc)
+    video_context = ""
+    srt_path = video.srt_translated_path or video.srt_origin_path
+    if srt_path:
+        import os
+        if os.path.exists(srt_path):
+            try:
+                import pysrt
+                subs = pysrt.open(srt_path)
+                video_context = " ".join([sub.text for sub in subs])
+            except Exception:
+                pass
         
     ai_gen = AIContentGenerator()
     try:
-        translated = ai_gen.translate_to_vietnamese(caption_to_translate)
-        return {"translated_caption": translated}
+        translated = ai_gen.translate_to_vietnamese(
+            text=caption_to_translate, 
+            video_context=video_context,
+            original_hashtags=video.original_hashtags or ""
+        )
+        return {
+            "translated_caption": translated.get("caption", ""),
+            "hashtags": translated.get("hashtags", "")
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

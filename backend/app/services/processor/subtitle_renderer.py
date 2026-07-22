@@ -151,7 +151,16 @@ class SubtitleRenderer:
         ass_bg_color = rgba_to_ass_color(br, bg, bb, ba)
 
         border_style = 3 if self.style in ["classic", "rounded"] else 1
-        outline = self.bg_padding_x if self.style == "rounded" else int(self.bg_padding_x * 0.8) 
+        
+        if border_style == 1:
+            # Stroke thickness should be proportional to font size, not bg_padding
+            outline = max(1, int(self.font_size * 0.08))
+        else:
+            # Box padding
+            outline = self.bg_padding_x if self.style == "rounded" else int(self.bg_padding_x * 0.8) 
+
+        # Fix ghost/duplicated text outline for BorderStyle=3
+        ass_outline_color = "&HFF000000" if border_style == 3 else ass_bg_color
 
         ass_header = f"""[Script Info]
 ScriptType: v4.00+
@@ -161,7 +170,7 @@ WrapStyle: 1
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{self.font_family},{self.font_size},{ass_text_color},{ass_text_color},{ass_bg_color},{ass_bg_color},0,0,0,0,100,100,0,0,{border_style},{outline},0,2,10,10,{margin_v_px},1
+Style: Default,{self.font_family},{self.font_size},{ass_text_color},{ass_text_color},{ass_outline_color},{ass_bg_color},0,0,0,0,100,100,0,0,{border_style},{outline},0,2,10,10,{margin_v_px},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -171,6 +180,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             for sub in subs:
                 max_w = int(self.video_width * 0.8)
                 text = sub.text.replace("\n", " ")
+                
+                # Remove TTS tags from visual subtitles
+                if text.startswith("[F] "): text = text[4:]
+                elif text.startswith("[M] "): text = text[4:]
+                
                 text_segments = self._wrap_and_split_text(text, max_w)
                 
                 total_duration_ms = (sub.end.hours * 3600000 + sub.end.minutes * 60000 + sub.end.seconds * 1000 + sub.end.milliseconds) - \
@@ -239,6 +253,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     f.write(f"duration {duration:.3f}\n")
                 
                 text = sub.text.replace("\n", " ")
+                
+                # Remove TTS tags from visual subtitles
+                if text.startswith("[F] "): text = text[4:]
+                elif text.startswith("[M] "): text = text[4:]
                 
                 max_w = int(self.video_width * 0.8)
                 text_segments = self._wrap_and_split_text(text, max_w)

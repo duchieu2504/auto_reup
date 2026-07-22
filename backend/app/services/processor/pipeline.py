@@ -80,10 +80,6 @@ class ProcessorPipeline:
             if os.path.exists(audio_tts_path):
                 try: os.remove(audio_tts_path)
                 except: pass
-            if os.path.exists(vi_srt) and config.voice_mode == "edge_auto":
-                # Xóa phụ đề cũ để dịch lại và có tag [M]/[F]
-                try: os.remove(vi_srt)
-                except: pass
         
         # Nếu cờ force_render bật, chỉ xóa file video output cũ để tiết kiệm thời gian dịch thuật cho các bước sau
         if config.force_render:
@@ -93,6 +89,21 @@ class ProcessorPipeline:
                     log_callback(f"[*] Force Render: Đã xóa video cũ {os.path.basename(output_video)}.\n")
                 except Exception as e:
                     log_callback(f"[!] Force Render: Không thể xóa video cũ {os.path.basename(output_video)}: {e}\n")
+
+        # Inject custom SRT if provided
+        if getattr(config, 'use_custom_srt', False) and getattr(config, 'custom_srt', None):
+            with open(vi_srt, 'w', encoding='utf-8') as f:
+                f.write(config.custom_srt)
+            with open(orig_srt, 'w', encoding='utf-8') as f:
+                f.write(config.custom_srt)
+            # Force TTS regeneration if custom SRT is used
+            if os.path.exists(audio_tts_path):
+                try: os.remove(audio_tts_path)
+                except: pass
+            if os.path.exists(tts_meta_path):
+                try: os.remove(tts_meta_path)
+                except: pass
+            log_callback(f"[*] Sử dụng Phụ đề Tùy chỉnh. Bỏ qua Dịch tự động.\n")
 
         # Init DB record
         db = SessionLocal()

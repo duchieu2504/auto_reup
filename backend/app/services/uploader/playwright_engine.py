@@ -2,6 +2,7 @@ import logging
 import os
 import json
 import time
+import random
 from typing import Dict, Any
 from .base_engine import BaseUploaderEngine
 from playwright.sync_api import sync_playwright
@@ -15,8 +16,8 @@ class PlaywrightUploader(BaseUploaderEngine):
     Chuyên trị các nền tảng: YouTube, TikTok Web, Instagram PC...
     """
     
-    def __init__(self, account_data: Dict[str, Any]):
-        super().__init__(account_data)
+    def __init__(self, account_data: Dict[str, Any], schedule_id: int = None):
+        super().__init__(account_data, schedule_id=schedule_id)
         
         proxy_host = self.account_data.get("proxy_host")
         proxy_port = self.account_data.get("proxy_port")
@@ -38,6 +39,22 @@ class PlaywrightUploader(BaseUploaderEngine):
             self.cookies = json.loads(self.account_data.get("auth_data", "[]"))
         except Exception:
             self.cookies = []
+
+    def _smart_sleep(self, page, timeout_ms: int):
+        """
+        Poll Redis for cancellation signal while sleeping.
+        Uses page.wait_for_timeout to keep the Playwright event loop pumping.
+        """
+        if not self.schedule_id:
+            page.wait_for_timeout(timeout_ms)
+            return
+            
+        elapsed = 0
+        interval = 500
+        while elapsed < timeout_ms:
+            self.check_control()
+            page.wait_for_timeout(interval)
+            elapsed += interval
 
     def _apply_stealth(self, page):
         """Inject tệp javascript để ẩn danh bot (Bypass Cloudflare/Tiktok Captcha)"""
@@ -153,6 +170,8 @@ class PlaywrightUploader(BaseUploaderEngine):
                     post_url = self._upload_tiktok(page, video_path, full_caption)
                 elif platform == "youtube":
                     post_url = self._upload_youtube(page, video_path, full_caption)
+                elif platform == "twitter":
+                    post_url = self._upload_twitter(page, video_path, full_caption)
                 else:
                     raise Exception(f"Nền tảng {platform} chưa được hỗ trợ.")
                     
@@ -191,7 +210,7 @@ class PlaywrightUploader(BaseUploaderEngine):
     def _upload_tiktok(self, page, video_path: str, text: str) -> str:
         logger.info("[Playwright] Mở trang Tiktok Upload...")
         page.goto("https://www.tiktok.com/creator-center/upload", timeout=60000, wait_until="domcontentloaded")
-        page.wait_for_timeout(5000)
+        self._smart_sleep(page, 5000)
         
         # Check login
         if "login" in page.url:
@@ -260,7 +279,7 @@ class PlaywrightUploader(BaseUploaderEngine):
                 page.locator('input[type="file"]').first.set_input_files(video_path)
             
         logger.info("[Playwright] Đã tải video lên, chờ hệ thống xử lý nội bộ...")
-        page.wait_for_timeout(10000)
+        self._smart_sleep(page, 10000)
         
         # Tiêu diệt toàn bộ popup / overlay cản đường bằng Javascript
         try:
@@ -283,9 +302,9 @@ class PlaywrightUploader(BaseUploaderEngine):
             
             # Xóa tên file mặc định do Tiktok tự động điền vào ô caption
             page.keyboard.press("Control+A")
-            page.wait_for_timeout(200)
+            self._smart_sleep(page, 200)
             page.keyboard.press("Backspace")
-            page.wait_for_timeout(500)
+            self._smart_sleep(page, 500)
             
             page.keyboard.type(text, delay=30)
         except Exception as e:
@@ -302,7 +321,7 @@ class PlaywrightUploader(BaseUploaderEngine):
                 pass
             
             # Chờ thêm 5 giây để nút đăng sáng lên (hết disable)
-            page.wait_for_timeout(5000)
+            self._smart_sleep(page, 5000)
             
             post_selector = 'button:has-text("Post"), button:has-text("Đăng"), [data-e2e="post_video_button"]'
             post_btn = page.locator(post_selector).last
@@ -320,7 +339,7 @@ class PlaywrightUploader(BaseUploaderEngine):
             raise Exception(f"Không bấm được nút Đăng, có thể do mạng chậm hoặc giao diện thay đổi: {str(e)}")
             
         logger.info("[Playwright] Hoàn tất lệnh Upload Tiktok. Đợi URL trả về...")
-        page.wait_for_timeout(8000)
+        self._smart_sleep(page, 8000)
         
         # Thử lấy link post nếu Tiktok trả về thông báo "Video upload saved/posted"
         try:
@@ -340,13 +359,26 @@ class PlaywrightUploader(BaseUploaderEngine):
             
         # --- Lướt feed sau khi đăng để tăng độ trust ---
         try:
-            logger.info("[Playwright] Chuyển về trang chủ Tiktok để lướt dạo...")
+            num_scrolls = random.randint(2, 5)
+            num_likes = random.randint(0, min(2, num_scrolls))
+            like_indices = random.sample(range(num_scrolls), num_likes)
+            
+            logger.info(f"[Playwright] Chuyển về trang chủ Tiktok để lướt dạo {num_scrolls} video (thả tim {num_likes} video)...")
             page.goto("https://www.tiktok.com/foryou", timeout=40000, wait_until="domcontentloaded")
-            page.wait_for_timeout(5000)
-            for i in range(2):
+            self._smart_sleep(page, 5000)
+            for i in range(num_scrolls):
                 logger.info(f"[Playwright] Xem video Tiktok thứ {i+1}...")
                 page.keyboard.press("ArrowDown")
-                page.wait_for_timeout(8000) # Xem 8s mỗi video
+                self._smart_sleep(page, random.randint(6000, 12000))
+                
+                if i in like_indices:
+                    logger.info(f"[Playwright] Thả tim video Tiktok thứ {i+1}...")
+                    try:
+                        # Phím tắt 'l' trên web Tiktok để thả tim video đang focus
+                        page.keyboard.press("l")
+                        self._smart_sleep(page, 500)
+                    except Exception as e:
+                        logger.error(f"Lỗi khi thả tim: {str(e)}")
         except Exception as surf_err:
             logger.warning(f"[Playwright] Lỗi khi lướt dạo Tiktok (bỏ qua): {surf_err}")
             
@@ -355,7 +387,7 @@ class PlaywrightUploader(BaseUploaderEngine):
     def _upload_youtube(self, page, video_path: str, text: str) -> str:
         logger.info("[Playwright] Mở trang Youtube Studio...")
         page.goto("https://studio.youtube.com/", timeout=60000, wait_until="domcontentloaded")
-        page.wait_for_timeout(5000)
+        self._smart_sleep(page, 5000)
         
         # Check login
         if "accounts.google.com" in page.url or "v=SIGNIN" in page.url:
@@ -370,7 +402,7 @@ class PlaywrightUploader(BaseUploaderEngine):
             page.locator('tp-yt-paper-item:has-text("Upload videos"), tp-yt-paper-item:has-text("Tải video lên")').click()
             
             # 2. Upload file
-            page.wait_for_timeout(2000)
+            self._smart_sleep(page, 2000)
             
             try:
                 # BYPASS 50MB LIMIT OVER CDP
@@ -398,7 +430,7 @@ class PlaywrightUploader(BaseUploaderEngine):
                 page.locator('input[type="file"]').first.set_input_files(video_path)
             
             # 3. Nhập chi tiết (Đợi dialog hiện lên)
-            page.wait_for_timeout(8000)
+            self._smart_sleep(page, 8000)
             logger.info("[Playwright] Đang nhập mô tả (Description)...")
             
             desc_box = page.locator('#textbox').nth(1)
@@ -415,7 +447,7 @@ class PlaywrightUploader(BaseUploaderEngine):
                 next_btn = page.locator('#next-button')
                 if next_btn.is_visible():
                     next_btn.click()
-                page.wait_for_timeout(1000)
+                self._smart_sleep(page, 1000)
                 
             # 6. Chọn Public
             public_radio = page.locator('[name="PUBLIC"]')
@@ -427,7 +459,7 @@ class PlaywrightUploader(BaseUploaderEngine):
             done_btn.click()
             
             logger.info("[Playwright] Đã gửi video Youtube, đợi link Public...")
-            page.wait_for_timeout(10000)
+            self._smart_sleep(page, 10000)
             
             # 8. Lấy URL (Trong hộp thoại Video Published)
             final_url = "https://studio.youtube.com/"
@@ -441,15 +473,109 @@ class PlaywrightUploader(BaseUploaderEngine):
             
         # --- Lướt feed sau khi đăng để tăng độ trust ---
         try:
-            logger.info("[Playwright] Chuyển về Youtube Shorts để lướt dạo...")
+            num_scrolls = random.randint(2, 5)
+            num_likes = random.randint(0, min(2, num_scrolls))
+            like_indices = random.sample(range(num_scrolls), num_likes)
+            
+            logger.info(f"[Playwright] Chuyển về Youtube Shorts để lướt dạo {num_scrolls} video (thả tim {num_likes} video)...")
             page.goto("https://www.youtube.com/shorts", timeout=40000, wait_until="domcontentloaded")
-            page.wait_for_timeout(5000)
-            for i in range(2):
+            self._smart_sleep(page, 5000)
+            for i in range(num_scrolls):
                 logger.info(f"[Playwright] Xem video Shorts thứ {i+1}...")
                 page.keyboard.press("ArrowDown")
-                page.wait_for_timeout(8000)
+                self._smart_sleep(page, random.randint(6000, 12000))
+                
+                if i in like_indices:
+                    logger.info(f"[Playwright] Thả tim video Youtube thứ {i+1}...")
+                    try:
+                        like_btn = page.locator('#like-button button, ytd-toggle-button-renderer button').first
+                        if like_btn.is_visible(timeout=2000):
+                            like_btn.click(timeout=2000)
+                    except:
+                        pass
         except Exception as surf_err:
             logger.warning(f"[Playwright] Lỗi khi lướt dạo Youtube (bỏ qua): {surf_err}")
+
+        return final_url
+
+    def _upload_twitter(self, page, video_path: str, text: str) -> str:
+        logger.info("[Playwright] Mở trang soạn thảo Twitter/X...")
+        page.goto("https://x.com/compose/tweet", timeout=60000, wait_until="domcontentloaded")
+        self._smart_sleep(page, 5000)
+        
+        # Check login
+        if "login" in page.url or "i/flow/login" in page.url:
+            raise Exception("Twitter/X báo chưa đăng nhập (Cookie hết hạn hoặc không hợp lệ).")
+            
+        logger.info("[Playwright] Đang tải video lên Twitter...")
+        try:
+            # Tìm input file (ẩn)
+            file_input = page.locator('input[type="file"][accept*="video"]')
+            file_input.set_input_files(video_path)
+            logger.info("[Playwright] Đã đính kèm video, chờ render thanh timeline...")
+            
+            # Twitter cần thời gian để xử lý media. Chờ đến khi xuất hiện nút "Edit" trên video hoặc progress bar mất
+            page.wait_for_selector('[aria-label="Edit video"]', timeout=90000)
+            self._smart_sleep(page, 2000)
+        except Exception as e:
+            logger.error(f"[Playwright] Lỗi đính kèm video lên Twitter: {e}")
+            raise Exception(f"Không thể tải video lên Twitter: {str(e)}")
+
+        logger.info("[Playwright] Đang nhập nội dung Tweet...")
+        try:
+            # Tìm thẻ soạn thảo (contenteditable)
+            tweet_editor = page.locator('[data-testid="tweetTextarea_0"]')
+            tweet_editor.click()
+            page.keyboard.type(text, delay=20)
+        except Exception as e:
+            logger.warning(f"[Playwright] Lỗi nhập nội dung: {e}")
+            
+        logger.info("[Playwright] Đang bấm nút Post...")
+        try:
+            post_btn = page.locator('[data-testid="tweetButton"]')
+            post_btn.click()
+            
+            # Đợi toast thông báo thành công
+            logger.info("[Playwright] Đợi xác nhận đăng thành công từ Twitter...")
+            toast = page.locator('[data-testid="toast"]')
+            toast.wait_for(state="visible", timeout=60000)
+            
+            # Tìm link view (Your Tweet was sent. View)
+            # href thường có định dạng /username/status/123456789
+            view_link = toast.locator('a[href*="/status/"]')
+            final_url = "https://x.com/home"
+            if view_link.is_visible(timeout=5000):
+                href = view_link.get_attribute("href")
+                if href:
+                    final_url = f"https://x.com{href}" if href.startswith("/") else href
+                    
+        except Exception as e:
+            logger.error(f"[Playwright] Lỗi khi bấm Đăng hoặc không bắt được Toast: {e}")
+            final_url = "https://x.com/home" # Fallback
+
+        # Lướt feed sau khi đăng
+        try:
+            num_scrolls = random.randint(2, 5)
+            num_likes = random.randint(0, min(2, num_scrolls))
+            like_indices = random.sample(range(num_scrolls), num_likes)
+            
+            logger.info(f"[Playwright] Lướt feed X dạo {num_scrolls} lần (thả tim {num_likes} bài)...")
+            page.goto("https://x.com/home", timeout=40000, wait_until="domcontentloaded")
+            self._smart_sleep(page, 3000)
+            for i in range(num_scrolls):
+                page.keyboard.press("PageDown")
+                self._smart_sleep(page, random.randint(4000, 8000))
+                
+                if i in like_indices:
+                    logger.info(f"[Playwright] Thả tim bài viết X lần lướt thứ {i+1}...")
+                    try:
+                        like_btn = page.locator('[data-testid="like"]').first
+                        if like_btn.is_visible(timeout=2000):
+                            like_btn.click(timeout=2000)
+                    except:
+                        pass
+        except Exception as surf_err:
+            logger.warning(f"[Playwright] Lỗi khi lướt dạo X (bỏ qua): {surf_err}")
 
         return final_url
 
@@ -464,7 +590,7 @@ class PlaywrightUploader(BaseUploaderEngine):
                     context.add_cookies(self.cookies)
                 page = context.new_page()
                 page.goto("https://www.tiktok.com/")
-                page.wait_for_timeout(3000)
+                self._smart_sleep(page, 3000)
                 # Check selector của avatar góc phải
                 # is_logged_in = page.locator("div[data-e2e='profile-icon']").is_visible()
                 browser.close()

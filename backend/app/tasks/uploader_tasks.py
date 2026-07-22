@@ -93,7 +93,7 @@ def execute_upload(self, schedule_id: int):
 
             if schedule.engine_type == "playwright":
                 from app.services.uploader.playwright_engine import PlaywrightUploader
-                uploader = PlaywrightUploader(account_data)
+                uploader = PlaywrightUploader(account_data, schedule_id=schedule_id)
             elif schedule.engine_type == "adb":
                 from app.services.uploader.adb_engine import ADBUploader
                 uploader = ADBUploader(account_data, schedule_id=schedule_id)
@@ -139,7 +139,7 @@ def execute_upload(self, schedule_id: int):
 
         except Exception as e:
             # Check if the user manually aborted this task
-            from app.services.uploader.adb_engine import TaskAbortedByUser
+            from app.services.uploader.base_engine import TaskAbortedByUser
             
             # Re-fetch schedule to check if it was deleted
             db_schedule = db.query(UploadSchedule).filter(UploadSchedule.id == schedule_id).first()

@@ -6,6 +6,7 @@ const TtsTab = ({
   hfToken, setHfToken,
   enableDemucs, setEnableDemucs,
   bgmVolume, setBgmVolume,
+  defaultVocalVolume, setDefaultVocalVolume,
   activeTTSProvider, setActiveTTSProvider,
   enableAutoVoiceClone, setEnableAutoVoiceClone,
   fptKey, setFptKey,
@@ -72,17 +73,32 @@ const TtsTab = ({
         <p className="text-xs text-text-secondary mb-3">Xóa giọng nói gốc nhưng GIỮ NGUYÊN nhạc nền và tiếng động (BGM/SFX). Tốn rất nhiều CPU/GPU khi chạy.</p>
         
         {enableDemucs && (
-          <div className="mt-4">
-            <label className="block text-xs font-medium text-text-secondary mb-2">Âm lượng Nhạc nền (BGM Volume %)</label>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={bgmVolume}
-              onChange={(e) => setBgmVolume(e.target.value)}
-              className="w-full h-2 bg-bg-secondary rounded-lg appearance-none cursor-pointer"
-            />
-            <div className="text-right text-xs font-bold mt-1 text-brand-primary">{bgmVolume}%</div>
+          <div className="mt-4 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-2">Âm lượng Nhạc nền (BGM Volume %)</label>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={bgmVolume}
+                onChange={(e) => setBgmVolume(e.target.value)}
+                className="w-full h-2 bg-bg-secondary rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="text-right text-xs font-bold mt-1 text-brand-primary">{bgmVolume}%</div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-2">Âm lượng Tiếng gốc (Vocal Volume %)</label>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={defaultVocalVolume}
+                onChange={(e) => setDefaultVocalVolume(e.target.value)}
+                className="w-full h-2 bg-bg-secondary rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="text-right text-xs font-bold mt-1 text-brand-primary">{defaultVocalVolume}%</div>
+            </div>
           </div>
         )}
       </div>

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Trash2, Edit2, Activity, Globe, Shield, RefreshCw, Smartphone, AlertTriangle, Square } from 'lucide-react';
+import { Trash2, Edit2, Activity, Globe, Shield, RefreshCw, Smartphone, AlertTriangle, Square, MessageCircle } from 'lucide-react';
 
-export const AccountGrid = ({ hook }) => {
+export const AccountGrid = ({ hook, onOpenNurture }) => {
   const { 
     accounts, loading, warmingUpIds,
     handleDelete, checkStatus, openEditModal, triggerWarmup, stopWarmup
@@ -20,10 +20,33 @@ export const AccountGrid = ({ hook }) => {
     );
   }
 
+  const sortedAccounts = [...accounts].sort((a, b) => {
+    const pA = (a.platform || '').toLowerCase();
+    const pB = (b.platform || '').toLowerCase();
+    if (pA !== pB) return pA.localeCompare(pB);
+
+    const cA = (a.connection_type || '').toLowerCase();
+    const cB = (b.connection_type || '').toLowerCase();
+    return cA.localeCompare(cB);
+  });
+
+  const groupedAccounts = sortedAccounts.reduce((acc, current) => {
+    const platform = (current.platform || 'KHÁC').toUpperCase();
+    if (!acc[platform]) acc[platform] = [];
+    acc[platform].push(current);
+    return acc;
+  }, {});
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {accounts.map(acc => (
-        <div key={acc.id} className="bg-bg-secondary rounded-2xl border border-border-subtle p-6 hover:border-brand-primary/50 transition-colors group relative overflow-hidden">
+    <div className="space-y-8">
+      {Object.entries(groupedAccounts).map(([platform, platAccounts]) => (
+        <div key={platform}>
+          <h2 className="text-xl font-bold text-text-primary mb-4 border-b border-white/10 pb-2 flex items-center gap-2">
+            <Globe className="text-brand-primary" size={20} /> {platform}
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {platAccounts.map(acc => (
+              <div key={acc.id} className="bg-bg-secondary rounded-2xl border border-border-subtle p-6 hover:border-brand-primary/50 transition-colors group relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-primary to-purple-500 opacity-50" />
           <div className="flex justify-between items-start mb-4">
             <div className="flex items-center gap-3">
@@ -82,7 +105,7 @@ export const AccountGrid = ({ hook }) => {
               <RefreshCw size={16} /> Check Live
             </button>
             
-            {(acc.connection_type === 'gpm_login' || acc.connection_type === 'adb_device') && (
+            {(acc.connection_type === 'gpm_login' || acc.connection_type === 'adb_device') && acc.platform.toLowerCase() !== 'twitter' && (
               (warmingUpIds.includes(acc.id) || acc.status === 'warming_up') ? (
                 <button 
                   onClick={() => stopWarmup(acc.id)}
@@ -101,6 +124,18 @@ export const AccountGrid = ({ hook }) => {
                 </button>
               )
             )}
+            
+            {acc.platform.toLowerCase() === 'twitter' && (
+              <button
+                onClick={() => onOpenNurture(acc)}
+                className="flex items-center justify-center gap-2 px-3 py-2.5 bg-[#1DA1F2]/20 hover:bg-[#1DA1F2]/30 text-[#1DA1F2] rounded-xl text-sm font-medium transition-colors border border-[#1DA1F2]/30"
+              >
+                <MessageCircle size={16} /> Nuôi X
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
           </div>
         </div>
       ))}
