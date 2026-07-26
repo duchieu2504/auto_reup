@@ -51,7 +51,22 @@ class TranscribeStep(ProcessorStep):
                 if v_path: vocal_audio_path = v_path
                 if i_path: context['instrumental_audio_path'] = i_path
                 
-            transcriber.transcribe(vocal_audio_path, orig_srt)
+            if getattr(config, 'use_bcut_asr', False) or getattr(config, 'use_llm_segmentation', False):
+                use_bcut = getattr(config, 'use_bcut_asr', False)
+                use_llm = getattr(config, 'use_llm_segmentation', False)
+                whisper_prompt = getattr(config, 'whisper_prompt', None)
+                
+                log_callback(f"[*] Đang lấy word-level timestamps (Bcut={use_bcut})...\n")
+                words = transcriber.transcribe_to_words(vocal_audio_path, use_bcut=use_bcut, initial_prompt=whisper_prompt)
+                
+                from app.services.processor.subtitle_optimizer import SubtitleOptimizer
+                optimizer = SubtitleOptimizer()
+                optimizer.optimize_and_save_srt(words, orig_srt, use_llm=use_llm)
+            else:
+                whisper_prompt = getattr(config, 'whisper_prompt', None)
+                transcriber.transcribe(vocal_audio_path, orig_srt, initial_prompt=whisper_prompt)
+                
+
             record.srt_origin_path = orig_srt
             db.commit()
             log_callback(f"[*] Đã tạo phụ đề gốc thành công.\n", progress=15.0)

@@ -88,7 +88,10 @@ export const ProcessorProvider = ({ children }) => {
           mask_color: options.subConfig?.maskColor || '#000000',
           masks: options.subConfig?.masks || [],
           use_custom_srt: options.subConfig?.useCustomSrt ?? false,
-          custom_srt: options.subConfig?.customSrt || ''
+          custom_srt: options.subConfig?.customSrt || '',
+          use_bcut_asr: options.subConfig?.useBcutAsr ?? false,
+          use_llm_segmentation: options.subConfig?.useLlmSegmentation ?? false,
+          whisper_prompt: options.subConfig?.whisperPrompt || null
         })
       });
       

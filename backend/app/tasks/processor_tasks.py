@@ -100,6 +100,9 @@ def process_video_task(
     masks: list = None,
     custom_srt: str = None,
     use_custom_srt: bool = False,
+    use_bcut_asr: bool = False,
+    use_llm_segmentation: bool = False,
+    whisper_prompt: str = None,
 ):
     task_id = self.request.id
     channel = f"task_log_{task_id}"
@@ -172,7 +175,10 @@ def process_video_task(
             mask_color=mask_color,
             masks=masks if masks else [],
             custom_srt=custom_srt,
-            use_custom_srt=use_custom_srt
+            use_custom_srt=use_custom_srt,
+            use_bcut_asr=use_bcut_asr,
+            use_llm_segmentation=use_llm_segmentation,
+            whisper_prompt=whisper_prompt
         )
 
         def process_single(vp):

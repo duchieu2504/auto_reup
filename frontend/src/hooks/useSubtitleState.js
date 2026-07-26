@@ -22,6 +22,11 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
   const [optReverb, setOptReverb] = useState(initialConfig.optReverb || false);
   const [optVignette, setOptVignette] = useState(initialConfig.optVignette || false);
   const [optRandomCombo, setOptRandomCombo] = useState(initialConfig.optRandomCombo || false);
+
+  // Transcription & Optimization
+  const [useBcutAsr, setUseBcutAsr] = useState(initialConfig.useBcutAsr ?? false);
+  const [useLlmSegmentation, setUseLlmSegmentation] = useState(initialConfig.useLlmSegmentation ?? false);
+  const [whisperPrompt, setWhisperPrompt] = useState(initialConfig.whisperPrompt || '');
   
   // Anti-Copyright Score (computed)
   const antiCopyrightScore = useMemo(() => {
@@ -140,6 +145,9 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
       setOptPitch(false);
       setOptSpeed(false);
       setOptReverb(false);
+      setUseBcutAsr(false);
+      setUseLlmSegmentation(false);
+      setWhisperPrompt('');
       setSubtitleFont('Liberation Sans');
       setSubtitleStyle('black_white');
       setSubtitleTextColor('#000000');
@@ -181,6 +189,9 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
             if (data.optReverb !== undefined) setOptReverb(data.optReverb);
             if (data.optVignette !== undefined) setOptVignette(data.optVignette);
             if (data.optRandomCombo !== undefined) setOptRandomCombo(data.optRandomCombo);
+            if (data.useBcutAsr !== undefined) setUseBcutAsr(data.useBcutAsr);
+            if (data.useLlmSegmentation !== undefined) setUseLlmSegmentation(data.useLlmSegmentation);
+            if (data.whisperPrompt !== undefined) setWhisperPrompt(data.whisperPrompt);
             if (data.subtitleFont) setSubtitleFont(data.subtitleFont);
             if (data.subtitleStyle) setSubtitleStyle(data.subtitleStyle);
             if (data.subtitleTextColor) setSubtitleTextColor(data.subtitleTextColor);
@@ -281,7 +292,9 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
     maskEnabled,
     masks,
     useCustomSrt,
-    customSrt
+    customSrt,
+    useBcutAsr,
+    useLlmSegmentation
   };
 
   const getCurrentConfigObj = () => ({
@@ -291,7 +304,8 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
     previewSubtitleText, customSrt, useCustomSrt,
     watermarkType, watermarkText, watermarkImagePreview,
     watermarkX, watermarkY, watermarkSize, watermarkColor, watermarkOpacity,
-    enableSubtitles, maskEnabled, masks
+    enableSubtitles, maskEnabled, masks,
+    useBcutAsr, useLlmSegmentation, whisperPrompt
   });
   
   // Auto-save to backend when config changes (with debounce/effect logic implemented where called)
@@ -350,7 +364,10 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
         color: String(m.color)
       })) : [],
       useCustomSrt: Boolean(configObj.useCustomSrt),
-      customSrt: String(configObj.customSrt || '')
+      customSrt: String(configObj.customSrt || ''),
+      useBcutAsr: Boolean(configObj.useBcutAsr),
+      useLlmSegmentation: Boolean(configObj.useLlmSegmentation),
+      whisperPrompt: String(configObj.whisperPrompt || '')
     };
   };
 
@@ -365,7 +382,7 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
     antiCopyrightScore,
     subtitleFont, subtitleStyle, subtitleTextColor, subtitleBgColor,
     subtitleFontSize, subtitleMarginV, subtitleBgPadding, subtitleBgOpacity,
-    previewSubtitleText, customSrt, useCustomSrt,
+    previewSubtitleText, customSrt, useCustomSrt, useBcutAsr, useLlmSegmentation, whisperPrompt,
     // Watermark State values
     watermarkType, watermarkText, watermarkImageFile, watermarkImagePreview,
     watermarkX, watermarkY, watermarkSize, watermarkColor, watermarkOpacity,
@@ -382,7 +399,7 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
     setFlipVideo, setOptZoom, setOptColor, setOptNoise, setOptPitch, setOptSpeed, setOptReverb, setOptVignette, setOptRandomCombo,
     setSubtitleFont, setSubtitleStyle, setSubtitleTextColor, setSubtitleBgColor,
     setSubtitleFontSize, setSubtitleMarginV, setSubtitleBgPadding, setSubtitleBgOpacity,
-    setPreviewSubtitleText, setCustomSrt, setUseCustomSrt,
+    setPreviewSubtitleText, setCustomSrt, setUseCustomSrt, setUseBcutAsr, setUseLlmSegmentation, setWhisperPrompt,
     setWatermarkType, setWatermarkText, setWatermarkImageFile, setWatermarkImagePreview,
     setWatermarkX, setWatermarkY, setWatermarkSize, setWatermarkColor, setWatermarkOpacity,
     setEnableSubtitles, setMaskEnabled, setMasks, setActiveMaskId,

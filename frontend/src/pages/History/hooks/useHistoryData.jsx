@@ -378,7 +378,10 @@ export const useHistoryData = () => {
           mask_height: subtitleConfig.maskHeight || 15.0,
           mask_type: subtitleConfig.maskType || "color",
           mask_color: subtitleConfig.maskColor || "#000000",
-          masks: subtitleConfig.masks || []
+          masks: subtitleConfig.masks || [],
+          use_bcut_asr: subtitleConfig.useBcutAsr ?? false,
+          use_llm_segmentation: subtitleConfig.useLlmSegmentation ?? false,
+          whisper_prompt: subtitleConfig.whisperPrompt || null
         })
       });
       const data = await res.json();

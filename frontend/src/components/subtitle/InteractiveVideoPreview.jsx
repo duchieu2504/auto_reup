@@ -175,11 +175,35 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
         const bgColorHex = config.subtitleBgColor + Math.round((config.subtitleBgOpacity / 100) * 255).toString(16).padStart(2, '0').toUpperCase();
         
         if (config.previewSubtitleText === "") return null;
+
+        // Calculate raw font size in preview pixels
+        const rawFontSizePx = (config.subtitleFontSize / 420) * previewHeight;
+        const rawPaddingPx = (config.subtitleBgPadding * 4 / 420) * previewHeight;
+        
+        // Chrome enforces minimum font size (~10-12px).
+        // If rawFontSizePx < 12, Chrome will force it to 12px, breaking proportions.
+        // We use CSS zoom to bypass this: render at larger size, then zoom down.
+        const MIN_FONT_THRESHOLD = 12;
+        let zoomFactor = 1;
+        let displayFontSize = rawFontSizePx;
+        let displayPadding = rawPaddingPx;
+        
+        if (rawFontSizePx > 0 && rawFontSizePx < MIN_FONT_THRESHOLD) {
+          // Scale up so Chrome renders at full size, then zoom shrinks it down
+          zoomFactor = rawFontSizePx / MIN_FONT_THRESHOLD;
+          displayFontSize = MIN_FONT_THRESHOLD;
+          displayPadding = rawPaddingPx / zoomFactor;
+        }
+
+        // ASS MarginV (Alignment 2) places the bottom of the text bounding box exactly at MarginV.
+        // The outline (padding) extends below this bounding box.
+        // To make CSS perfectly match ASS, we shift the CSS container down by exactly the padding amount.
+        const shiftOffsetPx = displayPadding;
         
         return (
         <div 
           className={`absolute w-full flex justify-center z-50 pointer-events-auto ${config.isDragging ? 'opacity-70' : 'hover:opacity-90'}`}
-          style={{ bottom: config.subtitleMarginV + '%', cursor: 'move', transition: config.isDragging ? 'none' : 'opacity 0.2s' }}
+          style={{ bottom: `calc(${config.subtitleMarginV}% - ${shiftOffsetPx * zoomFactor}px)`, cursor: 'move', transition: config.isDragging ? 'none' : 'opacity 0.2s' }}
           onMouseDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -191,20 +215,34 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
             style={isFfmpegPreview ? {
               color: 'transparent',
               backgroundColor: 'transparent',
-              fontSize: `${(config.subtitleFontSize / 420) * previewHeight}px`,
-              padding: `${(config.subtitleBgPadding * 3 / 420) * previewHeight}px ${(config.subtitleBgPadding * 5 / 420) * previewHeight}px`,
+              fontFamily: config.subtitleFont || 'sans-serif',
+              fontSize: `${displayFontSize}px`,
+              padding: `${displayPadding}px`,
+              maxWidth: `${80 / zoomFactor}%`,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'clip',
+              lineHeight: '1.15',
               userSelect: 'none',
-              border: 'none'
+              border: 'none',
+              zoom: zoomFactor,
             } : {
               color: config.subtitleTextColor,
               backgroundColor: isNeon ? 'transparent' : bgColorHex,
-              fontSize: `${(config.subtitleFontSize / 420) * previewHeight}px`,
-              padding: `${(config.subtitleBgPadding * 3 / 420) * previewHeight}px ${(config.subtitleBgPadding * 5 / 420) * previewHeight}px`,
+              fontFamily: config.subtitleFont || 'sans-serif',
+              fontSize: `${displayFontSize}px`,
+              padding: `${displayPadding}px`,
+              maxWidth: `${80 / zoomFactor}%`,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'clip',
+              lineHeight: '1.15',
               textShadow: isNeon ? 'none' : '0px 1px 2px rgba(0,0,0,0.5)',
               userSelect: 'none',
               borderRadius: br,
               boxShadow: isNeon ? `0 0 10px ${config.subtitleBgColor}, inset 0 0 10px ${config.subtitleBgColor}` : 'none',
               border: isNeon ? `2px solid ${config.subtitleBgColor}` : 'none',
+              zoom: zoomFactor,
             }}
           >
             {!isFfmpegPreview && isNeon && (

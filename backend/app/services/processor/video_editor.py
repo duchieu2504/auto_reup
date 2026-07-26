@@ -27,18 +27,37 @@ def get_video_duration(video_path: str) -> float:
     except Exception:
         pass
     return 0.0
-
 def get_video_resolution(video_path: str) -> tuple[int, int]:
     try:
-        import re
-        cmd = [ffmpeg_exe, "-i", video_path]
+        import json
+        cmd = [
+            "ffprobe", "-v", "error", 
+            "-select_streams", "v:0", 
+            "-show_entries", "stream=width,height:stream_tags=rotate", 
+            "-of", "json", 
+            video_path
+        ]
         result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
-        match = re.search(r", (\d{3,5})x(\d{3,5})\b", result.stderr)
-        if match:
-            w, h = match.groups()
-            return int(w), int(h)
-    except Exception:
-        pass
+        data = json.loads(result.stdout)
+        
+        if "streams" in data and len(data["streams"]) > 0:
+            stream = data["streams"][0]
+            w = int(stream.get("width", 1920))
+            h = int(stream.get("height", 1080))
+            
+            # Check rotation metadata
+            tags = stream.get("tags", {})
+            rotate = tags.get("rotate")
+            if rotate is not None:
+                rotate_val = abs(int(rotate))
+                if rotate_val == 90 or rotate_val == 270:
+                    # Swap width and height for vertical video
+                    return h, w
+                    
+            return w, h
+    except Exception as e:
+        print(f"Error reading video resolution via ffprobe: {e}")
+        
     return 1920, 1080
 
 def get_safe_boxblur_params(crop_w: float, crop_h: float, target_radius: int) -> str:

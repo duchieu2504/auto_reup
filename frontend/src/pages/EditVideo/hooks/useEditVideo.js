@@ -136,7 +136,10 @@ export const useEditVideo = (id) => {
         mask_type: subtitleConfig.maskType || "color",
         mask_color: subtitleConfig.maskColor || "#000000",
         masks: subtitleConfig.masks || [],
-        edited_subtitle: subtitle
+        edited_subtitle: subtitle,
+        use_bcut_asr: subtitleConfig.useBcutAsr,
+        use_llm_segmentation: subtitleConfig.useLlmSegmentation,
+        whisper_prompt: subtitleConfig.whisperPrompt
       };
 
       const res = await fetch(`${API_BASE}/processor/start`, {

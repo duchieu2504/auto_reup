@@ -50,12 +50,12 @@ class Transcriber:
                         raise e
         return _whisper_instance
             
-    def _extract_audio_for_api(self, video_path: str) -> str:
-        audio_path = video_path + ".temp.wav"
+    def _extract_audio_for_api(self, source_audio_path: str) -> str:
+        audio_path = source_audio_path + ".temp.wav"
         import imageio_ffmpeg
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
         cmd = [
-            ffmpeg_exe, "-y", "-i", video_path, 
+            ffmpeg_exe, "-y", "-i", source_audio_path, 
             "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
             audio_path
         ]
@@ -75,11 +75,85 @@ class Transcriber:
         print(f"[*] Trích xuất âm thanh thành công, kích thước: {file_size / 1024:.2f} KB")
         return audio_path
 
-    def transcribe(self, media_path: str, output_srt_path: str):
+    def _extract_audio_mp3(self, source_audio_path: str) -> str:
+        audio_path = source_audio_path + ".temp.mp3"
+        import imageio_ffmpeg
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        cmd = [
+            ffmpeg_exe, "-y", "-i", source_audio_path, 
+            "-vn", "-acodec", "libmp3lame", "-ar", "16000", "-ac", "1", "-q:a", "5",
+            audio_path
+        ]
+        
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"Lỗi khi trích xuất mp3 từ video: {e.stderr}")
+            
+        if not os.path.exists(audio_path):
+            raise Exception(f"Lỗi: File mp3 trích xuất không tồn tại ({audio_path})")
+            
+        return audio_path
+
+    def transcribe_to_words(self, media_path: str, use_bcut: bool = False, initial_prompt: str = None) -> list:
+        """Transcribe and return a list of word-level dictionaries: [{'word': '...', 'start': 0.0, 'end': 0.5}]"""
+        if use_bcut:
+            try:
+                print("[Transcriber] Attempting to transcribe using Bcut ASR...")
+                mp3_path = self._extract_audio_mp3(media_path)
+                from app.services.processor.bcut_asr import BcutASR
+                bcut = BcutASR(mp3_path)
+                words = bcut.run()
+                if os.path.exists(mp3_path):
+                    os.remove(mp3_path)
+                return words
+            except Exception as e:
+                print(f"[!] Bcut ASR failed: {e}. Falling back to Whisper...")
+                
+        # Fallback to local faster-whisper which supports word_timestamps
+        print(f"[Transcriber] Transcribing with local Whisper (word-level). Prompt: {initial_prompt}")
+        model = self._get_whisper_model()
+        
+        transcribe_kwargs = {
+            "beam_size": 5,
+            "vad_filter": True,
+            "vad_parameters": dict(min_silence_duration_ms=500),
+            "word_timestamps": True,
+            "condition_on_previous_text": False
+        }
+        if initial_prompt:
+            transcribe_kwargs["initial_prompt"] = initial_prompt
+            
+        segments, info = model.transcribe(
+            media_path, 
+            **transcribe_kwargs
+        )
+        
+        words = []
+        for segment in segments:
+            if segment.words:
+                for w in segment.words:
+                    word_text = w.word.strip()
+                    if word_text:
+                        words.append({
+                            "word": word_text,
+                            "start": w.start,
+                            "end": w.end
+                        })
+            else:
+                # Fallback if words are missing (shouldn't happen with word_timestamps=True)
+                words.append({
+                    "word": segment.text.strip(),
+                    "start": segment.start,
+                    "end": segment.end
+                })
+        return words
+
+    def transcribe(self, media_path: str, output_srt_path: str, initial_prompt: str = None):
         if self.use_groq:
             try:
                 print("Attempting to transcribe using Groq API...")
-                srt_path = self._transcribe_groq(media_path, output_srt_path)
+                srt_path = self._transcribe_groq(media_path, output_srt_path, initial_prompt)
             except Exception as e:
                 print(f"[!] Lỗi khi dùng Groq API: {e}. Đang tự động chuyển sang dùng Offline Whisper (Local)...")
                 # Xóa file audio tạm nếu còn sót lại
@@ -89,9 +163,9 @@ class Transcriber:
                         os.remove(temp_audio)
                     except:
                         pass
-                srt_path = self._transcribe_offline(media_path, output_srt_path)
+                srt_path = self._transcribe_offline(media_path, output_srt_path, initial_prompt)
         else:
-            srt_path = self._transcribe_offline(media_path, output_srt_path)
+            srt_path = self._transcribe_offline(media_path, output_srt_path, initial_prompt)
             
         # Tự động Diarization nếu được bật
         if os.getenv("ENABLE_DIARIZATION", "False").lower() == "true":
@@ -158,20 +232,25 @@ class Transcriber:
         except Exception as e:
             print(f"Diarization failed: {e}")
 
-    def _transcribe_groq(self, media_path: str, output_srt_path: str):
+    def _transcribe_groq(self, media_path: str, output_srt_path: str, initial_prompt: str = None):
         try:
             from groq import Groq
             client = Groq(api_key=self.groq_api_key)
             audio_path = self._extract_audio_for_api(media_path)
             
+            groq_kwargs = {
+                "model": "whisper-large-v3",
+                "temperature": 0.0,
+                "response_format": "verbose_json",
+                "timeout": 300
+            }
+            if initial_prompt:
+                groq_kwargs["prompt"] = initial_prompt
+                
             with open(audio_path, "rb") as file:
                 transcription = client.audio.transcriptions.create(
                     file=("audio.wav", file, "audio/wav"),
-                    model="whisper-large-v3",
-                    prompt="Bóc băng nguyên văn, đầy đủ, chính xác từng từ một, không tóm tắt, không bỏ sót chữ.",
-                    temperature=0.0,
-                    response_format="verbose_json",
-                    timeout=300
+                    **groq_kwargs
                 )
             
             # Xóa file audio tạm
@@ -199,15 +278,22 @@ class Transcriber:
                 raise GroqQuotaExceeded("GROQ_LIMIT_EXCEEDED")
             raise e
 
-    def _transcribe_offline(self, media_path: str, output_srt_path: str):
+    def _transcribe_offline(self, media_path: str, output_srt_path: str, initial_prompt: str = None):
         model = self._get_whisper_model()
+        
+        transcribe_kwargs = {
+            "beam_size": 5,
+            "vad_filter": True,
+            "vad_parameters": dict(min_silence_duration_ms=500),
+            "word_timestamps": True,
+            "condition_on_previous_text": False
+        }
+        if initial_prompt:
+            transcribe_kwargs["initial_prompt"] = initial_prompt
+            
         segments, info = model.transcribe(
             media_path, 
-            beam_size=5,
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500),
-            word_timestamps=True,
-            initial_prompt="Bóc băng nguyên văn, đầy đủ, chính xác từng từ một, không tóm tắt, không bỏ sót chữ."
+            **transcribe_kwargs
         )
         
         with open(output_srt_path, "w", encoding="utf-8") as f:

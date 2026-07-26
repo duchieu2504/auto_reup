@@ -40,10 +40,60 @@ const EditVideo = () => {
     editHook.setSubtitle(stringifySRT(newBlocks));
   };
   
+  // Helper to slice text proportionally to time, exactly like FFmpeg backend does
+  const getSlicedActiveText = () => {
+    if (!activeBlock || !activeText) return '';
+    
+    // Estimate max characters per line based on backend scaling logic:
+    // Backend max_width = 0.8 * videoWidth
+    // Backend font_size = subtitleFontSize * (videoHeight / 420)
+    // Avg char width ≈ 0.6 * Backend font_size
+    // max_chars = max_width / avg_char_width = 1.333 * (videoWidth/videoHeight) * (420 / subtitleFontSize)
+    const ratio = aspectRatio || 0.5625;
+    const fontSize = Math.max(1, subtitleConfig.subtitleFontSize || 20);
+    const maxChars = Math.max(10, Math.floor(1.333 * ratio * (420 / fontSize)));
+    
+    const words = activeText.split(' ');
+    const segments = [];
+    let currentSegment = [];
+    let currentLen = 0;
+    
+    for (const word of words) {
+      if (currentLen + word.length + 1 > maxChars && currentSegment.length > 0) {
+        segments.push(currentSegment.join(' '));
+        currentSegment = [word];
+        currentLen = word.length;
+      } else {
+        currentSegment.push(word);
+        currentLen += word.length + 1;
+      }
+    }
+    if (currentSegment.length > 0) {
+      segments.push(currentSegment.join(' '));
+    }
+    
+    if (segments.length === 1) return segments[0];
+    
+    // Pick the segment based on currentVideoTime proportionally
+    const totalDuration = activeBlock.endTime - activeBlock.startTime;
+    const elapsed = currentVideoTime - activeBlock.startTime;
+    const totalChars = segments.reduce((sum, seg) => sum + seg.length, 0);
+    
+    let accumulatedTime = 0;
+    for (const seg of segments) {
+      const segTime = totalChars > 0 ? (seg.length / totalChars) * totalDuration : (totalDuration / segments.length);
+      if (elapsed >= accumulatedTime && elapsed <= accumulatedTime + segTime) {
+        return seg;
+      }
+      accumulatedTime += segTime;
+    }
+    return segments[segments.length - 1]; // Fallback
+  };
+  
   // Override previewSubtitleText dynamically for real-time preview
   subtitleConfig.previewSubtitleText = isVideoPlaying 
-    ? activeText 
-    : (activeText || undefined); // When paused, if no active text, passing undefined falls back to placeholder
+    ? getSlicedActiveText() 
+    : (getSlicedActiveText() || undefined); // When paused, show sliced text so it matches video rendering shape
 
   if (editHook.loading) {
     return (

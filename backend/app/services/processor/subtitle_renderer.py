@@ -138,8 +138,6 @@ class SubtitleRenderer:
         subs = pysrt.open(srt_file, encoding='utf-8')
         ass_file_path = os.path.join(output_dir, "subs.ass")
         
-        margin_v_px = int(self.video_height * (self.margin_v / 100.0))
-        
         def rgba_to_ass_color(r, g, b, a=255):
             ass_a = 255 - a
             return f"&H{ass_a:02X}{b:02X}{g:02X}{r:02X}"
@@ -158,6 +156,8 @@ class SubtitleRenderer:
         else:
             # Box padding
             outline = self.bg_padding_x if self.style == "rounded" else int(self.bg_padding_x * 0.8) 
+
+        margin_v_px = int(self.video_height * (self.margin_v / 100.0))
 
         # Fix ghost/duplicated text outline for BorderStyle=3
         ass_outline_color = "&HFF000000" if border_style == 3 else ass_bg_color

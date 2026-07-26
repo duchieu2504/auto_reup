@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Type, ShieldAlert, Sliders, Plus, Trash2 } from 'lucide-react';
+import { Type, ShieldAlert, Sliders, Plus, Trash2, Mic, Wand2, RefreshCw } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 export const SubtitleConfigPanel = ({ config }) => {
   const [availableFonts, setAvailableFonts] = useState([]);
@@ -18,6 +19,108 @@ export const SubtitleConfigPanel = ({ config }) => {
 
   return (
     <div className="space-y-6">
+      {/* Transcription & Optimization Panel */}
+      <div className="bg-bg-secondary/40 rounded-2xl border border-white/5 p-5 w-full relative overflow-hidden">
+        <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
+          <label className="text-sm font-bold text-text-primary flex items-center gap-2 font-display">
+            <Mic size={18} className="text-neon-cyan" />
+            Nhận diện giọng nói (ASR) & Ngắt câu AI
+          </label>
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <motion.div 
+            whileHover={{ scale: 1.01 }}
+            className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+              config.useBcutAsr 
+                ? 'bg-neon-cyan/10 border-neon-cyan text-neon-cyan' 
+                : 'bg-bg-primary/20 border-white/5 hover:border-white/10'
+            }`}
+          >
+            <input 
+              type="checkbox" 
+              id="useBcutAsrToggle" 
+              checked={config.useBcutAsr} 
+              onChange={(e) => config.setUseBcutAsr(e.target.checked)} 
+              className="w-4 h-4 accent-neon-cyan border-border-subtle rounded cursor-pointer" 
+            />
+            <div className="flex flex-col flex-1">
+              <label htmlFor="useBcutAsrToggle" className="text-xs font-bold cursor-pointer select-none">
+                Sử dụng Bcut ASR (Miễn phí)
+              </label>
+              <span className="text-[10px] text-text-secondary mt-0.5">Tiết kiệm chi phí Whisper. Nhận diện cực nhanh bởi Bilibili.</span>
+            </div>
+            
+            <button
+              onClick={async () => {
+                const btn = document.getElementById('testBcutBtn');
+                if (btn) btn.innerHTML = '<span class="animate-spin inline-block">↻</span> Đang thử...';
+                try {
+                  const res = await fetch('http://localhost:8000/api/processor/test-bcut');
+                  const data = await res.json();
+                  if (data.status === 'success') {
+                    toast.success('Kết nối Bcut API thành công! API đang hoạt động tốt.');
+                  } else {
+                    toast.error('Lỗi kết nối Bcut API: ' + (data.detail || data.message || 'Unknown error'));
+                  }
+                } catch (e) {
+                  toast.error('Không thể kết nối đến server: ' + e.message);
+                } finally {
+                  if (btn) btn.innerHTML = 'Test API';
+                }
+              }}
+              id="testBcutBtn"
+              className="text-[10px] bg-bg-primary border border-white/10 hover:border-neon-cyan hover:text-neon-cyan px-2 py-1 rounded transition-colors"
+            >
+              Test API
+            </button>
+          </motion.div>
+
+          <motion.div 
+            whileHover={{ scale: 1.01 }}
+            className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+              config.useLlmSegmentation 
+                ? 'bg-neon-purple/10 border-neon-purple text-neon-purple' 
+                : 'bg-bg-primary/20 border-white/5 hover:border-white/10'
+            }`}
+          >
+            <input 
+              type="checkbox" 
+              id="useLlmSegmentationToggle" 
+              checked={config.useLlmSegmentation} 
+              onChange={(e) => config.setUseLlmSegmentation(e.target.checked)} 
+              className="w-4 h-4 accent-neon-purple border-border-subtle rounded cursor-pointer" 
+            />
+            <div className="flex flex-col">
+              <label htmlFor="useLlmSegmentationToggle" className="text-xs font-bold cursor-pointer select-none">
+                Sử dụng LLM Ngắt câu phụ đề
+              </label>
+              <span className="text-[10px] text-text-secondary mt-0.5">Dùng Claude để chia lại câu sao cho tự nhiên nhất thay vì bị cắt vụn.</span>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Cấu hình Prompt Whisper */}
+        <div className="mt-4 pt-4 border-t border-white/5">
+          <label className="text-xs font-bold text-text-primary flex items-center gap-2 mb-2">
+            Mồi ngôn ngữ Whisper (Fallback)
+          </label>
+          <select 
+            value={config.whisperPrompt || ''} 
+            onChange={(e) => config.setWhisperPrompt(e.target.value)} 
+            className="w-full bg-bg-primary/50 border border-white/10 rounded-xl p-2 text-xs text-text-primary focus:border-neon-cyan focus:outline-none transition-colors"
+          >
+            <option value="">Tự động (Khuyên dùng - Whisper tự nhận diện)</option>
+            <option value="Bóc băng nguyên văn, đầy đủ, chính xác từng từ một, không tóm tắt, không bỏ sót chữ.">Tiếng Việt</option>
+            <option value="请准确逐字转写，不要省略，不要总结。">Tiếng Trung</option>
+            <option value="Transcribe accurately word by word without omitting or summarizing.">Tiếng Anh</option>
+          </select>
+          <p className="text-[10px] text-text-secondary mt-1">
+            Chỉ áp dụng khi Bcut bị lỗi và hệ thống lùi về dùng Whisper. "Tự động" giúp chống lỗi ảo giác lệch thời gian.
+          </p>
+        </div>
+      </div>
+
       {/* Micro-alterations Panel */}
       <div className="bg-bg-secondary/40 rounded-2xl border border-white/5 p-5 w-full relative overflow-hidden">
         <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">

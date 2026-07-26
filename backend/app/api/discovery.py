@@ -278,11 +278,11 @@ def get_account_videos(sec_uid: str, limit: int = 20, db: Session = Depends(get_
     max_cursor = 0
     has_more = True
     page_count = 0
-    max_pages = 5
+    max_pages = 20
     
     try:
         while has_more and len(result) < limit and page_count < max_pages:
-            data = client.get_user_post(sec_uid, max_cursor=max_cursor, count=20)
+            data = client.get_user_post(sec_uid, max_cursor=max_cursor, count=100)
             aweme_list = data.get("aweme_list", [])
             if not aweme_list:
                 break

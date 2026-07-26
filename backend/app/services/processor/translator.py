@@ -176,7 +176,9 @@ SRT Gốc (Phần {i//chunk_size + 1}):
                 if not translated_text or not translated_text.strip():
                     raise Exception("Phản hồi dịch thuật từ AI bị rỗng hoặc không hợp lệ (Empty response)")
 
-                # Sanitize: Strip markdown code fences and AI preamble/postscript
+                # Sanitize: Strip thinking blocks, markdown code fences, and AI preamble/postscript
+                import re
+                translated_text = re.sub(r'<thinking>.*?</thinking>', '', translated_text, flags=re.DOTALL)
                 cleaned = translated_text.strip()
                 fence_match = re.search(r'```(?:srt)?\s*\n(.*?)\n\s*```', cleaned, re.DOTALL)
                 if fence_match:

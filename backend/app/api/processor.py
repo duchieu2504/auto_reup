@@ -46,6 +46,9 @@ class ProcessRequest(BaseModel):
     opt_vignette: bool = False
     opt_random_combo: bool = False
     force_render: bool = False
+    use_bcut_asr: bool = False
+    use_llm_segmentation: bool = False
+    whisper_prompt: Optional[str] = None
     subtitle_style: str = "black_white"
     subtitle_font_family: str = "Liberation Sans"
     subtitle_text_color: str = "#000000"
@@ -74,6 +77,8 @@ class ProcessRequest(BaseModel):
     edited_subtitle: Optional[str] = None
     custom_srt: Optional[str] = None
     use_custom_srt: bool = False
+    use_bcut_asr: bool = False
+    use_llm_segmentation: bool = False
 
 
 class PreviewRequest(ProcessRequest):
@@ -126,6 +131,19 @@ async def upload_video(file: UploadFile = File(...)):
     relative_path = f"data/raw_videos/{filename}"
     return {"status": "success", "path": relative_path, "filename": file.filename}
 
+
+@router.get("/test-bcut")
+async def test_bcut():
+    try:
+        from app.services.processor.bcut_asr import test_bcut_api
+        result = test_bcut_api()
+        if result["status"] == "ok":
+            return {"status": "success", "message": result["message"]}
+        else:
+            raise HTTPException(status_code=500, detail=result["message"])
+    except Exception as e:
+        logger.error(f"Lỗi kiểm tra Bcut API: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/preview-subtitle")
 async def preview_subtitle(request: PreviewRequest):
@@ -235,6 +253,9 @@ async def start_processor(request: ProcessRequest):
                     "opt_speed": request.opt_speed,
                     "opt_reverb": request.opt_reverb,
                     "opt_vignette": request.opt_vignette,
+                    "use_bcut_asr": request.use_bcut_asr,
+                    "use_llm_segmentation": request.use_llm_segmentation,
+                    "whisper_prompt": request.whisper_prompt,
                     "opt_random_combo": request.opt_random_combo,
                     "subtitle_font_family": request.subtitle_font_family,
                     "subtitle_text_color": request.subtitle_text_color,
@@ -314,7 +335,8 @@ async def start_processor(request: ProcessRequest):
         request.mask_x, request.mask_y, request.mask_width, request.mask_height,
         request.mask_type, request.mask_color,
         [m.dict() for m in request.masks],
-        request.custom_srt, request.use_custom_srt
+        request.custom_srt, request.use_custom_srt,
+        request.use_bcut_asr, request.use_llm_segmentation, request.whisper_prompt
     )
     
     # Map task ID to base names of raw videos to control cancellation for all videos in this task
@@ -377,6 +399,41 @@ async def pause_processor(request: PauseRequest):
 
     return {"status": "success", "message": f"Đã gửi lệnh dừng cho {base_name}"}
 
+
+@router.get("/test-bcut")
+async def test_bcut_api():
+    """Test Bcut API Connectivity"""
+    try:
+        import os
+        from app.services.processor.bcut_asr import BcutASR
+        
+        # Tạo file audio dummy (1 giây im lặng)
+        dummy_audio = "dummy_test.mp3"
+        import subprocess
+        import imageio_ffmpeg
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        
+        # Tạo 1 file mp3 1 giây (im lặng)
+        subprocess.run([
+            ffmpeg_exe, "-y", "-f", "lavfi", "-i", "anullsrc=r=16000:cl=mono", 
+            "-t", "1", "-q:a", "9", "-acodec", "libmp3lame", dummy_audio
+        ], check=True, capture_output=True)
+        
+        try:
+            bcut = BcutASR(dummy_audio)
+            # Thử upload để kiểm tra token/signature
+            file_url, upload_id, upload_sign = bcut._upload_file()
+            if not file_url:
+                raise Exception("Upload failed: No file URL returned")
+        finally:
+            if os.path.exists(dummy_audio):
+                os.remove(dummy_audio)
+                
+        return {"status": "success", "message": "Bcut API connected and upload works."}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/stream/{task_id}")
 async def stream_logs(task_id: str, request: Request):

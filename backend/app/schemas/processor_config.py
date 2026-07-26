@@ -26,6 +26,9 @@ class VideoProcessingConfig(BaseModel):
     force_render: bool = False
     custom_srt: Optional[str] = None
     use_custom_srt: bool = False
+    use_bcut_asr: bool = False
+    use_llm_segmentation: bool = False
+    whisper_prompt: Optional[str] = None
     
     subtitle_style: str = "black_white"
     subtitle_font_family: str = "Liberation Sans"
