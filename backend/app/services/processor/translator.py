@@ -94,6 +94,7 @@ Quan trọng: Lắng nghe giọng nói trong file audio đính kèm.
 - Nếu câu nói đó do Nam phát âm, hãy chèn thêm tiền tố [M] vào trước câu dịch.
 - Nếu câu nói đó do Nữ phát âm, hãy chèn thêm tiền tố [F] vào trước câu dịch.
 - Nếu không nghe rõ hoặc giọng AI, mặc định chèn [F].
+- TUYỆT ĐỐI loại bỏ các từ vô nghĩa, tiếng thở dài, tiếng kêu (ví dụ: ừm, à, ờ, ah, oh, yeah...). Chỉ dịch các câu thoại có ý nghĩa. Nếu một đoạn sub chỉ toàn chứa các từ vô nghĩa này, hãy trả về [DELETE].
 TUYỆT ĐỐI GIỮ NGUYÊN cấu trúc thời gian và số thứ tự của file SRT gốc.
 
 SRT Gốc (Phần {i//chunk_size + 1}):
@@ -111,6 +112,7 @@ SRT Gốc (Phần {i//chunk_size + 1}):
                     prompt = f"""
 Bạn là chuyên gia dịch thuật tiếng Trung sang tiếng Việt.
 Dưới đây là một phần nội dung file phụ đề định dạng SRT (Từ dòng {chunk_subs[0].index} đến {chunk_subs[-1].index}). Hãy dịch CÁC DÒNG VĂN BẢN sang tiếng Việt tự nhiên, phù hợp với ngữ cảnh video ngắn TikTok.
+- TUYỆT ĐỐI loại bỏ các từ vô nghĩa, tiếng thở dài, tiếng kêu (ví dụ: ừm, à, ờ, ah, oh, yeah, haizz...). Chỉ dịch các câu thoại có ý nghĩa. Nếu một đoạn sub chỉ toàn chứa các từ vô nghĩa này, hãy trả về chữ [DELETE].
 TUYỆT ĐỐI GIỮ NGUYÊN cấu trúc thời gian, chỉ báo dòng (số thứ tự) và dòng trống của file SRT gốc.
 KHÔNG thêm bất kỳ ghi chú hay markdown formatting nào ở đầu hoặc cuối.
 
@@ -196,36 +198,50 @@ SRT Gốc (Phần {i//chunk_size + 1}):
             with open(output_srt, "w", encoding="utf-8") as f:
                 f.write(translated_full_text.strip())
                 
-            # SANITY CHECK: Ép đồng bộ lại thời gian (Force Sync Timestamps)
-            # Lý do: Các model AI (nhất là custom AI) thường xuyên tự chế/làm tròn timestamp gây lệch sub.
+            # SANITY CHECK: Ép đồng bộ lại thời gian (Force Sync Timestamps) & Lọc sub rác
+            # Lý do: Các model AI thường xuyên tự chế/làm tròn timestamp gây lệch sub hoặc xuất hiện sub rác.
             try:
                 import pysrt
+                import re
                 output_subs = pysrt.open(output_srt, encoding='utf-8')
+                
+                # 1. Ép đồng bộ timestamp nếu độ dài mảng bằng nhau
                 if len(subs) == len(output_subs):
                     for idx in range(len(subs)):
                         output_subs[idx].start = subs[idx].start
                         output_subs[idx].end = subs[idx].end
                         output_subs[idx].index = subs[idx].index
-                    
-                    # Nếu dùng chế độ tự động phân vai, thêm [F] nếu chưa có
-                    if voice_mode == "edge_auto" and active_provider != "gemini":
-                        for sub in output_subs:
-                            text_stripped = sub.text.strip()
-                            if not text_stripped.startswith("[F]") and not text_stripped.startswith("[M]"):
-                                sub.text = f"[F] {text_stripped}"
-                                
-                    output_subs.save(output_srt, encoding='utf-8')
                 else:
                     print(f"[Cảnh báo] AI trả về số lượng dòng ({len(output_subs)}) khác với gốc ({len(subs)}). Bỏ qua ép đồng bộ thời gian.")
-                    # Nếu dùng chế độ tự động phân vai, thêm [F] nếu chưa có
+                    
+                # 2. Bộ lọc (Blacklist) từ rác & thẻ [DELETE]
+                filtered_subs = []
+                blacklist_pattern = re.compile(r'^(ừm|ờ|ah|oh|yeah|haizz|ừ|à|á|ớ|ơi|ờm|ưm|hơ|hớ|\[DELETE\]|\[M\]|\[F\]|\s|\W)+$', re.IGNORECASE)
+                
+                for sub in output_subs:
+                    text_stripped = sub.text.strip()
+                    
+                    # Bỏ qua sub nếu LLM trả về [DELETE] hoặc chỉ toàn từ rác vô nghĩa
+                    if "[DELETE]" in text_stripped.upper() or blacklist_pattern.match(text_stripped):
+                        continue
+                        
+                    # Thêm tag giọng đọc nếu cần
                     if voice_mode == "edge_auto" and active_provider != "gemini":
-                        for sub in output_subs:
-                            text_stripped = sub.text.strip()
-                            if not text_stripped.startswith("[F]") and not text_stripped.startswith("[M]"):
-                                sub.text = f"[F] {text_stripped}"
-                        output_subs.save(output_srt, encoding='utf-8')
+                        if not text_stripped.startswith("[F]") and not text_stripped.startswith("[M]"):
+                            sub.text = f"[F] {text_stripped}"
+                            
+                    filtered_subs.append(sub)
+                    
+                # Cập nhật lại số thứ tự (index) cho chuẩn SRT
+                for i, sub in enumerate(filtered_subs):
+                    sub.index = i + 1
+                    
+                # Lưu đè lại file SRT đã lọc sạch
+                new_subs = pysrt.SubRipFile(items=filtered_subs)
+                new_subs.save(output_srt, encoding='utf-8')
+                
             except Exception as e_sync:
-                print("Lỗi khi ép đồng bộ thời gian sub:", e_sync)
+                print("Lỗi khi ép đồng bộ thời gian và lọc sub rác:", e_sync)
                 
             return output_srt
             
