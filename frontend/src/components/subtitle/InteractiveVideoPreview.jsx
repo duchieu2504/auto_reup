@@ -1,6 +1,23 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 
 export const InteractiveVideoPreview = ({ config, children, className = "w-full h-auto", aspectRatio, isFfmpegPreview = false }) => {
+  const containerRef = useRef(null);
+  const [previewHeight, setPreviewHeight] = useState(420);
+  
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        const height = entry.contentRect.height || entry.target.clientHeight;
+        if (height > 0) {
+          setPreviewHeight(height);
+        }
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [aspectRatio]);
+
   const handleBoxMouseDown = (e, mask) => {
     e.preventDefault();
     e.stopPropagation();
@@ -115,8 +132,8 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
       onMouseUp={config.handleMouseUpOrLeave}
       onMouseLeave={config.handleMouseUpOrLeave}
     >
-      {/* Container for the media (Video or Image) */}
       <div 
+        ref={containerRef}
         className={`flex items-center justify-center max-w-full max-h-full ${config.isDragging ? 'pointer-events-none' : ''}`}
         style={{
           ...(aspectRatio ? { width: '100%', height: '100%' } : { width: 'fit-content', height: 'fit-content' }),
@@ -157,6 +174,8 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
         
         const bgColorHex = config.subtitleBgColor + Math.round((config.subtitleBgOpacity / 100) * 255).toString(16).padStart(2, '0').toUpperCase();
         
+        if (config.previewSubtitleText === "") return null;
+        
         return (
         <div 
           className={`absolute w-full flex justify-center z-50 pointer-events-auto ${config.isDragging ? 'opacity-70' : 'hover:opacity-90'}`}
@@ -172,15 +191,15 @@ export const InteractiveVideoPreview = ({ config, children, className = "w-full 
             style={isFfmpegPreview ? {
               color: 'transparent',
               backgroundColor: 'transparent',
-              fontSize: config.subtitleFontSize + 'px',
-              padding: `${config.subtitleBgPadding * 3}px ${config.subtitleBgPadding * 5}px`,
+              fontSize: `${(config.subtitleFontSize / 420) * previewHeight}px`,
+              padding: `${(config.subtitleBgPadding * 3 / 420) * previewHeight}px ${(config.subtitleBgPadding * 5 / 420) * previewHeight}px`,
               userSelect: 'none',
               border: 'none'
             } : {
               color: config.subtitleTextColor,
               backgroundColor: isNeon ? 'transparent' : bgColorHex,
-              fontSize: config.subtitleFontSize + 'px',
-              padding: `${config.subtitleBgPadding * 3}px ${config.subtitleBgPadding * 5}px`,
+              fontSize: `${(config.subtitleFontSize / 420) * previewHeight}px`,
+              padding: `${(config.subtitleBgPadding * 3 / 420) * previewHeight}px ${(config.subtitleBgPadding * 5 / 420) * previewHeight}px`,
               textShadow: isNeon ? 'none' : '0px 1px 2px rgba(0,0,0,0.5)',
               userSelect: 'none',
               borderRadius: br,

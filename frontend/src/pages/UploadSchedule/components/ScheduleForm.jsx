@@ -7,6 +7,7 @@ export const ScheduleForm = ({ hook }) => {
     videos, accounts, selectedVideos, setSelectedAuthor, selectedAuthor,
     selectedAccounts, caption, setCaption, hashtags, setHashtags,
     scheduleMode, setScheduleMode, scheduledTime, setScheduledTime, engineType, setEngineType,
+    autoCaptionMode, setAutoCaptionMode,
     isGenerating, isTranslating, isSubmitting, groupedVideos, postedMap,
     handleAccountToggle, handleVideoToggle, toggleAllAuthorVideos, generateAIContent, translateOriginalCaption, onSubmit
   } = hook;
@@ -361,8 +362,8 @@ export const ScheduleForm = ({ hook }) => {
               <button 
                 type="button" 
                 onClick={translateOriginalCaption}
-                disabled={isTranslating || isGenerating}
-                className="flex items-center gap-1 text-xs text-brand-secondary hover:text-brand-primary transition-colors font-medium bg-brand-secondary/10 px-2 py-1 rounded-md disabled:opacity-50"
+                disabled={isTranslating || isGenerating || selectedVideos.length > 1}
+                className="flex items-center gap-1 text-xs text-brand-secondary hover:text-brand-primary transition-colors font-medium bg-brand-secondary/10 px-2 py-1 rounded-md disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <Languages size={14} className={isTranslating ? "animate-spin" : ""} /> 
                 {isTranslating ? "Đang dịch..." : "Dịch caption gốc"}
@@ -370,25 +371,47 @@ export const ScheduleForm = ({ hook }) => {
               <button 
                 type="button" 
                 onClick={generateAIContent}
-                disabled={isGenerating || isTranslating}
-                className="flex items-center gap-1 text-xs text-brand-primary hover:text-brand-secondary transition-colors font-medium bg-brand-primary/10 px-2 py-1 rounded-md disabled:opacity-50"
+                disabled={isGenerating || isTranslating || selectedVideos.length > 1}
+                className="flex items-center gap-1 text-xs text-brand-primary hover:text-brand-secondary transition-colors font-medium bg-brand-primary/10 px-2 py-1 rounded-md disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <Sparkles size={14} /> {isGenerating ? "Đang viết..." : "Tự viết bằng AI"}
               </button>
             </div>
           </div>
+          
+          {/* Chế độ Auto Caption cho hàng loạt */}
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <button
+              type="button"
+              onClick={() => setAutoCaptionMode(autoCaptionMode === 'translate' ? null : 'translate')}
+              disabled={selectedVideos.length <= 1}
+              className={`flex items-center justify-center gap-2 py-2 text-xs font-medium rounded-lg border transition-all ${autoCaptionMode === 'translate' ? 'border-brand-secondary bg-brand-secondary/20 text-brand-secondary' : 'border-border-subtle hover:bg-glass-hover text-text-secondary disabled:opacity-30 disabled:cursor-not-allowed'}`}
+            >
+              <Languages size={14} /> Dịch caption gốc cho từng video
+            </button>
+            <button
+              type="button"
+              onClick={() => setAutoCaptionMode(autoCaptionMode === 'ai' ? null : 'ai')}
+              disabled={selectedVideos.length <= 1}
+              className={`flex items-center justify-center gap-2 py-2 text-xs font-medium rounded-lg border transition-all ${autoCaptionMode === 'ai' ? 'border-brand-primary bg-brand-primary/20 text-brand-primary' : 'border-border-subtle hover:bg-glass-hover text-text-secondary disabled:opacity-30 disabled:cursor-not-allowed'}`}
+            >
+              <Sparkles size={14} /> Tự viết AI cho từng video
+            </button>
+          </div>
+
           <textarea 
             value={caption}
             onChange={e => setCaption(e.target.value)}
+            disabled={selectedVideos.length > 1}
             rows={3}
-            placeholder="Nhập caption của bạn hoặc dùng AI sinh tự động..."
-            className="w-full bg-bg-primary border border-border-subtle rounded-xl px-4 py-3 focus:outline-none focus:border-brand-primary transition-colors text-sm resize-none"
+            placeholder={selectedVideos.length > 1 ? "Chế độ đăng nhiều video không dùng chung Caption. Hãy dùng các nút bên trên." : "Nhập caption của bạn hoặc dùng AI sinh tự động..."}
+            className="w-full bg-bg-primary border border-border-subtle rounded-xl px-4 py-3 focus:outline-none focus:border-brand-primary transition-colors text-sm resize-none disabled:opacity-30 disabled:cursor-not-allowed"
           />
           <input 
             type="text" 
             value={hashtags}
             onChange={e => setHashtags(e.target.value)}
-            placeholder="#xuhuong #trending"
+            placeholder="#xuhuong #trending (Áp dụng cho tất cả)"
             className="w-full bg-bg-primary border border-border-subtle rounded-xl px-4 py-2.5 focus:outline-none focus:border-brand-primary transition-colors text-sm font-mono text-brand-secondary"
           />
         </div>

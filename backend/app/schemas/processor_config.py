@@ -19,6 +19,10 @@ class VideoProcessingConfig(BaseModel):
     opt_color: bool = False
     opt_noise: bool = False
     opt_pitch: bool = False
+    opt_speed: bool = False
+    opt_reverb: bool = False
+    opt_vignette: bool = False
+    opt_random_combo: bool = False
     force_render: bool = False
     custom_srt: Optional[str] = None
     use_custom_srt: bool = False

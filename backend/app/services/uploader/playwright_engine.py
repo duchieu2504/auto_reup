@@ -361,9 +361,11 @@ class PlaywrightUploader(BaseUploaderEngine):
         try:
             num_scrolls = random.randint(2, 5)
             num_likes = random.randint(0, min(2, num_scrolls))
+            num_favorites = random.randint(0, min(2, num_scrolls))
             like_indices = random.sample(range(num_scrolls), num_likes)
+            fav_indices = random.sample(range(num_scrolls), num_favorites)
             
-            logger.info(f"[Playwright] Chuyển về trang chủ Tiktok để lướt dạo {num_scrolls} video (thả tim {num_likes} video)...")
+            logger.info(f"[Playwright] Chuyển về trang chủ Tiktok để lướt dạo {num_scrolls} video (thả tim {num_likes}, lưu yêu thích {num_favorites})...")
             page.goto("https://www.tiktok.com/foryou", timeout=40000, wait_until="domcontentloaded")
             self._smart_sleep(page, 5000)
             for i in range(num_scrolls):
@@ -376,9 +378,19 @@ class PlaywrightUploader(BaseUploaderEngine):
                     try:
                         # Phím tắt 'l' trên web Tiktok để thả tim video đang focus
                         page.keyboard.press("l")
-                        self._smart_sleep(page, 500)
+                        self._smart_sleep(page, 1000)
                     except Exception as e:
                         logger.error(f"Lỗi khi thả tim: {str(e)}")
+                        
+                if i in fav_indices:
+                    logger.info(f"[Playwright] Thêm yêu thích video Tiktok thứ {i+1}...")
+                    try:
+                        fav_btn = page.locator('button[data-e2e="browser-collect-button"], span[data-e2e="browser-collect-button"], div[data-e2e="browser-collect-button"], button:has([data-e2e="browser-collect-icon"])').first
+                        if fav_btn.is_visible(timeout=2000):
+                            fav_btn.click(timeout=2000)
+                        self._smart_sleep(page, 1000)
+                    except Exception as e:
+                        logger.error(f"Lỗi khi thêm yêu thích: {str(e)}")
         except Exception as surf_err:
             logger.warning(f"[Playwright] Lỗi khi lướt dạo Tiktok (bỏ qua): {surf_err}")
             

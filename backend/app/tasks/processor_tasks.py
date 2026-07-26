@@ -70,6 +70,10 @@ def process_video_task(
     opt_color: bool = False,
     opt_noise: bool = False,
     opt_pitch: bool = False,
+    opt_speed: bool = False,
+    opt_reverb: bool = False,
+    opt_vignette: bool = False,
+    opt_random_combo: bool = False,
     subtitle_text_color: str = "#000000",
     subtitle_bg_color: str = "#FFFFFF",
     subtitle_font_size: int = 8,
@@ -139,6 +143,10 @@ def process_video_task(
             opt_color=opt_color,
             opt_noise=opt_noise,
             opt_pitch=opt_pitch,
+            opt_speed=opt_speed,
+            opt_reverb=opt_reverb,
+            opt_vignette=opt_vignette,
+            opt_random_combo=opt_random_combo,
             subtitle_text_color=subtitle_text_color,
             subtitle_bg_color=subtitle_bg_color,
             subtitle_font_size=subtitle_font_size,
@@ -169,7 +177,24 @@ def process_video_task(
 
         def process_single(vp):
             try:
-                pipeline.process_video(vp, log_callback, config)
+                # If random combo is enabled, create a unique config per video
+                video_config = config
+                if opt_random_combo:
+                    import random
+                    random_overrides = {
+                        'flip_video': random.random() < 0.5,
+                        'opt_zoom': random.random() < 0.6,
+                        'opt_color': random.random() < 0.6,
+                        'opt_noise': random.random() < 0.4,
+                        'opt_pitch': random.random() < 0.5,
+                        'opt_speed': random.random() < 0.5,
+                        'opt_reverb': random.random() < 0.4,
+                        'opt_vignette': random.random() < 0.5,
+                    }
+                    video_config = config.model_copy(update=random_overrides)
+                    enabled = [k for k, v in random_overrides.items() if v]
+                    log_callback(f"[Random] {os.path.basename(vp)}: {', '.join(enabled) if enabled else 'none'}\n")
+                pipeline.process_video(vp, log_callback, video_config)
             except Exception as e:
                 logger.error(f"Lỗi khi xử lý {vp}: {e}")
 

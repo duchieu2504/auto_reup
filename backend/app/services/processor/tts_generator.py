@@ -482,7 +482,7 @@ class TTSGenerator:
         base_name = os.path.basename(video_path).split('.')[0]
 
 
-        def process_single_sub(i, sub, next_sub_start_ms=None):
+        def process_single_sub(i, sub, next_sub_start_ms=None, exact_timing=False):
             # Periodically check pause/cancellation flag to cancel TTS early
             if sync_redis.get(f"pause_video_{base_name}") == "1":
                 if log_callback: log_callback(f"[System] Phát hiện lệnh dừng từ người dùng. Hủy sinh TTS cho {base_name}...\n")
@@ -593,26 +593,12 @@ class TTSGenerator:
                 audio_duration_ms = len(clip_audio)
                 
                 # Hybrid Layer 2: Smart Spillover & Capped Fast-Forward
-                overlap = audio_duration_ms - target_duration_ms
-                if overlap > 0:
+                if exact_timing:
                     max_allowed_duration = target_duration_ms
-                    if next_sub_start_ms is not None:
-                        # Tính khoảng trống (gap) tới câu tiếp theo
-                        gap = next_sub_start_ms - end_ms
-                        if gap > 0:
-                            max_allowed_duration += gap
-                    else:
-                        # Câu cuối cùng, cho phép dài hơn một chút
-                        max_allowed_duration += 2000
-                        
-                    if audio_duration_ms <= max_allowed_duration:
-                        # Nằm trong vùng an toàn (Spillover hợp lệ) -> Không cần FFmpeg
-                        pass
-                    else:
-                        # Vượt qua mức an toàn -> Dùng FFmpeg tua nhanh (Cap at 1.4x)
-                        needed_ratio = audio_duration_ms / max_allowed_duration
-                        safe_ratio = min(needed_ratio, 1.4)
-                        
+                    needed_ratio = audio_duration_ms / max_allowed_duration
+                    
+                    if not (0.98 <= needed_ratio <= 1.02):
+                        safe_ratio = min(max(needed_ratio, 0.5), 2.0)
                         stretched_wav_path = os.path.join(tmp_dir, f"clip_{i}_stretched.wav")
                         try:
                             subprocess.run([
@@ -625,16 +611,59 @@ class TTSGenerator:
                                 os.remove(stretched_wav_path)
                                 
                             if log_callback:
-                                log_callback(f"[*] Dòng {i}: Ép tốc {safe_ratio:.2f}x (Max allowed: {max_allowed_duration}ms)\n")
+                                log_callback(f"[*] Dòng {i}: Ép/Kéo tốc độ {safe_ratio:.2f}x để vừa đúng {max_allowed_duration}ms\n")
                         except Exception as speed_err:
                             if log_callback:
-                                log_callback(f"[!] Lỗi ép tốc dòng {i}: {speed_err}\n")
-                        
-                        # Soft Trimming nếu sau khi ép tốc (1.25x) vẫn thừa (Fade out mượt 50ms)
-                        if len(clip_audio) > max_allowed_duration:
-                            clip_audio = clip_audio[:max_allowed_duration].fade_out(50)
-                            if log_callback:
-                                log_callback(f"[*] Dòng {i}: Đã cắt gọt (Soft Trimming) phần dư thừa.\n")
+                                log_callback(f"[!] Lỗi ép/kéo tốc dòng {i}: {speed_err}\n")
+                                
+                    # Chỉnh xác chính xác độ dài (cắt bớt hoặc thêm silence)
+                    if len(clip_audio) > max_allowed_duration:
+                        clip_audio = clip_audio[:max_allowed_duration].fade_out(50)
+                    elif len(clip_audio) < max_allowed_duration:
+                        clip_audio += AudioSegment.silent(duration=max_allowed_duration - len(clip_audio))
+                else:
+                    overlap = audio_duration_ms - target_duration_ms
+                    if overlap > 0:
+                        max_allowed_duration = target_duration_ms
+                        if next_sub_start_ms is not None:
+                            # Tính khoảng trống (gap) tới câu tiếp theo
+                            gap = next_sub_start_ms - end_ms
+                            if gap > 0:
+                                max_allowed_duration += gap
+                        else:
+                            # Câu cuối cùng, cho phép dài hơn một chút
+                            max_allowed_duration += 2000
+                            
+                        if audio_duration_ms <= max_allowed_duration:
+                            # Nằm trong vùng an toàn (Spillover hợp lệ) -> Không cần FFmpeg
+                            pass
+                        else:
+                            # Vượt qua mức an toàn -> Dùng FFmpeg tua nhanh (Cap at 1.4x)
+                            needed_ratio = audio_duration_ms / max_allowed_duration
+                            safe_ratio = min(needed_ratio, 1.4)
+                            
+                            stretched_wav_path = os.path.join(tmp_dir, f"clip_{i}_stretched.wav")
+                            try:
+                                subprocess.run([
+                                    imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", clip_wav_path,
+                                    "-filter:a", f"atempo={safe_ratio}", stretched_wav_path
+                                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                                
+                                clip_audio = AudioSegment.from_wav(stretched_wav_path)
+                                if os.path.exists(stretched_wav_path):
+                                    os.remove(stretched_wav_path)
+                                    
+                                if log_callback:
+                                    log_callback(f"[*] Dòng {i}: Ép tốc {safe_ratio:.2f}x (Max allowed: {max_allowed_duration}ms)\n")
+                            except Exception as speed_err:
+                                if log_callback:
+                                    log_callback(f"[!] Lỗi ép tốc dòng {i}: {speed_err}\n")
+                            
+                            # Soft Trimming nếu sau khi ép tốc (1.25x) vẫn thừa (Fade out mượt 50ms)
+                            if len(clip_audio) > max_allowed_duration:
+                                clip_audio = clip_audio[:max_allowed_duration].fade_out(50)
+                                if log_callback:
+                                    log_callback(f"[*] Dòng {i}: Đã cắt gọt (Soft Trimming) phần dư thừa.\n")
                 
                 if os.path.exists(clip_path):
                     os.remove(clip_path)
@@ -662,7 +691,7 @@ class TTSGenerator:
                 if i + 1 < len(subs):
                     n_s = subs[i+1].start
                     next_sub_start_ms = (n_s.hours * 3600 + n_s.minutes * 60 + n_s.seconds) * 1000 + n_s.milliseconds
-                futures[executor.submit(process_single_sub, i, sub, next_sub_start_ms)] = i
+                futures[executor.submit(process_single_sub, i, sub, next_sub_start_ms, exact_timing=True)] = i
                 
             for future in concurrent.futures.as_completed(futures):
                 try:

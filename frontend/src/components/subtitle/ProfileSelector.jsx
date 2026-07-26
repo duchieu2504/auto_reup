@@ -47,6 +47,11 @@ export const ProfileSelector = ({ config }) => {
       if (config.setOptColor) config.setOptColor(false);
       if (config.setOptNoise) config.setOptNoise(false);
       if (config.setOptPitch) config.setOptPitch(false);
+      if (config.setOptSpeed) config.setOptSpeed(false);
+      if (config.setOptSpeed) config.setOptSpeed(false);
+      if (config.setOptReverb) config.setOptReverb(false);
+      if (config.setOptVignette) config.setOptVignette(false);
+      if (config.setOptRandomCombo) config.setOptRandomCombo(false);
       if (config.setSubtitleFont) config.setSubtitleFont('Liberation Sans');
       if (config.setSubtitleStyle) config.setSubtitleStyle('black_white');
       if (config.setSubtitleTextColor) config.setSubtitleTextColor('#000000');
@@ -87,6 +92,10 @@ export const ProfileSelector = ({ config }) => {
       if (config.setOptColor) config.setOptColor(parsedConfig.optColor ?? false);
       if (config.setOptNoise) config.setOptNoise(parsedConfig.optNoise ?? false);
       if (config.setOptPitch) config.setOptPitch(parsedConfig.optPitch ?? false);
+      if (config.setOptSpeed) config.setOptSpeed(parsedConfig.optSpeed ?? false);
+      if (config.setOptReverb) config.setOptReverb(parsedConfig.optReverb ?? false);
+      if (config.setOptVignette) config.setOptVignette(parsedConfig.optVignette ?? false);
+      if (config.setOptRandomCombo) config.setOptRandomCombo(parsedConfig.optRandomCombo ?? false);
       
       // Subtitle Settings
       if (config.setSubtitleFont) config.setSubtitleFont(parsedConfig.subtitleFont ?? "Arial");
@@ -118,11 +127,16 @@ export const ProfileSelector = ({ config }) => {
         config.setLoadedProfileConfig({
           voice: parsedConfig.voiceMode ?? 'edge_auto',
           volume: parsedConfig.bgVolume ?? 10,
+          vocalVolume: parsedConfig.vocalVolume ?? 0,
           flipVideo: parsedConfig.flipVideo ?? false,
           optZoom: parsedConfig.optZoom ?? false,
           optColor: parsedConfig.optColor ?? false,
           optNoise: parsedConfig.optNoise ?? false,
           optPitch: parsedConfig.optPitch ?? false,
+          optSpeed: parsedConfig.optSpeed ?? false,
+          optReverb: parsedConfig.optReverb ?? false,
+          optVignette: parsedConfig.optVignette ?? false,
+          optRandomCombo: parsedConfig.optRandomCombo ?? false,
           subtitleFont: parsedConfig.subtitleFont ?? "Arial",
           subtitleStyle: parsedConfig.subtitleStyle ?? "outline",
           subtitleTextColor: parsedConfig.subtitleTextColor ?? "#FFFF00",
@@ -257,11 +271,16 @@ export const SaveProfileButton = ({ config, onSaveSuccess }) => {
       const configObj = {
         voiceMode: config.voice,
         bgVolume: config.volume,
+        vocalVolume: config.vocalVolume,
         flipVideo: config.flipVideo,
         optZoom: config.optZoom,
         optColor: config.optColor,
         optNoise: config.optNoise,
         optPitch: config.optPitch,
+        optSpeed: config.optSpeed,
+        optReverb: config.optReverb,
+        optVignette: config.optVignette,
+        optRandomCombo: config.optRandomCombo,
         
         subtitleFont: config.subtitleFont,
         subtitleStyle: config.subtitleStyle,

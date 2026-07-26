@@ -243,6 +243,20 @@ class AdbWarmupEngine(BaseWarmupEngine):
                         logger.info("[Warmup-ADB] KHÔNG TÌM THẤY NÚT TIM! (Livestream/Ad). BỎ QUA.")
                 except Exception as e:
                     logger.error(f"[Warmup-ADB] Lỗi khi cố gắng thả tim: {e}")
+                    
+            # Tỷ lệ yêu thích 15%
+            if random.random() < 0.15:
+                logger.info(f"[Warmup-ADB] Tìm và bấm yêu thích video...")
+                try:
+                    from app.services.uploader.adb_automator import ADBAutomator
+                    automator = ADBAutomator(device_id)
+                    if automator.click_element(content_descs=['Thêm vào mục Yêu thích', 'Add to Favorites', 'Lưu', 'Save']):
+                        logger.info("[Warmup-ADB] ĐÃ THÊM YÊU THÍCH THÀNH CÔNG!")
+                        time.sleep(1)
+                    else:
+                        logger.info("[Warmup-ADB] KHÔNG TÌM THẤY NÚT YÊU THÍCH! BỎ QUA.")
+                except Exception as e:
+                    logger.error(f"[Warmup-ADB] Lỗi khi cố gắng thêm yêu thích: {e}")
                 
             # Lấy lại kích thước màn hình cho swipe nếu chưa lấy
             if 'width' not in locals():

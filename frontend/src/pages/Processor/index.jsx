@@ -206,11 +206,16 @@ const Phase2Processor = () => {
 
     startProcessing(finalPaths, { 
       voiceMode, bgVolume, 
+      vocalVolume: subtitleState.vocalVolume,
       flipVideo: subtitleState.flipVideo, 
       optZoom: subtitleState.optZoom, 
       optColor: subtitleState.optColor, 
       optNoise: subtitleState.optNoise, 
       optPitch: subtitleState.optPitch,
+      optSpeed: subtitleState.optSpeed,
+      optReverb: subtitleState.optReverb,
+      optVignette: subtitleState.optVignette,
+      optRandomCombo: subtitleState.optRandomCombo,
       subConfig: subtitleState.subConfig
     });
   };
@@ -266,11 +271,16 @@ const Phase2Processor = () => {
       const configObj = {
         voiceMode,
         bgVolume,
+        vocalVolume: subtitleState.vocalVolume,
         flipVideo: subtitleState.flipVideo,
         optZoom: subtitleState.optZoom,
         optColor: subtitleState.optColor,
         optNoise: subtitleState.optNoise,
         optPitch: subtitleState.optPitch,
+        optSpeed: subtitleState.optSpeed,
+        optReverb: subtitleState.optReverb,
+        optVignette: subtitleState.optVignette,
+        optRandomCombo: subtitleState.optRandomCombo,
         
         subtitleFont: subtitleState.subtitleFont,
         subtitleStyle: subtitleState.subtitleStyle,
@@ -332,6 +342,7 @@ const Phase2Processor = () => {
       const config = JSON.parse(profile.config);
       setVoiceMode(config.voiceMode ?? "edge_auto");
       setBgVolume(config.bgVolume ?? 10);
+      subtitleState.setVocalVolume(config.vocalVolume ?? 0);
       
       subtitleState.setFlipVideo(config.flipVideo ?? false);
       subtitleState.setOptZoom(config.optZoom ?? false);

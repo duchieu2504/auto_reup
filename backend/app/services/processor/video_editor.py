@@ -247,7 +247,7 @@ class VideoEditor:
                 "-pix_fmt", "yuv420p"
             ])
         
-        if builder.tts_idx != -1 or config.opt_pitch:
+        if builder.tts_idx != -1 or config.opt_pitch or getattr(config, 'opt_speed', False) or getattr(config, 'opt_reverb', False):
             cmd.extend([
                 "-c:a", "aac",
                 "-b:a", "128k"

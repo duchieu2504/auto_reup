@@ -100,8 +100,72 @@ def execute_upload(self, schedule_id: int):
             else:
                 raise Exception(f"Engine type {schedule.engine_type} không được hỗ trợ.")
 
+            # Resolve Auto Captions
+            final_caption = schedule.caption or ""
+            final_hashtags = schedule.hashtags or ""
+
+            if final_caption == "[AUTO_TRANSLATE]":
+                from app.services.uploader.ai_content import AIContentGenerator
+                caption_to_translate = video_history.original_caption
+                if caption_to_translate or video_history.original_hashtags:
+                    video_context = ""
+                    srt_path = video_history.srt_translated_path or video_history.srt_origin_path
+                    if srt_path:
+                        if os.path.exists(srt_path):
+                            try:
+                                import pysrt
+                                subs = pysrt.open(srt_path)
+                                video_context = " ".join([sub.text for sub in subs])
+                            except Exception:
+                                pass
+                    try:
+                        ai_gen = AIContentGenerator()
+                        translated = ai_gen.translate_to_vietnamese(
+                            text=caption_to_translate, 
+                            video_context=video_context,
+                            original_hashtags=video_history.original_hashtags or ""
+                        )
+                        final_caption = translated.get("caption", "")
+                        final_hashtags = translated.get("hashtags", "")
+                        if schedule.hashtags:
+                            final_hashtags = f"{final_hashtags} {schedule.hashtags}".strip()
+                    except Exception as e:
+                        logger.error(f"Lỗi Auto Translate (Bulk) cho schedule_id={schedule_id}: {str(e)}")
+                        final_caption = ""
+                        final_hashtags = schedule.hashtags or ""
+                else:
+                    final_caption = ""
+                    final_hashtags = schedule.hashtags or ""
+            
+            elif final_caption == "[AUTO_AI]":
+                from app.services.uploader.ai_content import AIContentGenerator
+                translated_text = ""
+                if video_history.srt_translated_path:
+                    if os.path.exists(video_history.srt_translated_path):
+                        try:
+                            import pysrt
+                            subs = pysrt.open(video_history.srt_translated_path)
+                            translated_text = " ".join([sub.text for sub in subs])
+                        except Exception:
+                            pass
+                try:
+                    ai_gen = AIContentGenerator()
+                    content = ai_gen.generate_viral_content(
+                        video_title=video_history.original_name or "Video", 
+                        translated_text=translated_text,
+                        original_hashtags=video_history.original_hashtags or ""
+                    )
+                    final_caption = content.get("caption", "")
+                    final_hashtags = content.get("hashtags", "")
+                    if schedule.hashtags:
+                        final_hashtags = f"{final_hashtags} {schedule.hashtags}".strip()
+                except Exception as e:
+                    logger.error(f"Lỗi Auto AI (Bulk) cho schedule_id={schedule_id}: {str(e)}")
+                    final_caption = ""
+                    final_hashtags = schedule.hashtags or ""
+
             # Execute upload
-            post_url = uploader.upload(video_path, schedule.caption or "", schedule.hashtags or "")
+            post_url = uploader.upload(video_path, final_caption, final_hashtags)
 
             logger.info(f"Upload thành công schedule_id={schedule_id}")
             schedule.status = "success"

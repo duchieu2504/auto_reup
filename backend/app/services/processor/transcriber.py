@@ -180,12 +180,16 @@ class Transcriber:
                 
             # Tạo SRT
             with open(output_srt_path, "w", encoding="utf-8") as f:
-                for i, segment in enumerate(transcription.segments, start=1):
-                    start = self._format_timestamp(segment["start"])
-                    end = self._format_timestamp(segment["end"])
-                    f.write(f"{i}\n")
-                    f.write(f"{start} --> {end}\n")
-                    f.write(f"{segment['text'].strip()}\n\n")
+                idx = 1
+                for segment in transcription.segments:
+                    sub_segments = self._split_long_segment(segment["start"], segment["end"], segment["text"])
+                    for (s_start, s_end, s_text) in sub_segments:
+                        start_str = self._format_timestamp(s_start)
+                        end_str = self._format_timestamp(s_end)
+                        f.write(f"{idx}\n")
+                        f.write(f"{start_str} --> {end_str}\n")
+                        f.write(f"{s_text}\n\n")
+                        idx += 1
                     
             return output_srt_path
             
@@ -207,12 +211,16 @@ class Transcriber:
         )
         
         with open(output_srt_path, "w", encoding="utf-8") as f:
-            for i, segment in enumerate(segments, start=1):
-                start = self._format_timestamp(segment.start)
-                end = self._format_timestamp(segment.end)
-                f.write(f"{i}\n")
-                f.write(f"{start} --> {end}\n")
-                f.write(f"{segment.text.strip()}\n\n")
+            idx = 1
+            for segment in segments:
+                sub_segments = self._split_long_segment(segment.start, segment.end, segment.text)
+                for (s_start, s_end, s_text) in sub_segments:
+                    start_str = self._format_timestamp(s_start)
+                    end_str = self._format_timestamp(s_end)
+                    f.write(f"{idx}\n")
+                    f.write(f"{start_str} --> {end_str}\n")
+                    f.write(f"{s_text}\n\n")
+                    idx += 1
                 
         return output_srt_path
 
@@ -222,3 +230,31 @@ class Transcriber:
         secs = int(seconds % 60)
         millis = int((seconds - int(seconds)) * 1000)
         return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+    def _split_long_segment(self, start: float, end: float, text: str):
+        import re
+        text = text.strip()
+        # Tách theo dấu gạch ngang (đại diện cho hội thoại người khác nhau)
+        text = re.sub(r'(^|\s+)-\s+', r'\n- ', text).strip()
+        
+        # Tách theo dấu kết thúc câu nếu đoạn quá dài (> 3 giây)
+        if (end - start) > 3.0:
+            text = re.sub(r'([。！？\!\?])\s*', r'\1\n', text).strip()
+            
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        
+        if len(lines) <= 1:
+            return [(start, end, lines[0] if lines else text)]
+            
+        total_len = sum(len(line) for line in lines)
+        total_duration = end - start
+        
+        result = []
+        current_time = start
+        for line in lines:
+            duration = (len(line) / total_len) * total_duration if total_len > 0 else 0
+            line_end = current_time + duration
+            result.append((current_time, line_end, line))
+            current_time = line_end
+            
+        return result

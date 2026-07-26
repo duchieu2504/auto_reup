@@ -236,6 +236,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         with open(concat_file_path, "w", encoding="utf-8") as f:
             last_end_time = 0.0
             
+            # Ensure empty.png always exists
+            empty_png = os.path.join(output_dir, "empty.png")
+            if not os.path.exists(empty_png):
+                img = Image.new('RGBA', (self.video_width, self.video_height), (0, 0, 0, 0))
+                img.save(empty_png, format="PNG", optimize=True)
+                
             for i, sub in enumerate(subs):
                 start_time = self._format_time(sub.start)
                 end_time = self._format_time(sub.end)
@@ -243,10 +249,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 # If there's a gap before this subtitle, add a transparent placeholder duration
                 if start_time > last_end_time:
                     duration = start_time - last_end_time
-                    empty_png = os.path.join(output_dir, "empty.png")
-                    if not os.path.exists(empty_png):
-                        img = Image.new('RGBA', (self.video_width, self.video_height), (0, 0, 0, 0))
-                        img.save(empty_png, format="PNG", optimize=True)
+
                     
                     empty_png_escaped = empty_png.replace('\\', '/')
                     f.write(f"file '{empty_png_escaped}'\n")

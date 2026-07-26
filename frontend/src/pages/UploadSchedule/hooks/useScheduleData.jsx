@@ -27,6 +27,8 @@ export const useScheduleData = () => {
   const [scheduleMode, setScheduleMode] = useState("now");
   const [scheduledTime, setScheduledTime] = useState("");
   const [engineType, setEngineType] = useState("playwright");
+  const [autoCaptionMode, setAutoCaptionMode] = useState(null); // 'translate', 'ai', or null
+
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
@@ -244,14 +246,28 @@ export const useScheduleData = () => {
     try {
       for (let vidId of selectedVideos) {
         for (let accId of selectedAccounts) {
+          let finalCaption = caption;
+          let finalHashtags = hashtags;
+          
+          // Bulk auto-caption override
+          if (selectedVideos.length > 1) {
+            if (autoCaptionMode === 'translate') {
+              finalCaption = "[AUTO_TRANSLATE]";
+            } else if (autoCaptionMode === 'ai') {
+              finalCaption = "[AUTO_AI]";
+            } else {
+              finalCaption = ""; // Clear if no auto mode selected
+            }
+          }
+          
           const res = await fetch(`${API_BASE}/upload-schedules/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               video_history_id: parseInt(vidId),
               account_id: parseInt(accId),
-              caption: caption,
-              hashtags: hashtags,
+              caption: finalCaption,
+              hashtags: finalHashtags,
               scheduled_time: timeToPost,
               engine_type: engineType
             })

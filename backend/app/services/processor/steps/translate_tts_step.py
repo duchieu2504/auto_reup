@@ -63,9 +63,16 @@ class TranslateAndTTSStep(ProcessorStep):
                     tts.generate_tts_track(vi_srt, tts_audio_path, config.voice_mode, video_path, log_callback, vocal_path_to_clone)
                     record.audio_tts_path = tts_audio_path
                     db.commit()
+                    
+                    tts_meta_path = os.path.join(audio_dir, f"{base_name}_tts_meta.json")
+                    if os.path.exists(tts_audio_path):
+                        try:
+                            with open(tts_meta_path, 'w', encoding='utf-8') as f:
+                                json.dump({"voice_mode": config.voice_mode}, f)
+                        except Exception:
+                            pass
                 except Exception as e:
-                    log_callback(f"[!] Lỗi TTS fallback: {e}\n")
-                    raise e
+                    log_callback(f"[!] Lỗi khi sinh âm thanh từ phụ đề: {e}\n")
             return True
             
         log_callback(f"[*] Bước 2: Dịch thuật tiếng Trung -> Việt bằng Gemini...\n", progress=15.0)

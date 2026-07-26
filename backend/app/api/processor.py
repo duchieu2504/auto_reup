@@ -15,6 +15,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from app.tasks.processor_tasks import process_video_task
 from app.core.logger import get_logger
 from app.core.redis_pool import get_async_redis
+from app.models.history import VideoHistory
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -40,6 +41,10 @@ class ProcessRequest(BaseModel):
     opt_color: bool = False
     opt_noise: bool = False
     opt_pitch: bool = False
+    opt_speed: bool = False
+    opt_reverb: bool = False
+    opt_vignette: bool = False
+    opt_random_combo: bool = False
     force_render: bool = False
     subtitle_style: str = "black_white"
     subtitle_font_family: str = "Liberation Sans"
@@ -150,6 +155,9 @@ async def preview_subtitle(request: PreviewRequest):
             opt_zoom=request.opt_zoom,
             opt_color=request.opt_color,
             opt_noise=request.opt_noise,
+            opt_pitch=request.opt_pitch,
+            opt_speed=request.opt_speed,
+            opt_reverb=request.opt_reverb,
             subtitle_text_color=request.subtitle_text_color,
             subtitle_bg_color=request.subtitle_bg_color,
             subtitle_font_size=request.subtitle_font_size,
@@ -224,6 +232,10 @@ async def start_processor(request: ProcessRequest):
                     "opt_color": request.opt_color,
                     "opt_noise": request.opt_noise,
                     "opt_pitch": request.opt_pitch,
+                    "opt_speed": request.opt_speed,
+                    "opt_reverb": request.opt_reverb,
+                    "opt_vignette": request.opt_vignette,
+                    "opt_random_combo": request.opt_random_combo,
                     "subtitle_font_family": request.subtitle_font_family,
                     "subtitle_text_color": request.subtitle_text_color,
                     "subtitle_bg_color": request.subtitle_bg_color,
@@ -259,25 +271,30 @@ async def start_processor(request: ProcessRequest):
                 )
                 
                 # Nếu có sửa text subtitle từ UI
-                if request.edited_subtitle and len(cleaned_paths) == 1:
+                if request.edited_subtitle is not None and len(cleaned_paths) == 1:
                     record = db.query(VideoHistory).filter(VideoHistory.raw_video_path.like(f"%{base_name}%")).first()
                     if record and record.srt_translated_path:
                         try:
-                            # 1. Ghi đè file sub
-                            with open(record.srt_translated_path, "w", encoding="utf-8") as f:
-                                f.write(request.edited_subtitle)
-                            logger.info(f"Đã cập nhật đè nội dung file SRT: {record.srt_translated_path}")
+                            new_sub = request.edited_subtitle.replace("\r\n", "\n").strip()
+                            current_sub = ""
+                            if os.path.exists(record.srt_translated_path):
+                                with open(record.srt_translated_path, "r", encoding="utf-8") as f:
+                                    current_sub = f.read().replace("\r\n", "\n").strip()
                             
-                            # 2. Xoá file TTS cũ (nếu có) để ép hệ thống tạo lại audio cho sub mới
-                            if record.audio_tts_path and os.path.exists(record.audio_tts_path):
-                                try: os.remove(record.audio_tts_path)
-                                except: pass
-                            
-                            tts_meta_path = record.audio_tts_path.replace("_tts.mp3", "_tts_meta.json") if record.audio_tts_path else ""
-                            if tts_meta_path and os.path.exists(tts_meta_path):
-                                try: os.remove(tts_meta_path)
-                                except: pass
+                            # 1. Ghi đè file sub nếu có sự thay đổi thực sự
+                            if current_sub != new_sub:
+                                with open(record.srt_translated_path, "w", encoding="utf-8", newline="\n") as f:
+                                    f.write(new_sub)
+                                    
+                                # 2. Xoá file TTS cũ (nếu có) để ép hệ thống tạo lại audio cho sub mới
+                                if record.audio_tts_path and os.path.exists(record.audio_tts_path):
+                                    try: os.remove(record.audio_tts_path)
+                                    except: pass
                                 
+                                tts_meta_path = record.audio_tts_path.replace("_tts.mp3", "_tts_meta.json") if record.audio_tts_path else ""
+                                if tts_meta_path and os.path.exists(tts_meta_path):
+                                    try: os.remove(tts_meta_path)
+                                    except: pass
                         except Exception as file_e:
                             logger.error(f"Lỗi khi lưu edited_subtitle: {file_e}")
                             
@@ -287,7 +304,8 @@ async def start_processor(request: ProcessRequest):
     task = process_video_task.delay(
         cleaned_paths, request.voice_mode, request.bg_volume, request.vocal_volume, request.flip_video,
         request.force_render, request.subtitle_style, request.opt_zoom, request.opt_color,
-        request.opt_noise, request.opt_pitch, request.subtitle_text_color, request.subtitle_bg_color,
+        request.opt_noise, request.opt_pitch, request.opt_speed, request.opt_reverb, request.opt_vignette, request.opt_random_combo,
+        request.subtitle_text_color, request.subtitle_bg_color,
         request.subtitle_font_size, request.subtitle_margin_v, request.subtitle_bg_padding,
         request.subtitle_bg_opacity, request.watermark_type, request.watermark_text,
         request.watermark_image_path, request.watermark_x, request.watermark_y,

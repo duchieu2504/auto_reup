@@ -39,6 +39,10 @@ class FFmpegFilterBuilder:
             self.vf_filters.append("eq=brightness=0.02:contrast=1.05")
         if self.config.opt_noise:
             self.vf_filters.append("noise=alls=1:allf=t+u")
+        if self.config.opt_speed:
+            self.vf_filters.append("setpts=PTS/1.03")
+        if self.config.opt_vignette:
+            self.vf_filters.append("vignette=PI/4")
             
     def build_text_watermark(self):
         if self.config.watermark_type == "text" and self.config.watermark_text:
@@ -143,10 +147,19 @@ class FFmpegFilterBuilder:
         # 1. Background Music
         bg_audio_label = f"[{self.bgm_idx}:a]" if self.bgm_idx != 0 else "[0:a]"
         bg_vol_float = self.config.bg_volume / 100.0
+        bg_audio_filters = []
         if self.config.opt_pitch:
-            self.complex_filters.append(f"{bg_audio_label}volume={bg_vol_float},asetrate=44100*1.02,atempo=1/1.02[bg]")
-        else:
-            self.complex_filters.append(f"{bg_audio_label}volume={bg_vol_float}[bg]")
+            bg_audio_filters.append("asetrate=44100*1.02,atempo=1/1.02")
+        if getattr(self.config, 'opt_speed', False):
+            bg_audio_filters.append("atempo=1.03")
+        if getattr(self.config, 'opt_reverb', False):
+            bg_audio_filters.append("aecho=0.8:0.9:40:0.3")
+            
+        bg_filter_str = f"volume={bg_vol_float}"
+        if bg_audio_filters:
+            bg_filter_str += "," + ",".join(bg_audio_filters)
+            
+        self.complex_filters.append(f"{bg_audio_label}{bg_filter_str}[bg]")
         inputs.append("[bg]")
         mix_inputs += 1
         
@@ -159,10 +172,19 @@ class FFmpegFilterBuilder:
         # 3. Original Vocal Voice
         if self.vocal_idx != -1:
             voc_vol_float = self.config.vocal_volume / 100.0
+            vocal_audio_filters = []
             if self.config.opt_pitch:
-                self.complex_filters.append(f"[{self.vocal_idx}:a]volume={voc_vol_float},asetrate=44100*1.02,atempo=1/1.02[vocal]")
-            else:
-                self.complex_filters.append(f"[{self.vocal_idx}:a]volume={voc_vol_float}[vocal]")
+                vocal_audio_filters.append("asetrate=44100*1.02,atempo=1/1.02")
+            if getattr(self.config, 'opt_speed', False):
+                vocal_audio_filters.append("atempo=1.03")
+            if getattr(self.config, 'opt_reverb', False):
+                vocal_audio_filters.append("aecho=0.8:0.9:40:0.3")
+                
+            voc_filter_str = f"volume={voc_vol_float}"
+            if vocal_audio_filters:
+                voc_filter_str += "," + ",".join(vocal_audio_filters)
+                
+            self.complex_filters.append(f"[{self.vocal_idx}:a]{voc_filter_str}[vocal]")
             inputs.append("[vocal]")
             mix_inputs += 1
             

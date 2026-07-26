@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 
 export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
   const [voice, setVoice] = useState(initialConfig.voice || 'edge_auto');
@@ -18,6 +18,29 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
   const [optColor, setOptColor] = useState(initialConfig.optColor || false);
   const [optNoise, setOptNoise] = useState(initialConfig.optNoise || false);
   const [optPitch, setOptPitch] = useState(initialConfig.optPitch || false);
+  const [optSpeed, setOptSpeed] = useState(initialConfig.optSpeed || false);
+  const [optReverb, setOptReverb] = useState(initialConfig.optReverb || false);
+  const [optVignette, setOptVignette] = useState(initialConfig.optVignette || false);
+  const [optRandomCombo, setOptRandomCombo] = useState(initialConfig.optRandomCombo || false);
+  
+  // Anti-Copyright Score (computed)
+  const antiCopyrightScore = useMemo(() => {
+    if (optRandomCombo) return 95; // Random combo always gives near-max score
+    let score = 0;
+    if (flipVideo) score += 8;
+    if (optZoom) score += 10;
+    if (optColor) score += 10;
+    if (optNoise) score += 8;
+    if (optPitch) score += 17;
+    if (optSpeed) score += 17;
+    if (optReverb) score += 18;
+    if (optVignette) score += 7;
+    // Combo bonus: activating 4+ params gives extra effectiveness
+    const activeCount = [flipVideo, optZoom, optColor, optNoise, optPitch, optSpeed, optReverb, optVignette].filter(Boolean).length;
+    if (activeCount >= 6) score = Math.min(100, score + 5);
+    else if (activeCount >= 4) score = Math.min(100, score + 3);
+    return Math.min(100, score);
+  }, [flipVideo, optZoom, optColor, optNoise, optPitch, optSpeed, optReverb, optVignette, optRandomCombo]);
   
   // Subtitle custom params
   const [subtitleFont, setSubtitleFont] = useState(initialConfig.subtitleFont || 'Liberation Sans');
@@ -115,6 +138,8 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
       setOptColor(false);
       setOptNoise(false);
       setOptPitch(false);
+      setOptSpeed(false);
+      setOptReverb(false);
       setSubtitleFont('Liberation Sans');
       setSubtitleStyle('black_white');
       setSubtitleTextColor('#000000');
@@ -152,6 +177,10 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
             if (data.optColor !== undefined) setOptColor(data.optColor);
             if (data.optNoise !== undefined) setOptNoise(data.optNoise);
             if (data.optPitch !== undefined) setOptPitch(data.optPitch);
+            if (data.optSpeed !== undefined) setOptSpeed(data.optSpeed);
+            if (data.optReverb !== undefined) setOptReverb(data.optReverb);
+            if (data.optVignette !== undefined) setOptVignette(data.optVignette);
+            if (data.optRandomCombo !== undefined) setOptRandomCombo(data.optRandomCombo);
             if (data.subtitleFont) setSubtitleFont(data.subtitleFont);
             if (data.subtitleStyle) setSubtitleStyle(data.subtitleStyle);
             if (data.subtitleTextColor) setSubtitleTextColor(data.subtitleTextColor);
@@ -182,12 +211,15 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
   }, [videoId]);
 
   const toggleAllMicroAlterations = () => {
-    const newState = !(flipVideo && optZoom && optColor && optNoise && optPitch);
+    const newState = !(flipVideo && optZoom && optColor && optNoise && optPitch && optSpeed && optReverb && optVignette);
     setFlipVideo(newState);
     setOptZoom(newState);
     setOptColor(newState);
     setOptNoise(newState);
     setOptPitch(newState);
+    setOptSpeed(newState);
+    setOptReverb(newState);
+    setOptVignette(newState);
   };
 
   const lastMoveRef = useRef(0);
@@ -253,7 +285,7 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
   };
 
   const getCurrentConfigObj = () => ({
-    voice, volume, vocalVolume, flipVideo, optZoom, optColor, optNoise, optPitch,
+    voice, volume, vocalVolume, flipVideo, optZoom, optColor, optNoise, optPitch, optSpeed, optReverb, optVignette, optRandomCombo,
     subtitleFont, subtitleStyle, subtitleTextColor, subtitleBgColor,
     subtitleFontSize, subtitleMarginV, subtitleBgPadding, subtitleBgOpacity,
     previewSubtitleText, customSrt, useCustomSrt,
@@ -283,6 +315,10 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
       optColor: Boolean(configObj.optColor),
       optNoise: Boolean(configObj.optNoise),
       optPitch: Boolean(configObj.optPitch),
+      optSpeed: Boolean(configObj.optSpeed),
+      optReverb: Boolean(configObj.optReverb),
+      optVignette: Boolean(configObj.optVignette),
+      optRandomCombo: Boolean(configObj.optRandomCombo),
       subtitleFont: String(configObj.subtitleFont || ''),
       subtitleStyle: String(configObj.subtitleStyle || ''),
       subtitleTextColor: String(configObj.subtitleTextColor || ''),
@@ -325,7 +361,8 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
   return {
     // State values
     voice, volume, vocalVolume,
-    flipVideo, optZoom, optColor, optNoise, optPitch,
+    flipVideo, optZoom, optColor, optNoise, optPitch, optSpeed, optReverb, optVignette, optRandomCombo,
+    antiCopyrightScore,
     subtitleFont, subtitleStyle, subtitleTextColor, subtitleBgColor,
     subtitleFontSize, subtitleMarginV, subtitleBgPadding, subtitleBgOpacity,
     previewSubtitleText, customSrt, useCustomSrt,
@@ -342,7 +379,7 @@ export const useSubtitleState = (videoId = 'default', initialConfig = {}) => {
     
     // Setters
     setVoice, setVolume, setVocalVolume,
-    setFlipVideo, setOptZoom, setOptColor, setOptNoise, setOptPitch,
+    setFlipVideo, setOptZoom, setOptColor, setOptNoise, setOptPitch, setOptSpeed, setOptReverb, setOptVignette, setOptRandomCombo,
     setSubtitleFont, setSubtitleStyle, setSubtitleTextColor, setSubtitleBgColor,
     setSubtitleFontSize, setSubtitleMarginV, setSubtitleBgPadding, setSubtitleBgOpacity,
     setPreviewSubtitleText, setCustomSrt, setUseCustomSrt,

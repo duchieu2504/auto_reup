@@ -35,8 +35,8 @@ def update_processing_config_and_status(db: Session, base_name: str, new_config:
             except Exception as e:
                 pass
 
-        # Delete outdated TTS audio if voice changed or force render
-        if force_render or old_config.get("voice_mode") != new_config.get("voice_mode"):
+        # Delete outdated TTS audio if voice changed
+        if old_config.get("voice_mode") != new_config.get("voice_mode"):
             out_tts_path = os.path.join(data_dir, "audio", f"{base_name}_tts.mp3")
             if os.path.exists(out_tts_path):
                 try:
@@ -44,12 +44,11 @@ def update_processing_config_and_status(db: Session, base_name: str, new_config:
                     logger.info(f"Đã xóa file TTS cũ: {out_tts_path}")
                 except Exception as e:
                     pass
-                    
-            out_srt_path = os.path.join(data_dir, "subtitles", f"{base_name}_vi.srt")
-            # If force_render, also delete translated SRT so it translates again
-            if force_render and os.path.exists(out_srt_path):
+            
+            out_tts_meta = os.path.join(data_dir, "audio", f"{base_name}_tts_meta.json")
+            if os.path.exists(out_tts_meta):
                 try:
-                    os.remove(out_srt_path)
+                    os.remove(out_tts_meta)
                 except Exception as e:
                     pass
 

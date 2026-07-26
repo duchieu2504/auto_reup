@@ -359,6 +359,18 @@ class ADBUploader(BaseUploaderEngine):
                 subprocess.run(["adb", "-s", self.adb_ip, "shell", "input", "swipe", str(start_x), str(start_y), str(end_x), str(end_y), "300"])
                 self._smart_sleep(random.randint(3, 5))
                 
+                # Thả tim ngẫu nhiên
+                if random.random() < 0.15:
+                    logger.info("[ADB] Thả tim ngẫu nhiên...")
+                    if automator.click_element(content_descs=['Thích', 'Like']):
+                        self._smart_sleep(1)
+                
+                # Yêu thích ngẫu nhiên
+                if random.random() < 0.15:
+                    logger.info("[ADB] Lưu yêu thích ngẫu nhiên...")
+                    if automator.click_element(content_descs=['Thêm vào mục Yêu thích', 'Add to Favorites', 'Lưu', 'Save']):
+                        self._smart_sleep(1)
+                
             # Đảm bảo đang ở trang chủ (có thanh menu dưới cùng) và không kẹt ở Live
             max_retries = 5
             for _ in range(max_retries):
@@ -623,7 +635,19 @@ class ADBUploader(BaseUploaderEngine):
         logger.info("[ADB] Lướt video ngẫu nhiên để tăng trust (bất chấp Live/QC)...")
         for _ in range(3):
             automator._run_adb(["shell", "input", "swipe", str(int(w/2)), str(int(h*0.8)), str(int(w/2)), str(int(h*0.2)), "300"])
-            self._smart_sleep(3.5)
+            self._smart_sleep(random.randint(3, 6))
+            
+            # Thả tim ngẫu nhiên
+            if random.random() < 0.15:
+                logger.info("[ADB] Thả tim ngẫu nhiên...")
+                if automator.click_element(content_descs=['Thích', 'Like']):
+                    self._smart_sleep(1)
+            
+            # Yêu thích ngẫu nhiên
+            if random.random() < 0.15:
+                logger.info("[ADB] Lưu yêu thích ngẫu nhiên...")
+                if automator.click_element(content_descs=['Thêm vào mục Yêu thích', 'Add to Favorites', 'Lưu', 'Save']):
+                    self._smart_sleep(1)
         
         # Gửi máy về màn hình chính của Android
         logger.info("[ADB] Trở về màn hình chính Android...")

@@ -26,11 +26,16 @@ export const SubtitleConfigPanel = ({ config }) => {
             Tính năng Siêu lách bản quyền (Micro-alterations)
           </label>
           <motion.button 
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            whileHover={!config.optRandomCombo ? { scale: 1.05 } : {}}
+            whileTap={!config.optRandomCombo ? { scale: 0.95 } : {}}
             type="button" 
             onClick={config.toggleAllMicroAlterations}
-            className="text-xs bg-neon-pink/15 text-neon-pink border border-neon-pink/20 px-3 py-1.5 rounded-lg hover:bg-neon-pink hover:text-white font-bold transition-all duration-300 cursor-pointer shadow-sm"
+            disabled={config.optRandomCombo}
+            className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all duration-300 shadow-sm ${
+              config.optRandomCombo 
+                ? 'bg-white/5 text-white/30 border border-white/5 cursor-not-allowed' 
+                : 'bg-neon-pink/15 text-neon-pink border border-neon-pink/20 hover:bg-neon-pink hover:text-white cursor-pointer'
+            }`}
           >
             Chọn tất cả
           </motion.button>
@@ -44,16 +49,21 @@ export const SubtitleConfigPanel = ({ config }) => {
             { id: "optNoiseEdit", label: "Nhiễu hạt (Noise)", checked: config.optNoise, onChange: (e) => config.setOptNoise(e.target.checked) },
           ].map((item) => (
             <motion.div 
-              whileHover={{ x: 2 }}
+              whileHover={!config.optRandomCombo ? { x: 2 } : {}}
               key={item.id} 
-              className="flex items-center gap-3 p-2.5 rounded-xl bg-bg-primary/20 border border-white/5 hover:border-white/10 transition-colors"
+              className={`flex items-center gap-3 p-2.5 rounded-xl border transition-colors ${
+                config.optRandomCombo 
+                  ? 'bg-bg-primary/10 border-transparent opacity-40 grayscale pointer-events-none' 
+                  : 'bg-bg-primary/20 border-white/5 hover:border-white/10'
+              }`}
             >
               <input 
                 type="checkbox" 
                 id={item.id} 
                 checked={item.checked} 
                 onChange={item.onChange} 
-                className="w-4 h-4 accent-neon-pink border-border-subtle rounded cursor-pointer" 
+                disabled={config.optRandomCombo}
+                className="w-4 h-4 accent-neon-pink border-border-subtle rounded cursor-pointer disabled:cursor-not-allowed" 
               />
               <label htmlFor={item.id} className="text-xs font-semibold text-text-secondary cursor-pointer select-none hover:text-text-primary transition-colors">
                 {item.label}
@@ -61,20 +71,138 @@ export const SubtitleConfigPanel = ({ config }) => {
             </motion.div>
           ))}
           <motion.div 
-            whileHover={{ x: 2 }}
-            className="flex items-center gap-3 p-2.5 rounded-xl bg-bg-primary/20 border border-white/5 hover:border-white/10 transition-colors sm:col-span-2"
+            whileHover={!config.optRandomCombo ? { x: 2 } : {}}
+            className={`flex items-center gap-3 p-2.5 rounded-xl border transition-colors sm:col-span-2 ${
+              config.optRandomCombo 
+                ? 'bg-bg-primary/10 border-transparent opacity-40 grayscale pointer-events-none' 
+                : 'bg-bg-primary/20 border-white/5 hover:border-white/10'
+            }`}
           >
             <input 
               type="checkbox" 
               id="optPitchEdit" 
               checked={config.optPitch} 
               onChange={(e) => config.setOptPitch(e.target.checked)} 
-              className="w-4 h-4 accent-neon-pink border-border-subtle rounded cursor-pointer" 
+              disabled={config.optRandomCombo}
+              className="w-4 h-4 accent-neon-pink border-border-subtle rounded cursor-pointer disabled:cursor-not-allowed" 
             />
             <label htmlFor="optPitchEdit" className="text-xs font-semibold text-text-secondary cursor-pointer select-none hover:text-text-primary transition-colors">
               Đổi tần số âm thanh (Pitch 2%)
             </label>
           </motion.div>
+          <motion.div 
+            whileHover={!config.optRandomCombo ? { x: 2 } : {}}
+            className={`flex items-center gap-3 p-2.5 rounded-xl border transition-colors sm:col-span-2 ${
+              config.optRandomCombo 
+                ? 'bg-bg-primary/10 border-transparent opacity-40 grayscale pointer-events-none' 
+                : 'bg-bg-primary/20 border-white/5 hover:border-white/10'
+            }`}
+          >
+            <input 
+              type="checkbox" 
+              id="optSpeedEdit" 
+              checked={config.optSpeed} 
+              onChange={(e) => config.setOptSpeed(e.target.checked)} 
+              disabled={config.optRandomCombo}
+              className="w-4 h-4 accent-neon-pink border-border-subtle rounded cursor-pointer disabled:cursor-not-allowed" 
+            />
+            <label htmlFor="optSpeedEdit" className="text-xs font-semibold text-text-secondary cursor-pointer select-none hover:text-text-primary transition-colors">
+              Đổi tốc độ video & âm thanh (Tăng 3%)
+            </label>
+          </motion.div>
+          <motion.div 
+            whileHover={!config.optRandomCombo ? { x: 2 } : {}}
+            className={`flex items-center gap-3 p-2.5 rounded-xl border transition-colors sm:col-span-2 ${
+              config.optRandomCombo 
+                ? 'bg-bg-primary/10 border-transparent opacity-40 grayscale pointer-events-none' 
+                : 'bg-bg-primary/20 border-white/5 hover:border-white/10'
+            }`}
+          >
+            <input 
+              type="checkbox" 
+              id="optReverbEdit" 
+              checked={config.optReverb} 
+              onChange={(e) => config.setOptReverb(e.target.checked)} 
+              disabled={config.optRandomCombo}
+              className="w-4 h-4 accent-neon-pink border-border-subtle rounded cursor-pointer disabled:cursor-not-allowed" 
+            />
+            <label htmlFor="optReverbEdit" className="text-xs font-semibold text-text-secondary cursor-pointer select-none hover:text-text-primary transition-colors">
+              Thêm hiệu ứng vang (Reverb âm thanh)
+            </label>
+          </motion.div>
+          <motion.div 
+            whileHover={!config.optRandomCombo ? { x: 2 } : {}}
+            className={`flex items-center gap-3 p-2.5 rounded-xl border transition-colors sm:col-span-2 ${
+              config.optRandomCombo 
+                ? 'bg-bg-primary/10 border-transparent opacity-40 grayscale pointer-events-none' 
+                : 'bg-bg-primary/20 border-white/5 hover:border-white/10'
+            }`}
+          >
+            <input 
+              type="checkbox" 
+              id="optVignetteEdit" 
+              checked={config.optVignette} 
+              onChange={(e) => config.setOptVignette(e.target.checked)} 
+              disabled={config.optRandomCombo}
+              className="w-4 h-4 accent-neon-pink border-border-subtle rounded cursor-pointer disabled:cursor-not-allowed" 
+            />
+            <label htmlFor="optVignetteEdit" className="text-xs font-semibold text-text-secondary cursor-pointer select-none hover:text-text-primary transition-colors">
+              Thêm hiệu ứng tối 4 góc (Vignette)
+            </label>
+          </motion.div>
+        </div>
+        
+        {/* Random Combo Toggle */}
+        <motion.div 
+          whileHover={{ scale: 1.01 }}
+          className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-300 mt-3 ${
+            config.optRandomCombo 
+              ? 'bg-gradient-to-r from-purple-500/20 to-neon-pink/20 border-purple-400/40 shadow-lg shadow-purple-500/10' 
+              : 'bg-bg-primary/20 border-white/5 hover:border-white/10'
+          }`}
+        >
+          <input 
+            type="checkbox" 
+            id="optRandomComboEdit" 
+            checked={config.optRandomCombo} 
+            onChange={(e) => config.setOptRandomCombo(e.target.checked)} 
+            className="w-4 h-4 accent-purple-500 border-border-subtle rounded cursor-pointer" 
+          />
+          <label htmlFor="optRandomComboEdit" className="text-xs font-bold cursor-pointer select-none transition-colors flex items-center gap-2" style={{ color: config.optRandomCombo ? '#c084fc' : 'var(--text-secondary)' }}>
+            🎲 Combo Ngẫu Nhiên (Mỗi video khác nhau)
+          </label>
+        </motion.div>
+
+        {/* Anti-Copyright Score Bar */}
+        <div className="mt-4 px-1">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs font-bold text-text-secondary">🛡️ Anti-Copyright Score</span>
+            <span className={`text-xs font-extrabold ${
+              config.antiCopyrightScore >= 60 ? 'text-green-400' : config.antiCopyrightScore >= 30 ? 'text-yellow-400' : 'text-red-400'
+            }`}>
+              {config.antiCopyrightScore}%
+            </span>
+          </div>
+          <div className="w-full h-2.5 bg-bg-primary/40 rounded-full overflow-hidden border border-white/5">
+            <motion.div 
+              className="h-full rounded-full"
+              initial={{ width: 0 }}
+              animate={{ width: `${config.antiCopyrightScore}%` }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+              style={{
+                background: config.antiCopyrightScore >= 60 
+                  ? 'linear-gradient(90deg, #22c55e, #4ade80)' 
+                  : config.antiCopyrightScore >= 30 
+                    ? 'linear-gradient(90deg, #eab308, #facc15)' 
+                    : 'linear-gradient(90deg, #ef4444, #f87171)'
+              }}
+            />
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-[10px] text-red-400/60">Nguy hiểm</span>
+            <span className="text-[10px] text-yellow-400/60">Trung bình</span>
+            <span className="text-[10px] text-green-400/60">An toàn</span>
+          </div>
         </div>
       </div>
 
