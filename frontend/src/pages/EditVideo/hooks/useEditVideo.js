@@ -50,7 +50,7 @@ export const useEditVideo = (id) => {
     setLoadingSubtitle(true);
     try {
       const cleanPath = (srtPath || '').replace(/\\/g, '/').replace(/^.*?(?:^|\/)data\//, '');
-      const res = await fetch(`${API_BASE}/files/${cleanPath}`);
+      const res = await fetch(`${API_BASE}/files/${cleanPath}?t=${Date.now()}`);
       if (res.ok) {
         const text = await res.text();
         setSubtitle(text);

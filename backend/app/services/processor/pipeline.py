@@ -61,51 +61,7 @@ class ProcessorPipeline:
         vi_srt = os.path.join(subtitles_dir, f"{base_name}_vi.srt")
         output_video = os.path.join(processed_dir, f"{base_name}_processed.mp4")
         audio_tmp = os.path.join(audio_dir, f"{base_name}_audio.mp3")
-        audio_tts_path = os.path.join(audio_dir, f"{base_name}_tts.mp3")
-        tts_meta_path = os.path.join(audio_dir, f"{base_name}_tts_meta.json")
-        
-        import json
-        need_tts_regen = True
-        if os.path.exists(tts_meta_path):
-            try:
-                with open(tts_meta_path, 'r', encoding='utf-8') as f:
-                    meta = json.load(f)
-                    if meta.get("voice_mode") == config.voice_mode:
-                        need_tts_regen = False
-            except Exception:
-                pass
-        
-        # Cập nhật cache phụ đề và TTS nếu có thay đổi voice_mode
-        if need_tts_regen:
-            if os.path.exists(audio_tts_path):
-                try: os.remove(audio_tts_path)
-                except: pass
-        
-        # Nếu cờ force_render bật, chỉ xóa file video output cũ để tiết kiệm thời gian dịch thuật cho các bước sau
-        if config.force_render:
-            if os.path.exists(output_video):
-                try:
-                    os.remove(output_video)
-                    log_callback(f"[*] Force Render: Đã xóa video cũ {os.path.basename(output_video)}.\n")
-                except Exception as e:
-                    log_callback(f"[!] Force Render: Không thể xóa video cũ {os.path.basename(output_video)}: {e}\n")
-
-        # Inject custom SRT if provided
-        if getattr(config, 'use_custom_srt', False) and getattr(config, 'custom_srt', None):
-            with open(vi_srt, 'w', encoding='utf-8') as f:
-                f.write(config.custom_srt)
-            with open(orig_srt, 'w', encoding='utf-8') as f:
-                f.write(config.custom_srt)
-            # Force TTS regeneration if custom SRT is used
-            if os.path.exists(audio_tts_path):
-                try: os.remove(audio_tts_path)
-                except: pass
-            if os.path.exists(tts_meta_path):
-                try: os.remove(tts_meta_path)
-                except: pass
-            log_callback(f"[*] Sử dụng Phụ đề Tùy chỉnh. Bỏ qua Dịch tự động.\n")
-
-        # Init DB record
+        # Init DB record first so it can be used for TTS cache logic
         db = SessionLocal()
         try:
             record = db.query(VideoHistory).filter(VideoHistory.raw_video_path.like(f"%{base_name}%")).first()
@@ -119,6 +75,58 @@ class ProcessorPipeline:
                 db.add(record)
                 db.commit()
                 db.refresh(record)
+
+            audio_tts_path = record.audio_tts_path if record.audio_tts_path and not record.audio_tts_path.endswith("_tts.mp3") else os.path.join(audio_dir, f"{base_name}_tts.mp3")
+            tts_meta_path = os.path.join(os.path.dirname(audio_tts_path), f"{base_name}_tts_meta.json")
+            
+            import json
+            need_tts_regen = True
+            if os.path.exists(tts_meta_path):
+                try:
+                    with open(tts_meta_path, 'r', encoding='utf-8') as f:
+                        meta = json.load(f)
+                        if meta.get("voice_mode") == config.voice_mode:
+                            need_tts_regen = False
+                except Exception:
+                    pass
+            
+            # Cập nhật cache phụ đề và TTS nếu có thay đổi voice_mode
+            if need_tts_regen:
+                if os.path.exists(audio_tts_path):
+                    try: os.remove(audio_tts_path)
+                    except: 
+                        import time
+                        audio_tts_path = os.path.join(os.path.dirname(audio_tts_path), f"{base_name}_tts_{int(time.time())}.mp3")
+                        record.audio_tts_path = audio_tts_path
+                        db.commit()
+            
+            # Nếu cờ force_render bật, chỉ xóa file video output cũ để tiết kiệm thời gian dịch thuật cho các bước sau
+            if config.force_render:
+                if os.path.exists(output_video):
+                    try:
+                        os.remove(output_video)
+                        log_callback(f"[*] Force Render: Đã xóa video cũ {os.path.basename(output_video)}.\n")
+                    except Exception as e:
+                        log_callback(f"[!] Force Render: Không thể xóa video cũ {os.path.basename(output_video)}: {e}\n")
+
+            # Inject custom SRT if provided
+            if getattr(config, 'use_custom_srt', False) and getattr(config, 'custom_srt', None):
+                with open(vi_srt, 'w', encoding='utf-8') as f:
+                    f.write(config.custom_srt)
+                with open(orig_srt, 'w', encoding='utf-8') as f:
+                    f.write(config.custom_srt)
+                # Force TTS regeneration if custom SRT is used
+                if os.path.exists(audio_tts_path):
+                    try: os.remove(audio_tts_path)
+                    except: 
+                        import time
+                        audio_tts_path = os.path.join(os.path.dirname(audio_tts_path), f"{base_name}_tts_{int(time.time())}.mp3")
+                        record.audio_tts_path = audio_tts_path
+                        db.commit()
+                if os.path.exists(tts_meta_path):
+                    try: os.remove(tts_meta_path)
+                    except: pass
+                log_callback(f"[*] Sử dụng Phụ đề Tùy chỉnh. Bỏ qua Dịch tự động.\n")
 
             if sync_redis.get(f"pause_video_{base_name}") == "1":
                 log_callback(f"[*] Tiến trình đã được tạm dừng bởi người dùng.\n")

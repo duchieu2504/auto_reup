@@ -306,16 +306,31 @@ async def start_processor(request: ProcessRequest):
                             if current_sub != new_sub:
                                 with open(record.srt_translated_path, "w", encoding="utf-8", newline="\n") as f:
                                     f.write(new_sub)
+                                if record.srt_origin_path:
+                                    with open(record.srt_origin_path, "w", encoding="utf-8", newline="\n") as f:
+                                        f.write(new_sub)
                                     
                                 # 2. Xoá file TTS cũ (nếu có) để ép hệ thống tạo lại audio cho sub mới
-                                if record.audio_tts_path and os.path.exists(record.audio_tts_path):
-                                    try: os.remove(record.audio_tts_path)
-                                    except: pass
+                                old_tts_path = record.audio_tts_path
+                                if old_tts_path and os.path.exists(old_tts_path):
+                                    try: 
+                                        os.remove(old_tts_path)
+                                        record.audio_tts_path = None
+                                    except:
+                                        import time
+                                        # File bị lock bởi tiến trình khác (Windows), đổi tên path để tạo file mới
+                                        dir_name = os.path.dirname(old_tts_path)
+                                        base_name_rec = os.path.basename(record.raw_video_path).rsplit(".", 1)[0]
+                                        record.audio_tts_path = os.path.join(dir_name, f"{base_name_rec}_tts_{int(time.time())}.mp3")
                                 
-                                tts_meta_path = record.audio_tts_path.replace("_tts.mp3", "_tts_meta.json") if record.audio_tts_path else ""
-                                if tts_meta_path and os.path.exists(tts_meta_path):
-                                    try: os.remove(tts_meta_path)
-                                    except: pass
+                                # 3. Xoá file TTS meta (nếu có)
+                                if old_tts_path:
+                                    tts_meta_path = os.path.join(os.path.dirname(old_tts_path), f"{base_name}_tts_meta.json")
+                                    if os.path.exists(tts_meta_path):
+                                        try: os.remove(tts_meta_path)
+                                        except: pass
+                                
+                                db.commit()
                         except Exception as file_e:
                             logger.error(f"Lỗi khi lưu edited_subtitle: {file_e}")
                             

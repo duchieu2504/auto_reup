@@ -202,7 +202,7 @@ class DouyinAPIClient:
                 return data
         return {}
 
-    def get_user_post(self, sec_uid: str, max_cursor: int = 0, count: int = 18) -> dict:
+    def get_user_post(self, sec_uid: str, max_cursor: int = 0, count: int = 35) -> dict:
         params = self._default_query()
         params.update({
             "sec_user_id": sec_uid,

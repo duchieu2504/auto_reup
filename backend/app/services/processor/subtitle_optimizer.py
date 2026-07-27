@@ -58,7 +58,7 @@ Văn bản gốc:
                 from google import genai
                 client = genai.Client(api_key=gemini_key)
                 response = client.models.generate_content(
-                    model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
+                    model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
                     contents=prompt
                 )
                 output = response.text

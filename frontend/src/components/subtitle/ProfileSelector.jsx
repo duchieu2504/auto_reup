@@ -42,6 +42,10 @@ export const ProfileSelector = ({ config }) => {
       // Reset to defaults
       if (config.setVoice) config.setVoice('edge_auto');
       if (config.setVolume) config.setVolume(10);
+      if (config.setVocalVolume) config.setVocalVolume(0);
+      if (config.setUseBcutAsr) config.setUseBcutAsr(false);
+      if (config.setUseLlmSegmentation) config.setUseLlmSegmentation(false);
+      if (config.setWhisperPrompt) config.setWhisperPrompt('');
       if (config.setFlipVideo) config.setFlipVideo(false);
       if (config.setOptZoom) config.setOptZoom(false);
       if (config.setOptColor) config.setOptColor(false);
@@ -85,6 +89,10 @@ export const ProfileSelector = ({ config }) => {
       // Basic Settings
       if (config.setVoice && parsedConfig.voiceMode) config.setVoice(parsedConfig.voiceMode);
       if (config.setVolume && parsedConfig.bgVolume !== undefined) config.setVolume(parsedConfig.bgVolume);
+      if (config.setVocalVolume && parsedConfig.vocalVolume !== undefined) config.setVocalVolume(parsedConfig.vocalVolume);
+      if (config.setUseBcutAsr && parsedConfig.useBcutAsr !== undefined) config.setUseBcutAsr(parsedConfig.useBcutAsr);
+      if (config.setUseLlmSegmentation && parsedConfig.useLlmSegmentation !== undefined) config.setUseLlmSegmentation(parsedConfig.useLlmSegmentation);
+      if (config.setWhisperPrompt && parsedConfig.whisperPrompt !== undefined) config.setWhisperPrompt(parsedConfig.whisperPrompt);
       
       // Video Settings
       if (config.setFlipVideo) config.setFlipVideo(parsedConfig.flipVideo ?? false);
@@ -128,6 +136,9 @@ export const ProfileSelector = ({ config }) => {
           voice: parsedConfig.voiceMode ?? 'edge_auto',
           volume: parsedConfig.bgVolume ?? 10,
           vocalVolume: parsedConfig.vocalVolume ?? 0,
+          useBcutAsr: parsedConfig.useBcutAsr ?? false,
+          useLlmSegmentation: parsedConfig.useLlmSegmentation ?? false,
+          whisperPrompt: parsedConfig.whisperPrompt ?? '',
           flipVideo: parsedConfig.flipVideo ?? false,
           optZoom: parsedConfig.optZoom ?? false,
           optColor: parsedConfig.optColor ?? false,
@@ -272,6 +283,9 @@ export const SaveProfileButton = ({ config, onSaveSuccess }) => {
         voiceMode: config.voice,
         bgVolume: config.volume,
         vocalVolume: config.vocalVolume,
+        useBcutAsr: config.useBcutAsr,
+        useLlmSegmentation: config.useLlmSegmentation,
+        whisperPrompt: config.whisperPrompt,
         flipVideo: config.flipVideo,
         optZoom: config.optZoom,
         optColor: config.optColor,

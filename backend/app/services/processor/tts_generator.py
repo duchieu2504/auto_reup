@@ -257,6 +257,9 @@ class TTSGenerator:
                 
             sub.text = text 
             if not text: return None
+            
+            if "DELETE" in text.upper():
+                return None
                 
             tts_text = re.sub(r'[<>\*\[\]\~_\|\^\-\+]', ' ', text).strip()
             tts_text = unicodedata.normalize('NFC', tts_text)
@@ -444,7 +447,18 @@ class TTSGenerator:
             if sub_item:
                 sub_item.end = SubRipTime(milliseconds=actual_end_ms)
             
-        full_srt = pysrt.SubRipFile(items=all_subs)
+        # Sync subtitle timing with actual TTS duration and filter [DELETE]
+        valid_subs = []
+        for s in all_subs:
+            text_stripped = (s.text or '').strip()
+            if "DELETE" not in text_stripped.upper():
+                valid_subs.append(s)
+                
+        # Re-index
+        for i, s in enumerate(valid_subs):
+            s.index = i + 1
+            
+        full_srt = pysrt.SubRipFile(items=valid_subs)
         full_srt.save(srt_path, encoding='utf-8')
         
         if len(base_audio) == 0:
@@ -500,7 +514,7 @@ class TTSGenerator:
                 
             sub.text = text 
             
-            if not text:
+            if not text or "DELETE" in text.upper():
                 return None
                 
             tts_text = re.sub(r'[<>\*\[\]\~_\|\^\-\+]', ' ', text).strip()
@@ -733,7 +747,17 @@ class TTSGenerator:
         # Đảm bảo track lồng tiếng có một chút padding ở cuối (nếu cần thiết, FFmpeg amix duration=first sẽ lo phần còn lại)
         
         # Save clean srt
-        subs.save(srt_path, encoding='utf-8')
+        valid_subs = []
+        for s in subs:
+            text_stripped = (s.text or '').strip()
+            if "DELETE" not in text_stripped.upper():
+                valid_subs.append(s)
+                
+        for i, s in enumerate(valid_subs):
+            s.index = i + 1
+            
+        full_srt = pysrt.SubRipFile(items=valid_subs)
+        full_srt.save(srt_path, encoding='utf-8')
         
         if len(base_audio) == 0:
             if log_callback: log_callback("[!] Cảnh báo: Không sinh được audio TTS nào (hoặc lỗi toàn bộ). Tạo audio trống để tránh crash FFmpeg.\n")

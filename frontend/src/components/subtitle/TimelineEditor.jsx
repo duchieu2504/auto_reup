@@ -159,9 +159,12 @@ export const TimelineEditor = forwardRef(({ videoData, subtitle, setSubtitle, on
     }
   }, [zoom]);
 
+  const isUpdatingFromTimeline = useRef(false);
+
   // Load SRT into regions
   useEffect(() => {
     if (!wsRegions.current || !wavesurfer.current) return;
+    if (isUpdatingFromTimeline.current) return; // Prevent clearing regions if update came from timeline
     
     // Parse the current string SRT
     const parsedSrt = parseSRT(subtitle || '');
@@ -207,17 +210,35 @@ export const TimelineEditor = forwardRef(({ videoData, subtitle, setSubtitle, on
     if (!wsRegions.current) return;
 
     const updateSrtFromRegions = () => {
-      const regions = wsRegions.current.getRegions();
-      regions.sort((a, b) => a.start - b.start);
-      
-      const updatedSrt = stringifySRT(regions.map((r, i) => ({
-        id: (i + 1).toString(),
-        startTime: r.start,
-        endTime: r.end,
-        text: r.subtitleText || (r.content.textContent ? r.content.textContent.replace(/ ↵ /g, '\n') : r.content), 
-      })));
-      
-      setSubtitle(updatedSrt);
+      try {
+        isUpdatingFromTimeline.current = true;
+        const regions = wsRegions.current.getRegions();
+        regions.sort((a, b) => a.start - b.start);
+        
+        const updatedSrt = stringifySRT(regions.map((r, i) => {
+          let textValue = '';
+          if (r.subtitleText) {
+            textValue = r.subtitleText;
+          } else if (r.content && r.content.textContent) {
+            textValue = r.content.textContent.replace(/ ↵ /g, '\n');
+          }
+          return {
+            id: (i + 1).toString(),
+            startTime: r.start,
+            endTime: r.end,
+            text: textValue, 
+          };
+        }));
+        
+        setSubtitle(updatedSrt);
+      } catch (error) {
+        console.error("Error updating SRT from regions:", error);
+      } finally {
+        // Unlock slightly after to allow React state to settle without triggering useEffect's wipe
+        setTimeout(() => {
+          isUpdatingFromTimeline.current = false;
+        }, 100);
+      }
     };
 
     const handleRegionUpdateEnd = (region) => {
@@ -242,7 +263,7 @@ export const TimelineEditor = forwardRef(({ videoData, subtitle, setSubtitle, on
       wsRegions.current.un('region-clicked', handleRegionClick);
       document.removeEventListener('click', handleGlobalClick);
     };
-  }, [setSubtitle]);
+  }, [setSubtitle, isDecoded]);
 
   const togglePlay = () => {
     if (wavesurfer.current) {

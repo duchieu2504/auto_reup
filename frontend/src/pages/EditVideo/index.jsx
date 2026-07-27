@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Loader2, Music, Video as VideoIcon, Sliders, ImageIcon, Type, Play, Pause } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Music, Video as VideoIcon, Sliders, ImageIcon, Type, Play, Pause, Trash2 } from 'lucide-react';
 import { useEditVideo } from './hooks/useEditVideo';
 import { useSubtitleState } from '../../hooks/useSubtitleState';
 import { SubtitleConfigPanel } from '../../components/subtitle/SubtitleConfigPanel';
@@ -37,6 +37,13 @@ const EditVideo = () => {
   const handleSubtitleTextChange = (index, newText) => {
     const newBlocks = [...parsedSubtitleBlocks];
     newBlocks[index].text = newText;
+    editHook.setSubtitle(stringifySRT(newBlocks));
+  };
+
+  const handleDeleteSubtitleBlock = (index, e) => {
+    if (e) e.stopPropagation();
+    const newBlocks = [...parsedSubtitleBlocks];
+    newBlocks.splice(index, 1);
     editHook.setSubtitle(stringifySRT(newBlocks));
   };
   
@@ -324,10 +331,19 @@ const EditVideo = () => {
                               if (timelineRef.current) timelineRef.current.seekTo(sub.startTime);
                             }}
                           >
-                            <span className="text-xs font-bold text-brand-primary">#{sub.id}</span>
-                            <span className="text-xs font-mono text-text-secondary bg-bg-primary px-2 py-0.5 rounded">
-                              {secondsToTime(sub.startTime)} ➔ {secondsToTime(sub.endTime)}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-brand-primary">#{sub.id}</span>
+                              <span className="text-xs font-mono text-text-secondary bg-bg-primary px-2 py-0.5 rounded">
+                                {secondsToTime(sub.startTime)} ➔ {secondsToTime(sub.endTime)}
+                              </span>
+                            </div>
+                            <button
+                              onClick={(e) => handleDeleteSubtitleBlock(idx, e)}
+                              className="text-text-secondary hover:text-red-500 transition-colors p-1 rounded hover:bg-red-500/10"
+                              title="Xóa phụ đề"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           </div>
                           <textarea
                             className="w-full bg-transparent border-none text-white text-sm resize-none focus:outline-none focus:ring-0 p-0 m-0"

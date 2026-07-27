@@ -305,6 +305,8 @@ const Phase2Processor = () => {
         masks: subtitleState.masks,
         useCustomSrt: subtitleState.useCustomSrt,
         customSrt: subtitleState.customSrt,
+        useBcutAsr: subtitleState.useBcutAsr,
+        useLlmSegmentation: subtitleState.useLlmSegmentation,
       };
 
       const formData = new FormData();
@@ -371,6 +373,12 @@ const Phase2Processor = () => {
 
       subtitleState.setEnableSubtitles(config.enableSubtitles ?? true);
       subtitleState.setMaskEnabled(config.maskEnabled ?? false);
+      
+      subtitleState.setUseCustomSrt(config.useCustomSrt ?? false);
+      subtitleState.setCustomSrt(config.customSrt ?? "");
+      subtitleState.setUseBcutAsr(config.useBcutAsr ?? false);
+      subtitleState.setUseLlmSegmentation(config.useLlmSegmentation ?? false);
+
       if (Array.isArray(config.masks)) {
         subtitleState.setMasks(config.masks);
         if (config.masks.length > 0) {

@@ -94,7 +94,7 @@ Quan trọng: Lắng nghe giọng nói trong file audio đính kèm.
 - Nếu câu nói đó do Nam phát âm, hãy chèn thêm tiền tố [M] vào trước câu dịch.
 - Nếu câu nói đó do Nữ phát âm, hãy chèn thêm tiền tố [F] vào trước câu dịch.
 - Nếu không nghe rõ hoặc giọng AI, mặc định chèn [F].
-- TUYỆT ĐỐI loại bỏ các từ vô nghĩa, tiếng thở dài, tiếng kêu (ví dụ: ừm, à, ờ, ah, oh, yeah...). Chỉ dịch các câu thoại có ý nghĩa. Nếu một đoạn sub chỉ toàn chứa các từ vô nghĩa này, hãy trả về [DELETE].
+- TUYỆT ĐỐI loại bỏ các từ cảm thán, tiếng thở dài, tiếng rên, âm thanh nền (ví dụ: ừm ừm, ah ah, oh yeah, ờ ờ, á, ớ, haiz...). KHÔNG ĐƯỢC DỊCH những âm thanh này. Nếu đoạn văn chỉ chứa âm thanh này, trả về đúng 1 chữ [DELETE].
 TUYỆT ĐỐI GIỮ NGUYÊN cấu trúc thời gian và số thứ tự của file SRT gốc.
 
 SRT Gốc (Phần {i//chunk_size + 1}):
@@ -112,7 +112,7 @@ SRT Gốc (Phần {i//chunk_size + 1}):
                     prompt = f"""
 Bạn là chuyên gia dịch thuật tiếng Trung sang tiếng Việt.
 Dưới đây là một phần nội dung file phụ đề định dạng SRT (Từ dòng {chunk_subs[0].index} đến {chunk_subs[-1].index}). Hãy dịch CÁC DÒNG VĂN BẢN sang tiếng Việt tự nhiên, phù hợp với ngữ cảnh video ngắn TikTok.
-- TUYỆT ĐỐI loại bỏ các từ vô nghĩa, tiếng thở dài, tiếng kêu (ví dụ: ừm, à, ờ, ah, oh, yeah, haizz...). Chỉ dịch các câu thoại có ý nghĩa. Nếu một đoạn sub chỉ toàn chứa các từ vô nghĩa này, hãy trả về chữ [DELETE].
+- TUYỆT ĐỐI loại bỏ các từ cảm thán, tiếng thở dài, tiếng rên, âm thanh nền (ví dụ: ừm ừm, ah ah, oh yeah, ờ ờ, á, ớ, haiz...). KHÔNG ĐƯỢC DỊCH những âm thanh này. Nếu đoạn văn chỉ chứa âm thanh này, trả về đúng 1 chữ [DELETE].
 TUYỆT ĐỐI GIỮ NGUYÊN cấu trúc thời gian, chỉ báo dòng (số thứ tự) và dòng trống của file SRT gốc.
 KHÔNG thêm bất kỳ ghi chú hay markdown formatting nào ở đầu hoặc cuối.
 
@@ -190,6 +190,24 @@ SRT Gốc (Phần {i//chunk_size + 1}):
                     if first_index:
                         cleaned = cleaned[first_index.start():].strip()
                         
+                # LỌC RÁC NGAY TRONG CHUNK ĐỂ FRONTEND & TTS KHÔNG BỊ NHẬN SUB RÁC
+                try:
+                    import pysrt
+                    chunk_subs = pysrt.from_string(cleaned)
+                    blacklist_pattern = re.compile(r'^(ừm|ờ|ah|oh|yeah|haizz|ừ|à|á|ớ|ơi|ờm|ưm|hơ|hớ|\[DELETE\]|\[M\]|\[F\]|\s|\W)+$', re.IGNORECASE)
+                    
+                    filtered_chunk_subs = []
+                    for sub in chunk_subs:
+                        text_stripped = sub.text.strip()
+                        if "[DELETE]" in text_stripped.upper() or blacklist_pattern.match(text_stripped):
+                            continue
+                        filtered_chunk_subs.append(sub)
+                        
+                    # Khôi phục lại cleaned string mà VẪN GIỮ NGUYÊN index gốc của từng sub
+                    cleaned = "\n\n".join(str(sub) for sub in filtered_chunk_subs)
+                except Exception as e:
+                    print("Lỗi parse/filter chunk trong quá trình dịch:", e)
+                        
                 translated_full_text += cleaned + "\n\n"
                 
                 if on_chunk_translated:
@@ -205,15 +223,6 @@ SRT Gốc (Phần {i//chunk_size + 1}):
                 import re
                 output_subs = pysrt.open(output_srt, encoding='utf-8')
                 
-                # 1. Ép đồng bộ timestamp nếu độ dài mảng bằng nhau
-                if len(subs) == len(output_subs):
-                    for idx in range(len(subs)):
-                        output_subs[idx].start = subs[idx].start
-                        output_subs[idx].end = subs[idx].end
-                        output_subs[idx].index = subs[idx].index
-                else:
-                    print(f"[Cảnh báo] AI trả về số lượng dòng ({len(output_subs)}) khác với gốc ({len(subs)}). Bỏ qua ép đồng bộ thời gian.")
-                    
                 # 2. Bộ lọc (Blacklist) từ rác & thẻ [DELETE]
                 filtered_subs = []
                 blacklist_pattern = re.compile(r'^(ừm|ờ|ah|oh|yeah|haizz|ừ|à|á|ớ|ơi|ờm|ưm|hơ|hớ|\[DELETE\]|\[M\]|\[F\]|\s|\W)+$', re.IGNORECASE)
@@ -224,6 +233,12 @@ SRT Gốc (Phần {i//chunk_size + 1}):
                     # Bỏ qua sub nếu LLM trả về [DELETE] hoặc chỉ toàn từ rác vô nghĩa
                     if "[DELETE]" in text_stripped.upper() or blacklist_pattern.match(text_stripped):
                         continue
+                        
+                    # 1. Ép đồng bộ timestamp bằng cách tìm sub gốc có cùng index
+                    orig_sub = next((s for s in subs if s.index == sub.index), None)
+                    if orig_sub:
+                        sub.start = orig_sub.start
+                        sub.end = orig_sub.end
                         
                     # Thêm tag giọng đọc nếu cần
                     if voice_mode == "edge_auto" and active_provider != "gemini":

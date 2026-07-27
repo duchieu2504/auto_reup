@@ -281,21 +281,34 @@ def get_account_videos(sec_uid: str, limit: int = 20, db: Session = Depends(get_
     max_pages = 20
     
     try:
-        while has_more and len(result) < limit and page_count < max_pages:
-            data = client.get_user_post(sec_uid, max_cursor=max_cursor, count=100)
-            aweme_list = data.get("aweme_list", [])
+        seen_ids = set()
+        new_video_count = 0
+        retry_count = 0
+        
+        while has_more and new_video_count < limit and page_count < max_pages:
+            data = client.get_user_post(sec_uid, max_cursor=max_cursor, count=35)
+            aweme_list = data.get("aweme_list")
+            
             if not aweme_list:
+                if retry_count < 1 and page_count > 0:
+                    retry_count += 1
+                    import time
+                    time.sleep(1)
+                    continue
                 break
+            
+            retry_count = 0
                 
             for aweme in aweme_list:
                 video_id = aweme.get("aweme_id")
-                if not video_id: 
+                if not video_id or video_id in seen_ids: 
                     continue
+                seen_ids.add(video_id)
                     
                 # Check if downloaded
                 is_downloaded = db.query(VideoHistory).filter(VideoHistory.original_name == f"{video_id}.mp4").first() is not None
-                if is_downloaded:
-                    continue  # Bỏ qua video đã tải
+                if not is_downloaded:
+                    new_video_count += 1
                     
                 desc = aweme.get("desc", "")
                 stats = aweme.get("statistics", {})
@@ -319,15 +332,21 @@ def get_account_videos(sec_uid: str, limit: int = 20, db: Session = Depends(get_
                     "cover_url": cover_url,
                     "play_count": play_count,
                     "digg_count": digg_count,
-                    "is_downloaded": False
+                    "is_downloaded": is_downloaded
                 })
                 
-                if len(result) >= limit:
+                if new_video_count >= limit:
                     break
                     
-            # Check has_more with integer or boolean
-            has_more = bool(data.get("has_more", 0))
-            max_cursor = data.get("max_cursor", 0)
+            # Check has_more
+            has_more_val = data.get("has_more")
+            has_more = has_more_val in [1, True, "1", "true"]
+            new_cursor = data.get("max_cursor", 0)
+            if new_cursor == 0 or new_cursor == max_cursor:
+                has_more = False
+            else:
+                max_cursor = new_cursor
+
             page_count += 1
             
     except Exception as e:
