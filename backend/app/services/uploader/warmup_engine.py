@@ -87,7 +87,12 @@ class GpmWarmupEngine(BaseWarmupEngine):
                 else:
                     logger.warning(f"Chưa hỗ trợ nuôi nền tảng {platform}")
             finally:
-                browser.close()
+                # QUAN TRỌNG: Dùng disconnect() thay vì close() để không đóng trình duyệt GPM
+                try:
+                    browser.close()
+                except Exception:
+                    pass
+                
                 # Stop profile after warmup
                 logger.info(f"[Warmup-GPM] Đóng GPM Profile: {profile_id}")
                 
@@ -111,40 +116,212 @@ class GpmWarmupEngine(BaseWarmupEngine):
 
     def _warmup_tiktok(self, page):
         logger.info("[Warmup-GPM] Mở tiktok.com/foryou")
-        page.goto("https://www.tiktok.com/foryou", timeout=60000)
-        time.sleep(5)
         
-        # Nuôi trong khoảng 10-15 phút (600 - 900 giây)
-        warmup_duration = random.randint(600, 900)
+        # Dùng wait_until='domcontentloaded' để tránh bị treo chờ TikTok load hết tài nguyên
+        try:
+            page.goto("https://www.tiktok.com/foryou", timeout=60000, wait_until="domcontentloaded")
+        except Exception as e:
+            logger.warning(f"[Warmup-GPM] page.goto gặp lỗi (vẫn tiếp tục): {e}")
+        
+        # Đợi trang ổn định
+        time.sleep(8)
+        
+        # Log URL hiện tại để debug
+        try:
+            current_url = page.url
+            logger.info(f"[Warmup-GPM] URL hiện tại: {current_url}")
+        except Exception:
+            pass
+        
+        # Đóng tất cả các popup phổ biến trên TikTok
+        self._dismiss_popups(page)
+        time.sleep(2)
+        
+        # Xác nhận trang đã thực sự sẵn sàng (có video element)
+        try:
+            page.wait_for_selector("video", timeout=15000)
+            logger.info("[Warmup-GPM] Đã phát hiện video element, trang sẵn sàng lướt!")
+        except Exception:
+            logger.warning("[Warmup-GPM] Không tìm thấy video element nhưng vẫn tiếp tục lướt...")
+        
+        # Lấy thời lượng nuôi từ account_data hoặc mặc định 10-15 phút
+        warmup_duration = self.account_data.get("warmup_duration", random.randint(600, 900))
         end_time = time.time() + warmup_duration
         
         videos_watched = 0
         likes_given = 0
+        favorites_given = 0
+        
+        # Khởi tạo Redis để kiểm tra cờ dừng
+        try:
+            from app.core.redis_pool import get_sync_redis
+            r = get_sync_redis()
+            account_id = self.account_data.get("id")
+        except Exception:
+            r = None
+            account_id = None
         
         logger.info(f"[Warmup-GPM] Bắt đầu lướt dạo (Kéo dài {warmup_duration}s)...")
         while time.time() < end_time:
+            # Kiểm tra xem có lệnh dừng không
+            if r and account_id:
+                try:
+                    if r.get(f"warmup_stop:{account_id}"):
+                        logger.info("[Warmup-GPM] Nhận được tín hiệu dừng nuôi từ hệ thống.")
+                        r.delete(f"warmup_stop:{account_id}")
+                        break
+                except Exception:
+                    pass
+
             # Ngẫu nhiên dừng lại xem video từ 10s đến 45s
             watch_time = random.randint(10, 45)
             logger.info(f"[Warmup-GPM] Đang xem video {videos_watched + 1} trong {watch_time}s...")
             time.sleep(watch_time)
             
-            # Ngẫu nhiên thả tim (Tỷ lệ 15%)
+            # Ngẫu nhiên thả tim (Tỷ lệ 15%) bằng double-click
             if random.random() < 0.15:
                 try:
-                    like_button = page.locator('span[data-e2e="like-icon"]').first
-                    if like_button.is_visible():
-                        like_button.click()
+                    viewport = page.viewport_size
+                    if viewport:
+                        center_x = viewport['width'] / 2
+                        center_y = viewport['height'] / 2
+                        page.mouse.dblclick(center_x, center_y)
                         likes_given += 1
-                        logger.info(f"[Warmup-GPM] Đã thả tim! (Tổng: {likes_given})")
+                        logger.info(f"[Warmup-GPM] Đã thả tim video! (Tổng: {likes_given})")
                         time.sleep(1)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[Warmup-GPM] Lỗi khi thả tim: {e}")
+                    
+            # Ngẫu nhiên yêu thích (Lưu video) (Tỷ lệ 10%)
+            if random.random() < 0.10:
+                try:
+                    js_fav = """
+                    () => {
+                        const selectors = ['span[data-e2e="collect-icon"]', 'span[data-e2e="undefined-icon"]', 'span[data-e2e="favorite-icon"]', 'span[data-e2e="save-icon"]', 'span[data-e2e="bookmark-icon"]'];
+                        for (let sel of selectors) {
+                            const elements = document.querySelectorAll(sel);
+                            for (let el of elements) {
+                                const rect = el.getBoundingClientRect();
+                                if (rect.top > 0 && rect.bottom < window.innerHeight && rect.height > 0) {
+                                    el.click();
+                                    return true;
+                                }
+                            }
+                        }
+                        return false;
+                    }
+                    """
+                    success = page.evaluate(js_fav)
+                    if success:
+                        favorites_given += 1
+                        logger.info(f"[Warmup-GPM] Đã thêm video vào Yêu thích! (Tổng: {favorites_given})")
+                        time.sleep(1)
+                except Exception as e:
+                    logger.warning(f"[Warmup-GPM] Lỗi khi yêu thích video: {e}")
             
-            # Cuộn xuống video tiếp theo
-            page.keyboard.press("ArrowDown")
+            # ============ CUỘN XUỐNG VIDEO TIẾP THEO ============
+            scrolled = self._scroll_to_next_video(page)
+            if scrolled:
+                logger.info(f"[Warmup-GPM] Đã cuộn sang video tiếp theo thành công!")
+            else:
+                logger.warning(f"[Warmup-GPM] Cuộn video có thể không thành công, thử lại...")
+                # Thử lại 1 lần nữa sau khi đóng popup
+                self._dismiss_popups(page)
+                time.sleep(1)
+                self._scroll_to_next_video(page)
+                
             videos_watched += 1
             
-        logger.info(f"[Warmup-GPM] Hoàn tất phiên nuôi! Đã lướt {videos_watched} video, thả {likes_given} tim.")
+        logger.info(f"[Warmup-GPM] Hoàn tất phiên nuôi! Đã lướt {videos_watched} video, thả {likes_given} tim, yêu thích {favorites_given} video.")
+    
+    def _dismiss_popups(self, page):
+        """Đóng tất cả popup/modal trên TikTok Web"""
+        try:
+            page.evaluate("""() => {
+                try {
+                    // Đóng popup đăng nhập, banner, modal
+                    const selectors = [
+                        '[data-e2e="modal-close-inner-button"]',
+                        '[class*="DivCloseIcon"]',
+                        'div[role="dialog"] button[aria-label="Close"]',
+                        'button[class*="close"]',
+                        '[class*="BottomBannerClose"]',
+                        '[class*="ModalClose"]',
+                        'div[id*="loginContainer"] [class*="close"]'
+                    ];
+                    for (const sel of selectors) {
+                        document.querySelectorAll(sel).forEach(btn => {
+                            try { btn.click(); } catch(e) {}
+                        });
+                    }
+                    // Chấp nhận cookies nếu có
+                    const acceptBtn = document.querySelector('button[class*="cookie" i], button[class*="accept" i]');
+                    if (acceptBtn) acceptBtn.click();
+                } catch(e) {}
+            }""")
+        except Exception:
+            pass
+    
+    def _scroll_to_next_video(self, page):
+        """Cuộn sang video tiếp theo bằng nhiều chiến lược JavaScript trực tiếp trên DOM"""
+        try:
+            result = page.evaluate("""() => {
+                // Chiến lược 1: Tìm nút 'Tiếp theo' của giao diện xem (thường dùng khi bấm vào chi tiết video)
+                const nextBtn = document.querySelector('button[data-e2e="arrow-right"], button[class*="ButtonArrowRight"], button[class*="BottomVideoNext"]');
+                if (nextBtn) {
+                    nextBtn.click();
+                    return 'button_click';
+                }
+                
+                // Chiến lược 2: Tìm video container tiếp theo và dùng scrollIntoView() - Chiến lược đáng tin cậy nhất
+                const containers = document.querySelectorAll('[data-e2e="recommend-list-item-container"], [class*="DivItemContainer"]');
+                if (containers && containers.length > 0) {
+                    for (let i = 0; i < containers.length; i++) {
+                        const rect = containers[i].getBoundingClientRect();
+                        // Video đang xem sẽ có rect.top gần 0. Video tiếp theo sẽ nằm phía dưới màn hình
+                        if (rect.top > (window.innerHeight * 0.4)) {
+                            containers[i].scrollIntoView({behavior: 'smooth', block: 'start'});
+                            return 'scroll_into_view';
+                        }
+                    }
+                }
+                
+                // Chiến lược 3: Tìm scroll container của TikTok và cuộn nó
+                const scrollContainers = [
+                    document.querySelector('[class*="DivVideoFeedV2"]'),
+                    document.querySelector('#app > div > div:nth-child(2)'),
+                    document.querySelector('main'),
+                    document.querySelector('[class*="VideoFeed"]'),
+                    document.querySelector('[class*="DivContentContainer"]')
+                ];
+                
+                for (const container of scrollContainers) {
+                    if (container && container.scrollHeight > container.clientHeight) {
+                        container.scrollBy({ top: container.clientHeight, behavior: 'smooth' });
+                        return 'container_scroll';
+                    }
+                }
+                
+                // Chiến lược 4: Scroll toàn bộ trang (window) bằng chiều cao viewport
+                window.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
+                return 'window_scroll';
+            }""")
+            
+            time.sleep(1.5)  # Chờ animation scroll-snap hoàn tất
+            
+            logger.info(f"[Warmup-GPM] Phương pháp cuộn: {result}")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"[Warmup-GPM] Lỗi khi cuộn video bằng JS: {e}")
+            
+            # Fallback cuối cùng: dùng Playwright keyboard
+            try:
+                page.keyboard.press("ArrowDown")
+                time.sleep(1)
+                return True
+            except Exception:
+                return False
 
 class AdbWarmupEngine(BaseWarmupEngine):
     def warmup(self):

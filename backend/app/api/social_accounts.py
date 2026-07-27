@@ -240,6 +240,10 @@ def stop_warmup(account_id: int, db: Session = Depends(get_db)):
         
         if task_id:
             task_id_str = task_id.decode('utf-8')
+            # Thêm cờ dừng an toàn để warmup_engine tự thoát vòng lặp và dọn dẹp browser
+            r.set(f"warmup_stop:{account_id}", "1", ex=3600)
+            
+            # Vẫn revoke để phòng ngừa nếu task đang chờ trong queue
             celery_app.control.revoke(task_id_str, terminate=True)
             r.delete(f"warmup_task:{account_id}")
             

@@ -368,29 +368,81 @@ class PlaywrightUploader(BaseUploaderEngine):
             logger.info(f"[Playwright] Chuyển về trang chủ Tiktok để lướt dạo {num_scrolls} video (thả tim {num_likes}, lưu yêu thích {num_favorites})...")
             page.goto("https://www.tiktok.com/foryou", timeout=40000, wait_until="domcontentloaded")
             self._smart_sleep(page, 5000)
+            
+            # Đóng popups trước khi lướt
+            try:
+                page.evaluate("""() => {
+                    const selectors = ['[data-e2e="modal-close-inner-button"]', '[class*="DivCloseIcon"]', 'div[role="dialog"] button[aria-label="Close"]', 'button[class*="close"]', '[class*="BottomBannerClose"]'];
+                    for (const sel of selectors) {
+                        document.querySelectorAll(sel).forEach(btn => { try { btn.click(); } catch(e) {} });
+                    }
+                }""")
+            except:
+                pass
+            
             for i in range(num_scrolls):
                 logger.info(f"[Playwright] Xem video Tiktok thứ {i+1}...")
-                page.keyboard.press("ArrowDown")
                 self._smart_sleep(page, random.randint(6000, 12000))
                 
                 if i in like_indices:
                     logger.info(f"[Playwright] Thả tim video Tiktok thứ {i+1}...")
                     try:
-                        # Phím tắt 'l' trên web Tiktok để thả tim video đang focus
-                        page.keyboard.press("l")
-                        self._smart_sleep(page, 1000)
+                        viewport = page.viewport_size
+                        if viewport:
+                            center_x = viewport['width'] / 2
+                            center_y = viewport['height'] / 2
+                            page.mouse.dblclick(center_x, center_y)
+                            self._smart_sleep(page, 1000)
                     except Exception as e:
                         logger.error(f"Lỗi khi thả tim: {str(e)}")
                         
                 if i in fav_indices:
                     logger.info(f"[Playwright] Thêm yêu thích video Tiktok thứ {i+1}...")
                     try:
-                        fav_btn = page.locator('button[data-e2e="browser-collect-button"], span[data-e2e="browser-collect-button"], div[data-e2e="browser-collect-button"], button:has([data-e2e="browser-collect-icon"])').first
-                        if fav_btn.is_visible(timeout=2000):
-                            fav_btn.click(timeout=2000)
+                        js_fav = """
+                        () => {
+                            const selectors = ['span[data-e2e="collect-icon"]', 'span[data-e2e="undefined-icon"]', 'span[data-e2e="favorite-icon"]', 'span[data-e2e="save-icon"]', 'span[data-e2e="bookmark-icon"]'];
+                            for (let sel of selectors) {
+                                const elements = document.querySelectorAll(sel);
+                                for (let el of elements) {
+                                    const rect = el.getBoundingClientRect();
+                                    if (rect.top > 0 && rect.bottom < window.innerHeight && rect.height > 0) {
+                                        el.click();
+                                        return true;
+                                    }
+                                }
+                            }
+                            return false;
+                        }
+                        """
+                        page.evaluate(js_fav)
                         self._smart_sleep(page, 1000)
                     except Exception as e:
                         logger.error(f"Lỗi khi thêm yêu thích: {str(e)}")
+                        
+                # Scroll to next video
+                try:
+                    page.evaluate("""() => {
+                        const nextBtn = document.querySelector('button[data-e2e="arrow-right"], button[class*="ButtonArrowRight"], button[class*="BottomVideoNext"]');
+                        if (nextBtn) { nextBtn.click(); return; }
+                        
+                        const containers = document.querySelectorAll('[data-e2e="recommend-list-item-container"], [class*="DivItemContainer"]');
+                        if (containers && containers.length > 0) {
+                            for (let i = 0; i < containers.length; i++) {
+                                const rect = containers[i].getBoundingClientRect();
+                                if (rect.top > (window.innerHeight * 0.4)) {
+                                    containers[i].scrollIntoView({behavior: 'smooth', block: 'start'});
+                                    return;
+                                }
+                            }
+                        }
+                        window.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
+                    }""")
+                    self._smart_sleep(page, 1500)
+                except Exception as e:
+                    logger.error(f"Lỗi cuộn JS (dùng fallback): {e}")
+                    page.keyboard.press("ArrowDown")
+                    
         except Exception as surf_err:
             logger.warning(f"[Playwright] Lỗi khi lướt dạo Tiktok (bỏ qua): {surf_err}")
             
