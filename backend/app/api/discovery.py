@@ -284,22 +284,27 @@ def get_account_videos(sec_uid: str, limit: int = 20, db: Session = Depends(get_
         seen_ids = set()
         new_video_count = 0
         retry_count = 0
+        total_scanned = 0
         
         while has_more and new_video_count < limit and page_count < max_pages:
-            data = client.get_user_post(sec_uid, max_cursor=max_cursor, count=35)
+            data = client.get_user_post(sec_uid, max_cursor=max_cursor)
             aweme_list = data.get("aweme_list")
             
             if not aweme_list:
-                if retry_count < 1 and page_count > 0:
+                logger.warning(f"[QuickCrawl] Page {page_count+1}: API trả về aweme_list rỗng. Retry_count={retry_count}")
+                if retry_count < 2 and page_count > 0:
                     retry_count += 1
                     import time
-                    time.sleep(1)
+                    time.sleep(2)
                     continue
                 break
             
             retry_count = 0
+            skipped_count = 0
+            new_in_page = 0
                 
             for aweme in aweme_list:
+                total_scanned += 1
                 video_id = aweme.get("aweme_id")
                 if not video_id or video_id in seen_ids: 
                     continue
@@ -307,8 +312,12 @@ def get_account_videos(sec_uid: str, limit: int = 20, db: Session = Depends(get_
                     
                 # Check if downloaded
                 is_downloaded = db.query(VideoHistory).filter(VideoHistory.original_name == f"{video_id}.mp4").first() is not None
-                if not is_downloaded:
-                    new_video_count += 1
+                if is_downloaded:
+                    skipped_count += 1
+                    continue
+                    
+                new_video_count += 1
+                new_in_page += 1
                     
                 desc = aweme.get("desc", "")
                 stats = aweme.get("statistics", {})
@@ -332,7 +341,7 @@ def get_account_videos(sec_uid: str, limit: int = 20, db: Session = Depends(get_
                     "cover_url": cover_url,
                     "play_count": play_count,
                     "digg_count": digg_count,
-                    "is_downloaded": is_downloaded
+                    "is_downloaded": False
                 })
                 
                 if new_video_count >= limit:
@@ -342,6 +351,9 @@ def get_account_videos(sec_uid: str, limit: int = 20, db: Session = Depends(get_
             has_more_val = data.get("has_more")
             has_more = has_more_val in [1, True, "1", "true"]
             new_cursor = data.get("max_cursor", 0)
+            
+            logger.info(f"[QuickCrawl] Page {page_count+1}: Nhận {len(aweme_list)} video, Đã lọc {skipped_count} cũ, Tìm được {new_in_page} mới. Tổng mới: {new_video_count}/{limit}. has_more={has_more_val}, cursor={new_cursor}")
+            
             if new_cursor == 0 or new_cursor == max_cursor:
                 has_more = False
             else:
@@ -354,4 +366,11 @@ def get_account_videos(sec_uid: str, limit: int = 20, db: Session = Depends(get_
         if not result:
             raise HTTPException(status_code=400, detail=f"Lỗi khi lấy video: {e}")
             
-    return {"success": True, "data": result}
+    return {
+        "success": True, 
+        "data": result,
+        "meta": {
+            "total_scanned": total_scanned,
+            "pages_scanned": page_count
+        }
+    }

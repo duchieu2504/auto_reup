@@ -477,6 +477,8 @@ def validate_keys(data: KeysUpdate):
     # 6. Test Douyin Cookie
     if data.douyin_cookie and data.douyin_cookie.strip():
         import urllib.parse
+        from datetime import datetime, timezone
+        
         missing = []
         if "sessionid=" not in data.douyin_cookie:
             missing.append("sessionid")
@@ -484,6 +486,7 @@ def validate_keys(data: KeysUpdate):
             missing.append("__ac_signature")
             
         expires = None
+        is_expired = False
         for item in data.douyin_cookie.split(";"):
             item = item.strip()
             if item.startswith("sid_guard="):
@@ -491,7 +494,15 @@ def validate_keys(data: KeysUpdate):
                 if len(parts) > 1:
                     val_parts = urllib.parse.unquote(parts[1]).split("|")
                     if len(val_parts) >= 4:
-                        expires = val_parts[3]
+                        expires = val_parts[3].replace("+", " ")
+                        try:
+                            # Định dạng thường thấy: Sat, 25-Jul-2026 08:37:35 GMT
+                            exp_dt = datetime.strptime(expires, "%a, %d-%b-%Y %H:%M:%S GMT")
+                            exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                            if datetime.now(timezone.utc) > exp_dt:
+                                is_expired = True
+                        except Exception as e:
+                            print("Lỗi parse ngày hết hạn cookie:", e)
                 break
 
         results["douyin_details"] = {
@@ -534,7 +545,9 @@ def validate_keys(data: KeysUpdate):
             params.update({"sec_user_id": "MS4wLjABAAAAgbac9ihpTlet1afYz7ingYX92zHVMzSGZeHQtWVaLSE"})
             resp_data = client.request_json("/aweme/v1/web/aweme/post/", params)
             
-            if resp_data and isinstance(resp_data, dict):
+            if is_expired:
+                results["douyin_cookie"] = "invalid"
+            elif resp_data and isinstance(resp_data, dict):
                 if resp_data.get("status_code") == 0:
                     results["douyin_cookie"] = "valid"
                 else:

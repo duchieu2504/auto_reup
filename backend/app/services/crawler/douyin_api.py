@@ -140,7 +140,7 @@ class DouyinAPIClient:
                         # Douyin đôi khi trả về mảng rỗng nếu thiếu __ac_signature
                         aweme_list = data.get("aweme_list", [])
                         
-                        if nil_type in ["antispam_check", "verify_check"] or (path.endswith("/post/") and not aweme_list and data.get("status_code", 0) != 0):
+                        if nil_type in ["antispam_check", "verify_check"] or (path.endswith("/post/") and not aweme_list):
                             if auto_retry:
                                 # Kích hoạt giải cứu bằng Playwright
                                 if self.refresh_cookies():

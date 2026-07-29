@@ -32,6 +32,7 @@ def update_env_file(cookie_str: str, user_agent: str = None):
                 break
                 
         cookie_dict = {}
+        has_login_cookie = False
         if old_cookie_encrypted:
             try:
                 # Giải mã cookie cũ
@@ -42,8 +43,14 @@ def update_env_file(cookie_str: str, user_agent: str = None):
                     if "=" in part:
                         k, v = part.split("=", 1)
                         cookie_dict[k] = v
+                        if k == "sessionid_ss" and v:
+                            has_login_cookie = True
             except Exception as decrypt_err:
                 logger.error(f"Lỗi giải mã cookie cũ khi gộp: {decrypt_err}")
+
+        if has_login_cookie:
+            logger.info("Đã phát hiện Cookie đăng nhập (sessionid_ss) trong Cấu hình. BỎ QUA GHI ĐÈ để bảo vệ Cookie gốc.")
+            return
 
         # Parse cookie mới lấy từ Playwright và ghi đè/bổ sung vào dict
         for part in cookie_str.split(";"):

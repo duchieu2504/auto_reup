@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Heart, Users, Film, DownloadCloud, Trash2, 
-  RefreshCw, Plus, ExternalLink, Loader2, Link2, Eye, Clipboard, X
+  RefreshCw, Plus, ExternalLink, Loader2, Link2, Eye, Clipboard, X, Info
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -581,6 +581,16 @@ const Discovery = ({ onSelectUser }) => {
                 <p className="text-sm text-text-secondary/70 mt-1">
                   Hệ thống tìm thấy {previewVideos.length} video mới nhất. Hãy chọn những video bạn muốn tải về.
                 </p>
+                {previewVideos.length < 20 && previewVideos.length > 0 && (
+                  <div className="mt-2 text-xs bg-yellow-500/10 border border-yellow-500/30 text-yellow-500/80 p-2 rounded flex items-start gap-2">
+                    <Info size={14} className="shrink-0 mt-0.5" />
+                    <p>
+                      <strong>Lưu ý:</strong> Douyin hiện giới hạn chỉ cho phép hệ thống ẩn danh quét ~35 video đầu tiên của mỗi kênh. 
+                      Do kênh này đã được bạn tải nhiều video trước đó, số lượng video mới còn lại nằm trong trang đầu tiên sẽ bị hạn chế. 
+                      Để tải các video cũ hơn, hãy dùng chức năng <strong>Cào Link</strong> bằng trình duyệt.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {previewLoading ? (
