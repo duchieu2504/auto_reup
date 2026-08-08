@@ -34,6 +34,7 @@ from app.models.proxy import Proxy
 from app.models.live_job import LiveStreamJob
 from app.models.followed_account import FollowedAccount
 from app.models.twitter_nurture_config import TwitterNurtureConfig
+from app.ai_studio.models import AIGeneration
 from app.api.social_accounts import router as social_accounts_router
 from app.api.upload_schedule import router as upload_schedule_router
 
@@ -162,12 +163,14 @@ app.add_middleware(
 app.mount("/api/files", StaticFiles(directory=DATA_DIR), name="files")
 
 from app.api import crawler, processor, settings, history, discovery, social_accounts, analytics, edit_profiles, proxies, faceless, live, system
+from app.ai_studio.router import router as ai_studio_router
 
 app.include_router(system.router, prefix="/api/system", tags=["System"])
 app.include_router(crawler.router, prefix="/api/crawler", tags=["Crawler"])
 app.include_router(processor.router, prefix="/api/processor", tags=["Processor"])
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(history.router, prefix="/api/history", tags=["History"])
+app.include_router(ai_studio_router, prefix="/api/ai-studio", tags=["AI Studio"])
 app.include_router(discovery.router, prefix="/api", tags=["Discovery"])
 app.include_router(social_accounts_router, prefix="/api/social-accounts", tags=["Social Accounts"])
 app.include_router(upload_schedule_router, prefix="/api/upload-schedules", tags=["Upload Schedules"])

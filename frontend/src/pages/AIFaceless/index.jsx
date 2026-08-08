@@ -2,23 +2,40 @@ import React, { useState } from 'react';
 import PromptForm from './components/PromptForm';
 import ScriptEditor from './components/ScriptEditor';
 import RenderProgress from './components/RenderProgress';
+import FashionStudio from './components/FashionStudio';
 
 const AIFaceless = () => {
   const [step, setStep] = useState(1);
   const [scenes, setScenes] = useState([]);
   const [renderTask, setRenderTask] = useState(null);
   const [config, setConfig] = useState({});
+  const [appMode, setAppMode] = useState('faceless'); // 'faceless' | 'fashion'
 
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">🤖 Sáng tạo AI Faceless</h1>
-          <p className="text-text-secondary mt-1">Tự động viết kịch bản, tìm video nền, đọc giọng AI và ghép thành video hoàn chỉnh.</p>
+          <h1 className="text-2xl font-bold text-text-primary">🤖 AI Studio (Faceless & Fashion)</h1>
+          <p className="text-text-secondary mt-1">Tự động viết kịch bản Faceless hoặc sinh Video người mẫu/sản phẩm bằng AI.</p>
+        </div>
+        <div className="flex bg-bg-tertiary p-1 rounded-lg">
+          <button 
+            onClick={() => setAppMode('faceless')}
+            className={`px-4 py-2 rounded-md font-medium text-sm transition-all ${appMode === 'faceless' ? 'bg-white text-brand-primary shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}
+          >
+            🎙️ Kể Chuyện (Faceless)
+          </button>
+          <button 
+            onClick={() => setAppMode('fashion')}
+            className={`px-4 py-2 rounded-md font-medium text-sm transition-all ${appMode === 'fashion' ? 'bg-white text-brand-primary shadow-sm' : 'text-text-secondary hover:text-text-primary'}`}
+          >
+            👗 Sản Phẩm (Fashion)
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {appMode === 'faceless' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Cột trái: Cấu hình và Sinh Kịch Bản (Bước 1) */}
         <div className="lg:col-span-1 space-y-6">
           <PromptForm onScriptGenerated={(newScenes, newConfig) => {
@@ -80,7 +97,12 @@ const AIFaceless = () => {
             }} />
           )}
         </div>
-      </div>
+        </div>
+      ) : (
+        <div className="max-w-4xl mx-auto">
+          <FashionStudio />
+        </div>
+      )}
     </div>
   );
 };

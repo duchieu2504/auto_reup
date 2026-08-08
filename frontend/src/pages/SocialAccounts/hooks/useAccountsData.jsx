@@ -271,7 +271,8 @@ export const useAccountsData = () => {
 
   return {
     accounts, proxiesList, loading, isModalOpen, setIsModalOpen, editingId, warmingUpIds,
-    formData, handleInputChange, resetForm, handleSubmit, handleAutoLogin,
-    handleDelete, checkStatus, openEditModal, handleSync, triggerWarmup, stopWarmup, fetchProxiesList
+    formData, setFormData, handleInputChange, resetForm, handleSubmit, handleAutoLogin,
+    handleDelete, checkStatus, openEditModal, handleSync, triggerWarmup, stopWarmup, fetchProxiesList,
+    setEditMode: setEditingId, fetchAccounts
   };
 };

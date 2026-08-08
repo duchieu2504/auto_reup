@@ -51,9 +51,14 @@ class SocialAccountCreate(SocialAccountBase):
 
 class SocialAccountResponse(SocialAccountBase):
     id: int
-    last_checked_at: Optional[datetime]
-    created_at: datetime
-    updated_at: Optional[datetime]
+    followers_count: Optional[int] = 0
+    videos_count: Optional[int] = 0
+    total_views: Optional[int] = 0
+    total_likes: Optional[int] = 0
+    health_metrics: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    last_checked_at: Optional[datetime] = None
     warmup_end_time: Optional[str] = None
 
     class Config:
@@ -157,17 +162,44 @@ def check_status(account_id: int, db: Session = Depends(get_db)):
     if not db_account:
         raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
     
-    # Placeholder for actual checking logic using proxy and auth_data
-    # For now, just mark it as active and update last_checked_at
-    from sqlalchemy.sql import func
-    db_account.status = "active"
-    db_account.last_checked_at = func.now()
-    db.commit()
-    
-    # Cập nhật metadata
-    save_account_metadata(db_account)
-    
-    return {"status": "success", "message": "Tài khoản vẫn hoạt động tốt (Simulated)"}
+    if db_account.platform.lower() == 'tiktok':
+        from app.services.uploader.playwright_engine import PlaywrightEngine
+        import json
+        
+        auth_data = None
+        if db_account.auth_data:
+            try:
+                auth_data = json.loads(db_account.auth_data)
+            except:
+                auth_data = db_account.auth_data
+                
+        acc_data = {
+            'id': db_account.id,
+            'username': db_account.username,
+            'connection_type': db_account.connection_type,
+            'proxy_host': db_account.proxy_host,
+            'proxy_port': db_account.proxy_port,
+            'proxy_username': db_account.proxy_username,
+            'proxy_password': db_account.proxy_password,
+            'auth_data': auth_data
+        }
+        engine = PlaywrightEngine(acc_data)
+        result = engine.check_status()
+        
+        save_account_metadata(db_account)
+        
+        if result.get("status") == "success":
+            return {"status": "success", "message": result.get("message")}
+        else:
+            raise HTTPException(status_code=500, detail=result.get("message", "Lỗi kiểm tra trạng thái"))
+    else:
+        # Placeholder for other platforms
+        from sqlalchemy.sql import func
+        db_account.status = "active"
+        db_account.last_checked_at = func.now()
+        db.commit()
+        save_account_metadata(db_account)
+        return {"status": "success", "message": "Tài khoản vẫn hoạt động tốt (Simulated)"}
 
 @router.post("/{account_id}/warmup")
 def warmup_account(account_id: int, db: Session = Depends(get_db)):

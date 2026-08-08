@@ -445,7 +445,7 @@ class PlaywrightUploader(BaseUploaderEngine):
                     
         except Exception as surf_err:
             logger.warning(f"[Playwright] Lỗi khi lướt dạo Tiktok (bỏ qua): {surf_err}")
-            
+
         return final_url
         
     def _upload_youtube(self, page, video_path: str, text: str) -> str:
@@ -643,22 +643,116 @@ class PlaywrightUploader(BaseUploaderEngine):
 
         return final_url
 
-    def check_status(self) -> bool:
-        """Kiểm tra cookie có hợp lệ không bằng cách truy cập thử trang profile."""
-        logger.info(f"[Playwright] Kiểm tra trạng thái cookie cho tài khoản...")
+    def check_status(self) -> dict:
+        """Kiểm tra trạng thái (Mở Tiktok -> Lướt dạo 3-5 video -> Cập nhật thông tin kênh)."""
+        logger.info(f"[Playwright] Bắt đầu quá trình Nuôi kênh & Kiểm tra trạng thái...")
         try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+            account_id = self.account_data.get('id')
+            username = self.account_data.get('username')
+            
+            # Khởi tạo Playwright
+            from playwright.sync_api import sync_playwright
+            playwright = sync_playwright().start()
+            
+            if self.account_data.get('connection_type') == 'gpm_login':
+                port = self._open_gpm_profile()
+                browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+                context = browser.contexts[0]
+                page = context.pages[0] if context.pages else context.new_page()
+            else:
+                browser = playwright.chromium.launch(headless=True)
                 context = browser.new_context()
                 if self.cookies and isinstance(self.cookies, list):
                     context.add_cookies(self.cookies)
                 page = context.new_page()
-                page.goto("https://www.tiktok.com/")
-                self._smart_sleep(page, 3000)
-                # Check selector của avatar góc phải
-                # is_logged_in = page.locator("div[data-e2e='profile-icon']").is_visible()
-                browser.close()
-                return True # Giả lập always True tạm thời
+
+            # 1. Truy cập Tiktok & Lướt dạo 3-5 video (Farming)
+            page.goto("https://www.tiktok.com/foryou", timeout=40000, wait_until="domcontentloaded")
+            self._smart_sleep(page, 5000)
+            
+            # Tắt popup nếu có
+            try:
+                page.evaluate("""() => {
+                    const selectors = ['[data-e2e="modal-close-inner-button"]', 'div[role="dialog"] button[aria-label="Close"]', 'button[class*="close"]'];
+                    selectors.forEach(sel => document.querySelectorAll(sel).forEach(btn => { try { btn.click(); } catch(e) {} }));
+                }""")
+            except:
+                pass
+                
+            num_scrolls = random.randint(3, 6)
+            logger.info(f"[Playwright] Lướt dạo {num_scrolls} video (Farming)...")
+            for i in range(num_scrolls):
+                try:
+                    page.keyboard.press("ArrowDown")
+                    self._smart_sleep(page, random.randint(3000, 7000))
+                    # Xác suất thả tim 20%
+                    if random.random() < 0.2:
+                        like_btn = page.locator('[data-e2e="like-icon"]').first
+                        if like_btn.is_visible(timeout=1000):
+                            like_btn.click()
+                except:
+                    pass
+
+            # 2. Lấy số liệu thông qua Stealth Fetch (Cào JSON ngầm)
+            logger.info(f"[Playwright] Bắt đầu Stealth Fetch lấy dữ liệu cho @{username}...")
+            js_fetch = f"""
+            async () => {{
+                try {{
+                    const response = await fetch('/@{username}');
+                    const html = await response.text();
+                    
+                    let dataStr = html.split('id="__UNIVERSAL_DATA_FOR_REHYDRATION__"')[1];
+                    if (dataStr) {{
+                        dataStr = dataStr.split('>')[1].split('</script>')[0];
+                        const data = JSON.parse(dataStr);
+                        const userModule = data.__DEFAULT_SCOPE__['webapp.user-detail'].userInfo;
+                        return {{
+                            followers: userModule.stats.followerCount || 0,
+                            likes: userModule.stats.heartCount || 0,
+                            videos: userModule.stats.videoCount || 0,
+                            actual_username: userModule.user.uniqueId || null,
+                            avatar: userModule.user.avatarLarger || userModule.user.avatarMedium || null
+                        }};
+                    }}
+                    return null;
+                }} catch (e) {{
+                    return null;
+                }}
+            }}
+            """
+            stats = page.evaluate(js_fetch)
+            
+            browser.close()
+            playwright.stop()
+            
+            # Cập nhật DB
+            if account_id and stats:
+                logger.info(f"[Playwright] Dữ liệu cào được: {stats}")
+                from app.db.session import get_db_session
+                from app.models.social_account import SocialAccount
+                with get_db_session() as db:
+                    acc = db.query(SocialAccount).filter(SocialAccount.id == account_id).first()
+                    if acc:
+                        if stats.get('actual_username') and stats.get('actual_username') != acc.username:
+                            acc.username = stats.get('actual_username')
+                        if stats.get('followers') is not None:
+                            acc.followers_count = stats.get('followers')
+                        if stats.get('likes') is not None:
+                            acc.total_likes = stats.get('likes')
+                        if stats.get('videos') is not None:
+                            acc.videos_count = stats.get('videos')
+                        if stats.get('avatar') is not None:
+                            acc.avatar_url = stats.get('avatar')
+                        
+                        from sqlalchemy.sql import func
+                        acc.last_checked_at = func.now()
+                        acc.health_checked_at = func.now()
+                        acc.status = 'active'
+                        db.commit()
+                        return {"status": "success", "message": "Nuôi kênh và kiểm tra dữ liệu thành công!"}
+                        
+            return {"status": "success", "message": "Nuôi kênh xong nhưng không lấy được số liệu mới."}
+            
         except Exception as e:
-            logger.error(f"[Playwright] Lỗi check status: {e}")
-            return False
+            logger.error(f"[Playwright] Lỗi Check Status & Farming: {e}")
+            return {"status": "error", "message": str(e)}

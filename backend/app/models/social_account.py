@@ -23,6 +23,14 @@ class SocialAccount(Base):
     user_agent = Column(String(500), nullable=True) # Để bypass anti-bot
     last_checked_at = Column(DateTime(timezone=True), nullable=True)
     health_checked_at = Column(DateTime(timezone=True), nullable=True) # Check shadowban
+    
+    # Kpi & Metrics
+    followers_count = Column(Integer, default=0)
+    videos_count = Column(Integer, default=0)
+    total_views = Column(Integer, default=0)
+    total_likes = Column(Integer, default=0)
+    health_metrics = Column(Text, nullable=True) # JSON point/score
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

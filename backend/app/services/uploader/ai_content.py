@@ -1,6 +1,13 @@
 import os
 from google import genai
 from typing import Dict
+import unicodedata
+
+def remove_accents(input_str: str) -> str:
+    if not input_str:
+        return ""
+    nfkd_form = unicodedata.normalize('NFKD', input_str)
+    return "".join([c for c in nfkd_form if not unicodedata.combining(c)]).replace('đ', 'd').replace('Đ', 'D')
 
 class AIContentGenerator:
     def __init__(self):
@@ -52,7 +59,7 @@ class AIContentGenerator:
         if not self.is_configured:
             return {
                 "caption": f"Góc chia sẻ: {video_title}",
-                "hashtags": original_hashtags if original_hashtags else "#xuhuong #trend #fyp"
+                "hashtags": remove_accents(original_hashtags) if original_hashtags else "#xuhuong #trend #fyp"
             }
             
         prompt = f"""
@@ -123,9 +130,10 @@ class AIContentGenerator:
                 result_text = json_match.group(0)
                 
             data = json.loads(result_text)
+            hashtags_str = data.get("hashtags", "#xuhuong #fyp")
             return {
                 "caption": data.get("caption", video_title),
-                "hashtags": data.get("hashtags", "#xuhuong #fyp")
+                "hashtags": remove_accents(hashtags_str)
             }
         except Exception as e:
             import logging
@@ -141,7 +149,7 @@ class AIContentGenerator:
             return {"caption": "", "hashtags": ""}
             
         if not self.is_configured:
-            return {"caption": text, "hashtags": original_hashtags}
+            return {"caption": text, "hashtags": remove_accents(original_hashtags)}
             
         context_prompt = ""
         if video_context:
@@ -219,9 +227,10 @@ class AIContentGenerator:
                 result_text = json_match.group(0)
                 
             data = json.loads(result_text)
+            hashtags_str = data.get("hashtags", original_hashtags)
             return {
                 "caption": data.get("caption", text),
-                "hashtags": data.get("hashtags", original_hashtags)
+                "hashtags": remove_accents(hashtags_str)
             }
         except Exception as e:
             import logging

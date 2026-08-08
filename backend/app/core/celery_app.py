@@ -8,7 +8,7 @@ celery_app = Celery(
     "autoreup_tasks",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.tasks.crawler_tasks", "app.tasks.processor_tasks", "app.tasks.uploader_tasks", "app.tasks.health_tasks", "app.tasks.faceless_tasks"]
+    include=["app.tasks.crawler_tasks", "app.tasks.processor_tasks", "app.tasks.uploader_tasks", "app.tasks.health_tasks", "app.tasks.faceless_tasks", "app.tasks.ai_studio_tasks"]
 )
 
 # Tối ưu hóa cấu hình Celery

@@ -7,6 +7,7 @@ const getStatusBadge = (status) => {
   switch(status) {
     case 'pending': return <span className="flex items-center gap-1 text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded-md text-xs font-medium"><Clock size={12}/> Đang chờ</span>;
     case 'uploading': return <span className="flex items-center gap-1 text-blue-400 bg-blue-400/10 px-2 py-1 rounded-md text-xs font-medium"><RefreshCw size={12} className="animate-spin"/> Đang Up</span>;
+    case 'paused': return <span className="flex items-center gap-1 text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded-md text-xs font-medium"><Pause size={12}/> Tạm dừng</span>;
     case 'success': return <span className="flex items-center gap-1 text-green-400 bg-green-400/10 px-2 py-1 rounded-md text-xs font-medium"><CheckCircle size={12}/> Thành công</span>;
     case 'failed': return <span className="flex items-center gap-1 text-red-400 bg-red-400/10 px-2 py-1 rounded-md text-xs font-medium"><XCircle size={12}/> Thất bại</span>;
     default: return <span className="text-gray-400">{status}</span>;
@@ -15,7 +16,6 @@ const getStatusBadge = (status) => {
 
 export const ScheduleList = ({ hook }) => {
   const { schedules, videos, accounts, fetchData, deleteSchedule, handleRetry, handlePause, handleResume, handleStop } = hook;
-  const [pausedTasks, setPausedTasks] = useState(new Set());
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
@@ -136,14 +136,12 @@ export const ScheduleList = ({ hook }) => {
                 </td>
                 <td className="p-4 text-right">
                   <div className="flex justify-end gap-2">
-                    {sch.status === 'uploading' && (
+                    {(sch.status === 'uploading' || sch.status === 'paused') && (
                       <>
-                        {/* Nút Pause / Play */}
-                        {pausedTasks.has(sch.id) ? (
+                        {sch.status === 'paused' ? (
                           <button
                             onClick={() => {
                               handleResume(sch.id);
-                              setPausedTasks(prev => { const n = new Set(prev); n.delete(sch.id); return n; });
                             }}
                             className="text-green-400 hover:text-green-300 transition-colors p-1.5 bg-green-400/10 hover:bg-green-400/20 rounded-lg"
                             title="Tiếp tục upload"
@@ -154,7 +152,6 @@ export const ScheduleList = ({ hook }) => {
                           <button
                             onClick={() => {
                               handlePause(sch.id);
-                              setPausedTasks(prev => new Set(prev).add(sch.id));
                             }}
                             className="text-yellow-400 hover:text-yellow-300 transition-colors p-1.5 bg-yellow-400/10 hover:bg-yellow-400/20 rounded-lg"
                             title="Tạm dừng upload"
@@ -162,6 +159,13 @@ export const ScheduleList = ({ hook }) => {
                             <Pause size={16} />
                           </button>
                         )}
+                        <button
+                          onClick={() => handleStop(sch.id)}
+                          className="text-red-400 hover:text-red-300 transition-colors p-1.5 bg-red-400/10 hover:bg-red-400/20 rounded-lg"
+                          title="Hủy tiến trình"
+                        >
+                          <StopCircle size={16} />
+                        </button>
                       </>
                     )}
                     {sch.status === 'failed' && (

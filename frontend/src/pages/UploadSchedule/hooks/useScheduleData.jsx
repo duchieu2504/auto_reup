@@ -344,6 +344,7 @@ export const useScheduleData = () => {
         throw new Error(err.detail || "Lỗi khi tạm dừng");
       }
       toast.success("Đã tạm dừng tiến trình upload ⏸️");
+      fetchData();
     } catch (error) {
       toast.error(error.message);
     }
@@ -357,6 +358,7 @@ export const useScheduleData = () => {
         throw new Error(err.detail || "Lỗi khi tiếp tục");
       }
       toast.success("Đã tiếp tục tiến trình upload ▶️");
+      fetchData();
     } catch (error) {
       toast.error(error.message);
     }
@@ -370,6 +372,7 @@ export const useScheduleData = () => {
         throw new Error(err.detail || "Lỗi khi hủy");
       }
       toast.success("Đang hủy tiến trình upload... 🛑");
+      fetchData();
     } catch (error) {
       toast.error(error.message);
     }

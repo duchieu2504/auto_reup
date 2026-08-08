@@ -80,6 +80,8 @@ def execute_upload(self, schedule_id: int):
             proxy = resolve_proxy(account, db)
 
             account_data = {
+                "id": account.id,
+                "username": account.username,
                 "platform": account.platform,
                 "auth_data": decrypt_data(account.auth_data),
                 "device_id": account.device_id,
